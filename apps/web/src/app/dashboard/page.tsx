@@ -17,7 +17,7 @@ import {
 } from '@/lib/format';
 
 interface Overview {
-  setup: Record<'subscription' | 'aiKey' | 'telephony' | 'number' | 'agent', boolean>;
+  setup: Record<'subscription' | 'ai' | 'telephony' | 'number' | 'agent', boolean>;
   kpis: { calls: number; avgDurationSec: number; appointments: number; conversionRate: number };
   series: Array<{ day: string; calls: number; minutes: number; answered: number }>;
   outcomes: Array<{ outcome: string; count: number }>;
@@ -40,13 +40,18 @@ interface Overview {
   }>;
 }
 
-const SETUP_STEPS = [
+/** `href: null` marks a step our team does (the AI voice): shown, but nothing to click. */
+const SETUP_STEPS: ReadonlyArray<{
+  key: keyof Overview['setup'];
+  label: string;
+  href: string | null;
+}> = [
   { key: 'subscription', label: 'Choose a plan', href: '/dashboard/billing' },
-  { key: 'aiKey', label: 'Add an AI key', href: '/dashboard/integrations' },
+  { key: 'ai', label: 'AI voice ready (set up by our team)', href: null },
   { key: 'telephony', label: 'Connect a carrier', href: '/dashboard/numbers' },
   { key: 'number', label: 'Add a phone number', href: '/dashboard/numbers' },
   { key: 'agent', label: 'Build your agent', href: '/dashboard/agents/new' },
-] as const;
+];
 
 const dayLabel = (d: string) =>
   new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', {
@@ -93,19 +98,39 @@ export default function OverviewPage() {
           <ol className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {SETUP_STEPS.map((step, i) => {
               const done = data.setup[step.key];
+              const content = (
+                <>
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${done ? 'bg-success text-white' : step.href ? 'bg-ink text-white' : 'bg-brand-100 text-brand-800'}`}
+                  >
+                    {done ? <Check size={14} aria-label="Done" /> : i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    {step.label}
+                    {!step.href && !done && (
+                      <span className="block text-xs font-normal text-muted">
+                        Our team is on it
+                      </span>
+                    )}
+                  </span>
+                </>
+              );
               return (
                 <li key={step.key}>
-                  <Link
-                    href={step.href}
-                    className={`flex h-full items-center gap-3 rounded-lg p-3 text-sm font-semibold transition ${done ? 'bg-white/50 text-ink-soft' : 'bg-white text-ink shadow hover:shadow-lg'}`}
-                  >
-                    <span
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${done ? 'bg-success text-white' : 'bg-ink text-white'}`}
+                  {step.href ? (
+                    <Link
+                      href={step.href}
+                      className={`flex h-full items-center gap-3 rounded-lg p-3 text-sm font-semibold transition ${done ? 'bg-white/50 text-ink-soft' : 'bg-white text-ink shadow hover:shadow-lg'}`}
                     >
-                      {done ? <Check size={14} aria-label="Done" /> : i + 1}
-                    </span>
-                    {step.label}
-                  </Link>
+                      {content}
+                    </Link>
+                  ) : (
+                    <div
+                      className={`flex h-full items-center gap-3 rounded-lg p-3 text-sm font-semibold ${done ? 'bg-white/50 text-ink-soft' : 'bg-white/70 text-ink-soft'}`}
+                    >
+                      {content}
+                    </div>
+                  )}
                 </li>
               );
             })}

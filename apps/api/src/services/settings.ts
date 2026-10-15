@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
+import type { AiSettingsInput } from '@pv/shared';
 import {
+  aiSettingsSchema,
   analyticsSettingsSchema,
   securitySettingsSchema,
   seoSettingsSchema,
@@ -32,12 +34,19 @@ const DEFAULTS = {
     captcha: { signup: true, login: false, forgotPassword: true, contact: true },
   } satisfies SecuritySettings,
   analytics: { plausibleDomain: null, ga4MeasurementId: null } satisfies AnalyticsSettings,
+  /** The AI layer for subscribers staff haven't configured individually. */
+  ai: {
+    voiceEngine: 'GEMINI_LIVE',
+    llmProvider: 'GEMINI',
+    model: 'gemini-3.8-live',
+  } satisfies AiSettingsInput,
 };
 
 const SCHEMAS = {
   seo: seoSettingsSchema,
   security: securitySettingsSchema,
   analytics: analyticsSettingsSchema,
+  ai: aiSettingsSchema,
 } as const;
 
 export type SettingKey = keyof typeof SCHEMAS;
@@ -63,6 +72,9 @@ export async function setSetting<K extends SettingKey>(
   return data;
 }
 
-export function isSettingKey(key: string): key is SettingKey {
-  return key in SCHEMAS;
+/** Keys any admin may edit from the CMS. `security` and `ai` are super-admin only. */
+const CMS_SETTING_KEYS = ['seo', 'analytics'] as const;
+
+export function isCmsSettingKey(key: string): key is (typeof CMS_SETTING_KEYS)[number] {
+  return (CMS_SETTING_KEYS as readonly string[]).includes(key);
 }

@@ -160,7 +160,7 @@ export function Features() {
           <Card
             className="md:col-span-3"
             title="Integrations"
-            body="Bring your own carrier and model. Connect Twilio, Plivo or SuperPhone, and OpenAI, Claude or Gemini — then sync calendars and CRMs."
+            body="Bring your own numbers from Twilio, Plivo or SuperPhone. We run your agents on leading AI — OpenAI, Gemini or Claude — and you sync calendars and CRMs."
             art={
               <Art>
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">

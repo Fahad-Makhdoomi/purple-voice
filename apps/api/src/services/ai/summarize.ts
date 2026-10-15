@@ -1,10 +1,11 @@
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
-import { CALL_OUTCOMES } from '@pv/shared';
+import { CALL_OUTCOMES, summaryModelForEngine } from '@pv/shared';
 import type { Agent } from '@prisma/client';
 import { logger } from '../../lib/logger';
 import { findApiKey } from '../ai-keys';
+import { getAiSettings } from '../ai-settings';
 import { Anthropic, claudeClient, claudeExtras } from './claude';
 
 export interface TranscriptLine {
@@ -54,13 +55,15 @@ function renderTranscript(lines: TranscriptLine[]): string {
 }
 
 /**
- * Summarises a finished call with the same vendor the agent talks with, using
- * the workspace's own key. Returns null when the call is too short to be worth
- * it or the vendor fails; a missing summary never blocks call finalisation.
+ * Summarises a finished call with the vendor of the workspace's AI layer (the
+ * one staff chose), using the same key its calls use. Speech-to-speech engines
+ * summarise on a text model of their vendor. Returns null when the call is too
+ * short to be worth it or the vendor fails; a missing summary never blocks call
+ * finalisation.
  */
 export async function summarizeCall(
   workspaceId: string,
-  agent: Pick<Agent, 'llmProvider' | 'llmModel' | 'voiceEngine' | 'goal'>,
+  agent: Pick<Agent, 'goal'>,
   transcript: TranscriptLine[],
 ): Promise<CallSummary | null> {
   const spoken = transcript.filter((l) => l.role !== 'system');
@@ -68,19 +71,23 @@ export async function summarizeCall(
   const prompt = `Call goal: ${agent.goal || 'not specified'}\n\nTranscript:\n${renderTranscript(spoken)}`;
 
   try {
-    // Realtime agents run on OpenAI; their realtime model can't do text-only JSON, so use a chat model.
-    const provider = agent.voiceEngine === 'REALTIME' ? 'OPENAI' : agent.llmProvider;
+    const settings = await getAiSettings(workspaceId);
+    const { provider, model } = summaryModelForEngine(
+      settings.voiceEngine,
+      settings.llmProvider,
+      settings.model,
+    );
     const apiKey = await findApiKey(workspaceId, provider);
     if (!apiKey) return null;
 
     if (provider === 'ANTHROPIC') {
       const client = claudeClient(apiKey);
       const response = await client.beta.messages.create({
-        model: agent.llmModel,
+        model,
         max_tokens: 16000,
         system: SYSTEM,
         messages: [{ role: 'user', content: prompt }],
-        ...claudeExtras(agent.llmModel, 'medium', { type: 'json_schema', schema: JSON_SCHEMA }),
+        ...claudeExtras(model, 'medium', { type: 'json_schema', schema: JSON_SCHEMA }),
       });
       if (response.stop_reason === 'refusal') {
         logger.warn({ workspaceId }, 'Claude declined to summarise a call');
@@ -94,7 +101,6 @@ export async function summarizeCall(
 
     if (provider === 'OPENAI') {
       const client = new OpenAI({ apiKey, timeout: 60_000 });
-      const model = agent.voiceEngine === 'REALTIME' ? 'gpt-4.1-mini' : agent.llmModel;
       const completion = await client.chat.completions.create({
         model,
         messages: [
@@ -116,7 +122,7 @@ export async function summarizeCall(
 
     const ai = new GoogleGenAI({ apiKey });
     const result = await ai.models.generateContent({
-      model: agent.llmModel,
+      model,
       contents: prompt,
       config: {
         systemInstruction: SYSTEM,

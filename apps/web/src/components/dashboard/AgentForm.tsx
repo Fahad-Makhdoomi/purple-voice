@@ -1,30 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  CASCADED_VOICES,
-  DEFAULT_LLM_MODEL,
-  LANGUAGES,
-  LLM_MODELS,
-  REALTIME_MODELS,
-  REALTIME_VOICES,
-  type AgentInput,
-  type AiProvider,
-} from '@pv/shared';
+import { useEffect, useState } from 'react';
+import { Info } from 'lucide-react';
+import { LANGUAGES, type AgentInput, type WorkspaceAiView } from '@pv/shared';
 import { Field } from '@/components/forms/Field';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
-import { cn } from '@/lib/cn';
 
 export type AgentDraft = AgentInput;
 
+/** A new agent. Its voice is filled in with the workspace's default voice once it loads. */
 export const EMPTY_AGENT: AgentDraft = {
   name: '',
   status: 'DRAFT',
-  voiceEngine: 'REALTIME',
-  llmProvider: 'OPENAI',
-  llmModel: 'gpt-realtime',
-  voice: 'marin',
+  voice: '',
   language: 'en-US',
   systemPrompt: '',
   greeting: '',
@@ -40,13 +29,12 @@ export const EMPTY_AGENT: AgentDraft = {
   recordCalls: false,
 };
 
-const PROVIDERS: Array<{ id: AiProvider; label: string }> = [
-  { id: 'ANTHROPIC', label: 'Claude' },
-  { id: 'OPENAI', label: 'OpenAI' },
-  { id: 'GEMINI', label: 'Gemini' },
-];
-
-/** The agent builder. Controlled; the parent page owns saving. */
+/**
+ * The agent builder. Controlled; the parent page owns saving.
+ *
+ * Our team chooses the AI behind every agent (Admin → Subscribers → AI), so
+ * subscribers only pick a voice from the ones it offers.
+ */
 export function AgentForm({
   value,
   onChange,
@@ -55,6 +43,7 @@ export function AgentForm({
   onChange: (v: AgentDraft) => void;
 }) {
   const { entitlements } = useWorkspace();
+  const ai = useApi<WorkspaceAiView>('/app/ai');
   const integrations = useApi<{
     integrations: Array<{ id: string; type: string; accountLabel: string | null }>;
   }>('/app/integrations');
@@ -63,25 +52,17 @@ export function AgentForm({
   const set = <K extends keyof AgentDraft>(key: K, v: AgentDraft[K]) =>
     onChange({ ...value, [key]: v });
   const [showKnowledge, setShowKnowledge] = useState(!!value.knowledge);
+  // Set when the agent's saved voice is no longer offered (the team changed the AI voice).
+  const [voiceReplaced, setVoiceReplaced] = useState(false);
 
-  const setEngine = (engine: AgentDraft['voiceEngine']) =>
-    onChange(
-      engine === 'REALTIME'
-        ? {
-            ...value,
-            voiceEngine: engine,
-            llmProvider: 'OPENAI',
-            llmModel: 'gpt-realtime',
-            voice: 'marin',
-          }
-        : {
-            ...value,
-            voiceEngine: engine,
-            llmProvider: 'ANTHROPIC',
-            llmModel: DEFAULT_LLM_MODEL.ANTHROPIC,
-            voice: CASCADED_VOICES[0].id,
-          },
-    );
+  const voices = ai.data?.voices ?? [];
+  // Use the default voice for a new agent, or when the saved one is no longer
+  // offered. Only a new voice list or a changed voice needs this check.
+  useEffect(() => {
+    if (!ai.data || ai.data.voices.some((v) => v.id === value.voice)) return;
+    if (value.voice) setVoiceReplaced(true);
+    onChange({ ...value, voice: ai.data.defaultVoice });
+  }, [ai.data, value.voice]);
 
   return (
     <div className="space-y-6">
@@ -146,139 +127,56 @@ export function AgentForm({
 
       <section className="card card-pad space-y-5" aria-labelledby="voice">
         <h2 id="voice" className="font-semibold">
-          Voice and model
+          Voice
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Voice engine">
-          {(
-            [
-              [
-                'REALTIME',
-                'Realtime',
-                'OpenAI speech-to-speech. Fastest, most natural turn-taking.',
-              ],
-              [
-                'CASCADED',
-                'Cascaded',
-                'Speech → Claude, Gemini or OpenAI → speech. Pick any model. Needs a Deepgram key.',
-              ],
-            ] as const
-          ).map(([id, label, body]) => (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={value.voiceEngine === id}
-              onClick={() => setEngine(id)}
-              className={cn(
-                'rounded-lg border p-4 text-left transition',
-                value.voiceEngine === id
-                  ? 'border-ink bg-ink text-white'
-                  : 'border-line bg-surface hover:border-brand-300',
-              )}
-            >
-              <p className="font-semibold">{label}</p>
-              <p
-                className={cn(
-                  'mt-1 text-sm',
-                  value.voiceEngine === id ? 'text-white/70' : 'text-muted',
-                )}
-              >
-                {body}
-              </p>
-            </button>
-          ))}
-        </div>
-
-        {value.voiceEngine === 'REALTIME' ? (
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field id="model" label="Realtime model">
-              <select
-                id="model"
-                className="select"
-                value={value.llmModel}
-                onChange={(e) => set('llmModel', e.target.value)}
-              >
-                {REALTIME_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                    {m.hint ? ` — ${m.hint}` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field id="voice-select" label="Voice">
-              <select
-                id="voice-select"
-                className="select"
-                value={value.voice}
-                onChange={(e) => set('voice', e.target.value)}
-              >
-                {REALTIME_VOICES.map((v) => (
-                  <option key={v} value={v}>
-                    {v.charAt(0).toUpperCase() + v.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        ) : (
-          <div className="grid gap-5 sm:grid-cols-3">
-            <Field id="provider" label="AI provider">
-              <select
-                id="provider"
-                className="select"
-                value={value.llmProvider}
-                onChange={(e) => {
-                  const p = e.target.value as AiProvider;
-                  onChange({ ...value, llmProvider: p, llmModel: DEFAULT_LLM_MODEL[p] });
-                }}
-              >
-                {PROVIDERS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field
-              id="model"
-              label="Model"
-              help={
-                LLM_MODELS[value.llmProvider].find((m) => m.id === value.llmModel)?.hint ??
-                'Any model id your key can use.'
-              }
-            >
-              <input
-                id="model"
-                list="model-options"
-                className="input"
-                value={value.llmModel}
-                onChange={(e) => set('llmModel', e.target.value)}
-              />
-              <datalist id="model-options">
-                {LLM_MODELS[value.llmProvider].map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </datalist>
-            </Field>
-            <Field id="voice-select" label="Voice">
-              <select
-                id="voice-select"
-                className="select"
-                value={value.voice}
-                onChange={(e) => set('voice', e.target.value)}
-              >
-                {CASCADED_VOICES.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+        {ai.data && !ai.data.ready && (
+          <p
+            className="flex gap-3 rounded-sm bg-brand-50 px-4 py-3 text-sm text-brand-800"
+            role="status"
+          >
+            <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              Our team is finishing your AI voice setup. You can build the agent now; it can take
+              calls once that&apos;s done.
+            </span>
+          </p>
         )}
+        <div className="max-w-sm">
+          <Field
+            id="voice-select"
+            label="Voice"
+            error={
+              ai.error && !ai.data ? 'Voices could not be loaded. Refresh to try again.' : null
+            }
+            help={
+              voiceReplaced
+                ? 'Our team switched your AI voice, so the voice this agent had isn’t available anymore. It now uses the one selected here; you can pick another.'
+                : 'How your agent sounds on the phone.'
+            }
+          >
+            <select
+              id="voice-select"
+              className="select"
+              required
+              disabled={!ai.data}
+              value={ai.data ? value.voice : ''}
+              onChange={(e) => {
+                setVoiceReplaced(false);
+                set('voice', e.target.value);
+              }}
+            >
+              {!ai.data && (
+                <option value="">{ai.error ? 'Voices unavailable' : 'Loading voices…'}</option>
+              )}
+              {voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                  {v.hint ? ` — ${v.hint}` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
       </section>
 
       <section className="card card-pad space-y-5" aria-labelledby="conversation">

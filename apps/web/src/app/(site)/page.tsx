@@ -49,7 +49,7 @@ export default async function HomePage() {
 
       <section aria-label="Supported providers" className="border-b border-line bg-surface py-10">
         <div className="container flex flex-col items-center gap-5 md:flex-row md:justify-between">
-          <p className="text-sm font-semibold text-muted">Bring your own carrier and model</p>
+          <p className="text-sm font-semibold text-muted">Your numbers, leading AI</p>
           <ul className="flex flex-wrap justify-center gap-x-8 gap-y-3">
             {PROVIDERS.map((p) => (
               <li key={p} className="text-[15px] font-bold tracking-tight text-muted">

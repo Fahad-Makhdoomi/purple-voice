@@ -18,9 +18,10 @@ import { prisma } from '../../lib/prisma';
 import { audit } from '../../lib/audit';
 import { HttpError, badRequest, notFound } from '../../lib/http-error';
 import { revalidate } from '../../services/revalidate';
-import { getSetting, isSettingKey, setSetting } from '../../services/settings';
+import { getSetting, isCmsSettingKey, setSetting } from '../../services/settings';
 import { deleteImage, normaliseFolder, uploadImage } from '../../services/media';
 import { Anthropic, claudeExtras } from '../../services/ai/claude';
+import { findPlatformApiKey } from '../../services/ai-keys';
 
 /** Website content: pages, blog, FAQs, SEO/analytics settings and the media library. */
 export const cmsRouter = Router();
@@ -179,14 +180,14 @@ cmsRouter.delete('/faqs/:id', async (req, res) => {
 
 cmsRouter.get('/settings/:key', async (req, res) => {
   const key = req.params.key;
-  if (!isSettingKey(key) || key === 'security') throw notFound('Setting');
+  if (!isCmsSettingKey(key)) throw notFound('Setting');
   res.json({ value: await getSetting(key) });
 });
 
 cmsRouter.put('/settings/:key', async (req, res) => {
   const key = req.params.key;
   // Security settings (captcha) are super-admin only; see super.ts.
-  if (!isSettingKey(key) || key === 'security') throw notFound('Setting');
+  if (!isCmsSettingKey(key)) throw notFound('Setting');
   const value = await setSetting(key, req.body);
   await audit(req, 'settings.updated', { entity: 'SiteSetting', entityId: key });
   revalidate(['settings']);
@@ -196,9 +197,9 @@ cmsRouter.put('/settings/:key', async (req, res) => {
 /** Drafts SEO metadata for a page or post with Claude (platform key). */
 cmsRouter.post('/ai/seo-suggest', async (req, res) => {
   const input = seoSuggestSchema.parse(req.body);
-  if (!env.ANTHROPIC_API_KEY)
-    throw new HttpError(503, 'AI is not configured', 'assistant_unavailable');
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const apiKey = await findPlatformApiKey('ANTHROPIC');
+  if (!apiKey) throw new HttpError(503, 'AI is not configured', 'assistant_unavailable');
+  const client = new Anthropic({ apiKey });
   const schema = {
     type: 'object',
     additionalProperties: false,

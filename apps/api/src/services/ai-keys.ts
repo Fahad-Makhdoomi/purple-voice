@@ -1,34 +1,64 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { CredentialProvider } from '@prisma/client';
+import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { decrypt } from '../lib/crypto';
 import { badRequest } from '../lib/http-error';
 import { CREDENTIAL_PROVIDER_LABELS } from '@pv/shared';
 
-/** A workspace's decrypted key for a vendor, or a clear error telling them to add one. */
-export async function requireApiKey(
+/**
+ * Where an AI key comes from. Staff manage both kinds; subscribers never see
+ * them.
+ *
+ *  workspace  a key staff added for this subscriber (Admin → Subscribers → AI)
+ *  platform   the platform's key (Super admin → AI providers)
+ *  env        ANTHROPIC_API_KEY from the server environment, the last resort for Claude
+ */
+export type KeySource = 'workspace' | 'platform' | 'env';
+
+async function lookup(
   workspaceId: string,
   provider: CredentialProvider,
-): Promise<string> {
-  const cred = await prisma.aiCredential.findUnique({
+): Promise<{ source: KeySource; apiKeyEnc?: string; plain?: string } | null> {
+  const own = await prisma.aiCredential.findUnique({
     where: { workspaceId_provider: { workspaceId, provider } },
+    select: { apiKeyEnc: true },
   });
-  if (!cred) {
-    throw badRequest(
-      `Add your ${CREDENTIAL_PROVIDER_LABELS[provider]} API key under Integrations first`,
-    );
+  if (own) return { source: 'workspace', apiKeyEnc: own.apiKeyEnc };
+  const platform = await prisma.platformCredential.findUnique({
+    where: { provider },
+    select: { apiKeyEnc: true },
+  });
+  if (platform) return { source: 'platform', apiKeyEnc: platform.apiKeyEnc };
+  if (provider === 'ANTHROPIC' && env.ANTHROPIC_API_KEY) {
+    return { source: 'env', plain: env.ANTHROPIC_API_KEY };
   }
-  return decrypt(cred.apiKeyEnc);
+  return null;
 }
 
+/** The key a workspace's calls use for a vendor: its own, else the platform's. */
 export async function findApiKey(
   workspaceId: string,
   provider: CredentialProvider,
 ): Promise<string | null> {
-  const cred = await prisma.aiCredential.findUnique({
-    where: { workspaceId_provider: { workspaceId, provider } },
-  });
-  return cred ? decrypt(cred.apiKeyEnc) : null;
+  const found = await lookup(workspaceId, provider);
+  if (!found) return null;
+  return found.plain ?? decrypt(found.apiKeyEnc!);
+}
+
+/** Where `findApiKey` would get the key from, without decrypting it. */
+export async function keySource(
+  workspaceId: string,
+  provider: CredentialProvider,
+): Promise<KeySource | null> {
+  return (await lookup(workspaceId, provider))?.source ?? null;
+}
+
+/** The platform's own key for a vendor (Super admin → AI providers, then the environment). */
+export async function findPlatformApiKey(provider: CredentialProvider): Promise<string | null> {
+  const row = await prisma.platformCredential.findUnique({ where: { provider } });
+  if (row) return decrypt(row.apiKeyEnc);
+  return provider === 'ANTHROPIC' ? (env.ANTHROPIC_API_KEY ?? null) : null;
 }
 
 /**

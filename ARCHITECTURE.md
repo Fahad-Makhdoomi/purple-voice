@@ -12,8 +12,9 @@ Companion documents: [DEPLOYMENT.md](DEPLOYMENT.md) (servers, providers, updates
 
 Purple Voice is a platform for creating, managing and running **AI voice agents that
 handle sales conversations over the phone**. Customers connect their own carrier
-numbers (Twilio, Plivo, SuperPhone) and their own AI keys (OpenAI, Claude, Gemini);
-Purple Voice runs the calls on its VPS.
+numbers (Twilio, Plivo, SuperPhone). Purple Voice staff choose and key each
+customer's AI layer (OpenAI Realtime, Gemini Live, or Claude / OpenAI / Gemini with
+Deepgram speech), and Purple Voice runs the calls on its VPS.
 
 One product, five faces:
 
@@ -121,13 +122,14 @@ apps/api/
                          jwt, signed URLs, SSRF guard, CSV, mailer, audit
     middleware/          auth, workspace, entitlements, origin (CSRF), rate limits, errors
     services/            entitlements, subscriptions, stripe, calls, media, storage,
-                         settings, captcha, revalidate, google-calendar, ai/*
+                         settings, captcha, revalidate, google-calendar, ai-settings,
+                         ai-keys, ai/*
     modules/             HTTP routers: auth, public, billing, workspace/*, admin/*,
                          super, developer-api
     telephony/           carrier adapters (twilio, plivo, superphone) + webhook routes
     voice/               media server, transports, call session, prompt, tools,
-                         engines/ (openai-realtime, cascaded, deepgram), llm/ (claude,
-                         openai, gemini)
+                         audio (μ-law codec, resamplers), engines/ (openai-realtime,
+                         gemini-live, cascaded, deepgram), llm/ (claude, openai, gemini)
     events/              emitEvent → webhooks, Zapier, automations
     jobs/                dialer, webhook delivery, maintenance
     server.ts            HTTP + WebSocket process
@@ -140,7 +142,10 @@ apps/web/
   src/lib/               api client, session, workspace context, server-side readers
   src/styles/            tokens.css (design tokens), globals.css
   public/images/<page>/  static images, one folder per page (WebP only)
-deploy/                  nginx, PM2, Postgres tuning, server setup, deploy, backup
+deploy/                  nginx, PM2, Postgres tuning, server setup, deploy, backup,
+                         remote-deploy.sh (CI forced command), cloudpanel/ (setup.sh,
+                         vhost.conf, enable-auto-deploy.sh)
+.github/workflows/       ci.yml (checks), deploy.yml (green main → production)
 ```
 
 ---
@@ -156,7 +161,7 @@ deploy/                  nginx, PM2, Postgres tuning, server setup, deploy, back
                            └─ /uploads/*   ─▶ disk (storage/uploads)    │                    │
                                               pv-worker (dialer, webhooks, maintenance) ─────┘
                          └────────────────────────────────────────────────────────────────────┘
- pv-api ⇄ OpenAI Realtime / Deepgram (WebSocket) · Claude / OpenAI / Gemini (HTTPS streaming)
+ pv-api ⇄ OpenAI Realtime / Gemini Live / Deepgram (WebSocket) · Claude / OpenAI / Gemini (HTTPS streaming)
  pv-api / pv-worker ──▶ Twilio / Plivo REST · Stripe · Google Calendar · SMTP · customer webhooks
 ```
 
@@ -171,7 +176,8 @@ A subscriber `User` belongs to one `Workspace`; staff belong to none.
 |---|---|
 | Identity | `User`, `Session` (rotating refresh tokens), `PasswordReset` |
 | Billing | `Workspace`, `Plan`, `Subscription`, `SubscriptionEvent` (append-only history with MRR deltas), `Payment`, `UsagePeriod` |
-| Setup | `AiCredential` (encrypted BYO keys), `TelephonyAccount` (encrypted carrier credentials), `PhoneNumber` |
+| AI layer | `WorkspaceAiSettings` (engine, LLM vendor, model; chosen by staff), `PlatformCredential` (platform-wide AI keys), `AiCredential` (a subscriber's own AI keys, added by staff), SiteSetting `ai` (platform default) |
+| Setup | `TelephonyAccount` (encrypted carrier credentials), `PhoneNumber` |
 | Calling | `Agent`, `Campaign`, `CampaignContact`, `Call` (transcript JSON, summary, outcome, sentiment), `Appointment` |
 | Developer | `Integration`, `WebhookEndpoint`, `WebhookDelivery`, `ApiKey` (hashed), `Automation` |
 | Support & CRM | `Ticket`, `TicketMessage`, `Lead` |
@@ -203,10 +209,10 @@ and refresh tokens are stored as SHA-256 hashes.
 | `/api/auth/*` | public / session | register, login, refresh, logout, me, profile, password |
 | `/api/public/*` | public | plans, FAQs, posts, pages, settings, sitemap, contact form |
 | `/api/billing/*` | session (+ Stripe signature for `/webhook`) | plan, checkout, portal, cancel |
-| `/api/app/*` | session; staff via `X-Workspace-Id` | context, overview, credentials, telephony, agents, campaigns, calls, appointments, insights, integrations, developers, support |
+| `/api/app/*` | session; staff via `X-Workspace-Id` | context, overview, ai (voices + readiness only), telephony, agents, campaigns, calls, appointments, insights, integrations, developers, support |
 | `/api/integrations/google/callback` | signed OAuth state | Google Calendar connection |
-| `/api/admin/*` | staff | overview, staff list, leads, tickets, subscribers, cms (pages, posts, faqs, settings, media, AI SEO) |
-| `/api/admin/super/*` | super admin | insights, plans, staff, security settings, audit |
+| `/api/admin/*` | staff | overview, staff list, leads, tickets, subscribers (incl. `/:id/ai` settings and keys), cms (pages, posts, faqs, settings, media, AI SEO) |
+| `/api/admin/super/*` | super admin | insights, plans, staff, security settings, audit, ai (platform keys + default AI) |
 | `/api/telephony/:carrier/*` | signed URL | inbound, voice (answered), status, transfer |
 | `/api/v1/*` | `Bearer pv_live_…` (Pro) | agents, calls, place a call, campaigns, add contacts |
 | `ws /ws/:carrier/:call/:sig` | signed path | live call audio |
@@ -246,6 +252,14 @@ media URL carries its signature in the path.
 - **Realtime** — OpenAI Realtime speech-to-speech. Carrier μ-law goes in and out
   untouched (`audio/pcmu`). Server VAD detects barge-in; we clear the carrier queue
   and truncate the assistant item to what was actually heard.
+- **Gemini Live** — Gemini speech-to-speech (`gemini-3.8-live` by default) over the
+  Live API; one Gemini key, no Deepgram. Caller μ-law is decoded and upsampled to
+  16 kHz PCM; the model's 24 kHz PCM goes through an anti-aliasing filter down to
+  8 kHz μ-law (`voice/audio.ts`, streaming, about 1.6 ms of CPU per second of call).
+  Tools are declared BLOCKING so the model waits for availability and booking
+  results. The Live API closes connections after about 10 minutes: the engine keeps
+  the latest resumption handle, reconnects on `goAway` or a drop without re-greeting,
+  and sliding-window context compression lifts the 15-minute session cap.
 - **Cascaded** — Deepgram streaming STT → Claude, OpenAI or Gemini (streamed) →
   Deepgram TTS in μ-law. Replies are spoken sentence by sentence as they stream, so
   the agent starts talking after the first sentence. Two words over the agent's voice
@@ -363,13 +377,26 @@ a data table under every chart.
 
 ## 16. AI in the platform
 
-| Use | Whose key | Model |
+Subscribers never choose AI. Admins and super admins pick each subscriber's engine,
+LLM vendor and model (Admin → Subscribers → AI); subscribers without their own
+settings follow the platform default (Super admin → AI providers, SiteSetting `ai`,
+initially Gemini Live). Subscribers only pick a voice from the engine's list and see
+a single "AI voice set up by the Purple Voice team" readiness item; no vendor, model
+or key ever reaches their browser.
+
+Keys resolve per vendor (`services/ai-keys.ts`): the subscriber's own key (added by
+staff) → the platform key (Super admin → AI providers) → for Claude only,
+`ANTHROPIC_API_KEY`. Every key is verified with one vendor request before it is
+encrypted and stored.
+
+| Use | Engine / key | Model |
 |---|---|---|
-| Voice agents (Realtime) | subscriber's OpenAI key | `gpt-realtime` / `gpt-realtime-mini` |
-| Voice agents (Cascaded) | subscriber's Claude / OpenAI / Gemini key + Deepgram | subscriber's choice (default `claude-opus-5-5`; Sonnet/Haiku listed as faster options) |
-| Call summaries, outcome, sentiment | subscriber's key, same vendor as the agent | structured JSON output |
-| Dashboard AI support assistant (Pro) | platform `ANTHROPIC_API_KEY` | `ASSISTANT_MODEL` (default `claude-opus-5-5`), streamed, product guide prompt-cached |
-| CMS "Draft with AI" SEO | platform key | `ASSISTANT_MODEL` |
+| Voice agents (OpenAI Realtime) | OpenAI | `gpt-realtime` / `gpt-realtime-mini` |
+| Voice agents (Gemini Live) | Gemini | `gemini-3.8-live` (older Live models selectable) |
+| Voice agents (Cascaded) | Claude / OpenAI / Gemini + Deepgram | staff's choice (default `claude-opus-5-5`; Sonnet/Haiku as faster options) |
+| Call summaries, outcome, sentiment | same vendor as the engine (Realtime → `gpt-4.1-mini`, Gemini Live → Gemini text model) | structured JSON output |
+| Dashboard AI support assistant (Pro) | platform Claude key | `ASSISTANT_MODEL` (default `claude-opus-5-5`), streamed, product guide prompt-cached |
+| CMS "Draft with AI" SEO | platform Claude key | `ASSISTANT_MODEL` |
 
 All Claude calls go through `services/ai/claude.ts`, which applies server-side refusal
 fallback and the right effort setting, and every Claude response checks `stop_reason`
@@ -436,7 +463,14 @@ home **96**, pricing **99**, blog post **99**; SEO and best practices 100. How:
   validation, TwiML/Plivo XML, μ-law timing.
 - `npm run typecheck` — shared, API and web.
 - `npm run images:check` — static images are WebP, foldered and unique.
-- CI (`.github/workflows/ci.yml`) runs all of the above plus a production web build.
+- Also: μ-law codec and resampler accuracy and chunk-equivalence, the Gemini Live
+  engine against a fake Live session (greeting once, audio formats, barge-in, tool
+  round trips, goAway reconnect with resumption), and staff-only AI settings
+  (schemas, readiness wording, `/api/app/ai` leaking no vendor).
+- CI (`.github/workflows/ci.yml`) runs all of the above plus a production web build
+  and a syntax check of the deploy scripts. A green run on `main` triggers
+  `deploy.yml`, which deploys that exact commit over SSH (DEPLOYMENT.md § Automatic
+  deploys from GitHub).
 - Verified manually during development against a real Postgres: sign-up → plan →
   agent, plan limits and Pro gates, admin "open their dashboard", media upload
   (WebP + de-dupe), contact form + honeypot, and a full simulated Twilio inbound call
@@ -453,7 +487,7 @@ home **96**, pricing **99**, blog post **99**; SEO and best practices 100. How:
   Slack (automations) and Zapier (all events) are live.
 - **Call recording** — `Agent.recordCalls` exists in the model but no recording
   pipeline is wired up.
-- **Live provider testing** — carrier, OpenAI Realtime and Deepgram integrations follow
+- **Live provider testing** — carrier, OpenAI Realtime, Gemini Live and Deepgram integrations follow
   the providers' documented protocols but must be exercised with real accounts before
   launch (DEPLOYMENT.md § Go-live checklist).
 - **Compliance** — calling windows, do-not-call handling and AI disclosure are built in;

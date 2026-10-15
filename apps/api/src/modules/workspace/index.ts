@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth';
 import { resolveWorkspace } from '../../middleware/workspace';
-import { credentialsRouter } from './credentials';
+import { aiRouter } from './ai';
 import { telephonyRouter } from './telephony';
 import { agentsRouter } from './agents';
 import { campaignsRouter } from './campaigns';
@@ -20,7 +20,7 @@ export const workspaceRouter = Router();
 workspaceRouter.use(authenticate, resolveWorkspace);
 
 workspaceRouter.use('/', callsRouter); // /overview, /calls, /appointments, /insights
-workspaceRouter.use('/credentials', credentialsRouter);
+workspaceRouter.use('/ai', aiRouter); // voices and readiness only; staff own the AI layer
 workspaceRouter.use('/telephony', telephonyRouter);
 workspaceRouter.use('/agents', agentsRouter);
 workspaceRouter.use('/campaigns', campaignsRouter);

@@ -2,16 +2,19 @@ import type {
   Agent,
   Call,
   CampaignContact,
+  CredentialProvider,
   Integration,
   PhoneNumber,
   TelephonyAccount,
   Workspace,
 } from '@prisma/client';
+import { CREDENTIAL_PROVIDER_LABELS, voiceForEngine } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { signedCallbackUrl } from '../lib/signed-url';
 import { emitEvent } from '../events';
 import { findApiKey } from '../services/ai-keys';
+import { getAiSettings } from '../services/ai-settings';
 import { applyCallStatus, isTerminal, saveTranscript } from '../services/calls';
 import { busySlots, createEvent } from '../services/google-calendar';
 import type { TranscriptLine } from '../services/ai/summarize';
@@ -21,6 +24,7 @@ import { TOOL_SCHEMAS, toolsForAgent, type ToolName } from './tools';
 import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from './time';
 import { mulawDurationMs, type MediaTransport } from './transports';
 import { OpenAIRealtimeEngine } from './engines/openai-realtime';
+import { GeminiLiveEngine } from './engines/gemini-live';
 import { CascadedEngine } from './engines/cascaded';
 import type { VoiceEngine } from './engines/types';
 
@@ -85,8 +89,12 @@ export class CallSession {
 
     try {
       this.engine = await this.createEngine(call.agent);
+      this.transport.onAudio((payload) => this.engine?.pushAudio(payload));
+      await this.engine.start();
     } catch (err) {
       logger.error({ err, callId: this.callId }, 'Could not start voice engine');
+      this.engine?.close();
+      this.engine = undefined;
       await prisma.call.update({
         where: { id: this.callId },
         data: { errorMessage: (err as Error).message },
@@ -94,9 +102,6 @@ export class CallSession {
       await this.hangup();
       return;
     }
-
-    this.transport.onAudio((payload) => this.engine?.pushAudio(payload));
-    await this.engine.start();
 
     this.maxDurationTimer = setTimeout(() => {
       this.note('Maximum call duration reached');
@@ -140,45 +145,56 @@ export class CallSession {
         this.transcript.push({ role, text, at: new Date().toISOString() }),
       onToolCall: (name: string, input: unknown) => this.runTool(name, input),
       onError: (err: unknown) => logger.warn({ err, callId: this.callId }, 'Voice engine error'),
+      onFatal: () => {
+        this.note('Voice engine disconnected');
+        void this.hangup();
+      },
     };
 
-    if (agent.voiceEngine === 'REALTIME') {
-      const apiKey = await findApiKey(this.call.workspaceId, 'OPENAI');
-      if (!apiKey) throw new Error('No OpenAI key for the Realtime engine');
-      return new OpenAIRealtimeEngine(
-        {
-          apiKey,
-          model: agent.llmModel,
-          voice: agent.voice,
-          language: agent.language,
-          instructions,
-          greeting,
-          tools,
-        },
-        callbacks,
+    // The AI layer is the workspace's, chosen by staff; the agent only picks
+    // its voice, and falls back to the engine's default if that engine lacks it.
+    const settings = await getAiSettings(this.call.workspaceId);
+    const engineConfig = {
+      model: settings.model,
+      voice: voiceForEngine(settings.voiceEngine, agent.voice),
+      language: agent.language,
+      instructions,
+      greeting,
+      tools,
+    };
+
+    switch (settings.voiceEngine) {
+      case 'REALTIME':
+        return new OpenAIRealtimeEngine(
+          { ...engineConfig, apiKey: await this.requireKey('OPENAI') },
+          callbacks,
+        );
+      case 'GEMINI_LIVE':
+        return new GeminiLiveEngine(
+          { ...engineConfig, apiKey: await this.requireKey('GEMINI') },
+          callbacks,
+        );
+      case 'CASCADED': {
+        const [apiKey, speechApiKey] = await Promise.all([
+          this.requireKey(settings.llmProvider),
+          this.requireKey('DEEPGRAM'),
+        ]);
+        return new CascadedEngine(
+          { ...engineConfig, provider: settings.llmProvider, apiKey, speechApiKey },
+          callbacks,
+        );
+      }
+    }
+  }
+
+  private async requireKey(provider: CredentialProvider): Promise<string> {
+    const key = await findApiKey(this.call.workspaceId, provider);
+    if (!key) {
+      throw new Error(
+        `No ${CREDENTIAL_PROVIDER_LABELS[provider]} key for this workspace or the platform`,
       );
     }
-
-    const [apiKey, speechApiKey] = await Promise.all([
-      findApiKey(this.call.workspaceId, agent.llmProvider),
-      findApiKey(this.call.workspaceId, 'DEEPGRAM'),
-    ]);
-    if (!apiKey) throw new Error(`No ${agent.llmProvider} key for this agent`);
-    if (!speechApiKey) throw new Error('No Deepgram key for speech');
-    return new CascadedEngine(
-      {
-        provider: agent.llmProvider,
-        apiKey,
-        speechApiKey,
-        model: agent.llmModel,
-        voice: agent.voice,
-        language: agent.language,
-        instructions,
-        greeting,
-        tools,
-      },
-      callbacks,
-    );
+    return key;
   }
 
   private note(text: string) {

@@ -2,33 +2,13 @@
 
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { CalendarDays, Check, KeyRound, Trash2 } from 'lucide-react';
-import {
-  CREDENTIAL_PROVIDER_LABELS,
-  INTEGRATION_LABELS,
-  type CredentialProvider,
-  type IntegrationType,
-} from '@pv/shared';
+import { CalendarDays } from 'lucide-react';
+import { INTEGRATION_LABELS, type IntegrationType } from '@pv/shared';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import { Loading, Modal, PageHeader, Section, toast, useAction } from '@/components/ui';
 import { Field } from '@/components/forms/Field';
-import { formatRelative } from '@/lib/format';
-
-interface Credential {
-  provider: CredentialProvider;
-  connected: boolean;
-  last4: string | null;
-  verifiedAt: string | null;
-}
-
-const KEY_HELP: Record<CredentialProvider, string> = {
-  OPENAI: 'Powers the Realtime engine, and GPT models on the Cascaded engine.',
-  ANTHROPIC: 'Claude models on the Cascaded engine.',
-  GEMINI: 'Gemini models on the Cascaded engine.',
-  DEEPGRAM: 'Speech-to-text and voices for the Cascaded engine.',
-};
 
 const APP_HELP: Partial<Record<IntegrationType, { label: string; placeholder: string }>> = {
   SLACK: { label: 'Incoming webhook URL', placeholder: 'https://hooks.slack.com/services/…' },
@@ -40,7 +20,6 @@ const APP_HELP: Partial<Record<IntegrationType, { label: string; placeholder: st
 function IntegrationsInner() {
   const params = useSearchParams();
   const { entitlements, usage, reload: reloadWs } = useWorkspace();
-  const creds = useApi<{ credentials: Credential[] }>('/app/credentials');
   const apps = useApi<{
     integrations: Array<{
       id: string;
@@ -51,7 +30,6 @@ function IntegrationsInner() {
     }>;
     available: Array<{ type: IntegrationType; connected: boolean; configured: boolean }>;
   }>('/app/integrations');
-  const [keyFor, setKeyFor] = useState<CredentialProvider | null>(null);
   const [appFor, setAppFor] = useState<IntegrationType | null>(null);
   const { busy, run } = useAction();
 
@@ -60,7 +38,7 @@ function IntegrationsInner() {
     if (params.get('error')) toast('Google Calendar was not connected. Please try again.', 'error');
   }, [params]);
 
-  if (!creds.data || !apps.data) return <Loading />;
+  if (!apps.data) return <Loading />;
   const refreshApps = async () => {
     await Promise.all([apps.reload(), reloadWs()]);
   };
@@ -70,63 +48,9 @@ function IntegrationsInner() {
     <>
       <PageHeader
         title="Integrations"
-        description="Your own AI keys, calendar and the apps your calls should talk to."
+        description="Your calendar and the apps your calls should talk to."
       />
       <div className="space-y-6">
-        <Section
-          title="AI and speech keys"
-          description="Bring your own keys. Usage is billed by each provider; keys are encrypted and never shown again."
-        >
-          <ul className="grid gap-3 md:grid-cols-2">
-            {creds.data.credentials.map((c) => (
-              <li
-                key={c.provider}
-                className="flex items-center gap-4 rounded-lg border border-line p-4"
-              >
-                <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${c.connected ? 'bg-success/10 text-success' : 'bg-brand-50 text-brand-700'}`}
-                >
-                  {c.connected ? (
-                    <Check size={18} aria-hidden="true" />
-                  ) : (
-                    <KeyRound size={18} aria-hidden="true" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{CREDENTIAL_PROVIDER_LABELS[c.provider]}</p>
-                  <p className="text-xs text-muted">
-                    {c.connected
-                      ? `Key ending ${c.last4} · checked ${formatRelative(c.verifiedAt)}`
-                      : KEY_HELP[c.provider]}
-                  </p>
-                </div>
-                <button className="btn btn-secondary btn-sm" onClick={() => setKeyFor(c.provider)}>
-                  {c.connected ? 'Replace' : 'Add key'}
-                </button>
-                {c.connected && (
-                  <button
-                    className="btn btn-ghost btn-icon h-9 w-9 text-danger"
-                    aria-label={`Remove ${CREDENTIAL_PROVIDER_LABELS[c.provider]} key`}
-                    disabled={busy}
-                    onClick={() =>
-                      run(async () => {
-                        if (
-                          !window.confirm('Remove this key? Agents that use it will stop working.')
-                        )
-                          return;
-                        await api(`/app/credentials/${c.provider}`, { method: 'DELETE' });
-                        await creds.reload();
-                      }, 'Key removed')
-                    }
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Section>
-
         <Section
           title="Apps"
           description={
@@ -208,51 +132,6 @@ function IntegrationsInner() {
           </ul>
         </Section>
       </div>
-
-      <Modal
-        open={!!keyFor}
-        onClose={() => setKeyFor(null)}
-        title={keyFor ? `${CREDENTIAL_PROVIDER_LABELS[keyFor]} API key` : ''}
-      >
-        {keyFor && (
-          <form
-            className="space-y-5"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const apiKey = String(new FormData(e.currentTarget).get('apiKey') ?? '');
-              const ok = await run(async () => {
-                await api('/app/credentials', {
-                  method: 'PUT',
-                  body: { provider: keyFor, apiKey },
-                });
-                return true;
-              }, 'Key verified and saved');
-              if (ok) {
-                setKeyFor(null);
-                await creds.reload();
-              }
-            }}
-          >
-            <p className="text-sm text-muted">
-              {KEY_HELP[keyFor]} We make one test request to check the key before saving it.
-            </p>
-            <Field id="apiKey" label="API key">
-              <input
-                id="apiKey"
-                name="apiKey"
-                type="password"
-                className="input font-mono"
-                required
-                minLength={8}
-                autoComplete="off"
-              />
-            </Field>
-            <button className="btn btn-primary w-full" disabled={busy}>
-              {busy ? 'Checking…' : 'Save key'}
-            </button>
-          </form>
-        )}
-      </Modal>
 
       <Modal
         open={!!appFor}

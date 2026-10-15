@@ -171,15 +171,11 @@ export default function AgentPage() {
                 ))}
               </ul>
               <p className="mt-4 text-xs text-muted">
-                Keys live under{' '}
-                <Link href="/dashboard/integrations" className="font-semibold text-brand-700">
-                  Integrations
-                </Link>
-                , numbers under{' '}
+                Connect numbers under{' '}
                 <Link href="/dashboard/numbers" className="font-semibold text-brand-700">
                   Phone numbers
                 </Link>
-                .
+                . Our team sets up the AI voice for you.
               </p>
             </Section>
 

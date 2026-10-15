@@ -91,6 +91,31 @@ export const aiCredentialSchema = z.object({
 });
 export type AiCredentialInput = z.infer<typeof aiCredentialSchema>;
 
+/** A vendor named in a URL (`/keys/openai`), case-insensitive. */
+export const credentialProviderParamSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.toUpperCase())
+  .pipe(z.enum(CREDENTIAL_PROVIDERS, { message: 'Unknown provider' }));
+
+/**
+ * A subscriber's AI layer, set by staff only. Also the shape of the platform
+ * default (Super admin → AI providers) that workspaces without their own
+ * settings use. `model` is the realtime/live model for speech-to-speech
+ * engines, or the LLM for CASCADED.
+ */
+export const aiSettingsSchema = z.object({
+  voiceEngine: z.enum(VOICE_ENGINES),
+  llmProvider: z.enum(AI_PROVIDERS).default('OPENAI'),
+  model: z
+    .string()
+    .trim()
+    .min(2)
+    .max(100)
+    .regex(/^[\w.:/-]+$/, 'Model ids contain only letters, digits and . : / - _'),
+});
+export type AiSettingsInput = z.infer<typeof aiSettingsSchema>;
+
 export const telephonyAccountSchema = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('TWILIO'),
@@ -135,9 +160,7 @@ export const updateNumberSchema = z.object({
 export const agentSchema = z.object({
   name: z.string().trim().min(2).max(80),
   status: z.enum(AGENT_STATUSES).default('DRAFT'),
-  voiceEngine: z.enum(VOICE_ENGINES).default('REALTIME'),
-  llmProvider: z.enum(AI_PROVIDERS).default('OPENAI'),
-  llmModel: z.string().trim().min(2).max(100),
+  /** One of the voices of the workspace's engine (staff choose the engine). */
   voice: z.string().trim().min(2).max(100),
   language: z.string().trim().min(2).max(16).default('en-US'),
   /** Who the agent is and how it should talk. */

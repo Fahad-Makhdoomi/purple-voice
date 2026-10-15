@@ -3,6 +3,7 @@ import {
   agentSchema,
   testCallSchema,
   updateAgentSchema,
+  voicesForEngine,
   type AgentInput,
   type Entitlements,
 } from '@pv/shared';
@@ -13,21 +14,17 @@ import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireActiveSubscription } from '../../middleware/entitlements';
 import { assertWithinLimit } from '../../services/entitlements';
 import { agentReadiness } from '../../services/agent-readiness';
+import { getAiSettings } from '../../services/ai-settings';
 import { startOutboundCall } from '../../services/calls';
 
 export const agentsRouter = Router();
 
-/** Cross-field rules zod can't see: plan features, engine/provider pairing, owned references. */
+/** Cross-field rules zod can't see: plan features and owned references. */
 async function assertAgentConfig(
   workspaceId: string,
   ent: Entitlements,
   input: Partial<AgentInput>,
 ) {
-  if (input.voiceEngine === 'REALTIME' && input.llmProvider && input.llmProvider !== 'OPENAI') {
-    throw badRequest(
-      'The Realtime engine runs on OpenAI. Choose the Cascaded engine to use Claude or Gemini.',
-    );
-  }
   if (input.transferEnabled) {
     if (!ent.features.callTransfer) throw planLimit('Call transfer is not included in your plan');
     if (!input.transferNumber) throw badRequest('Add the number calls should be transferred to');
@@ -40,6 +37,19 @@ async function assertAgentConfig(
       where: { id: input.calendarIntegrationId, workspaceId, type: 'GOOGLE_CALENDAR' },
     });
     if (!integration) throw badRequest('Connect Google Calendar before linking it to an agent');
+  }
+}
+
+/**
+ * A voice the subscriber picks must be one the workspace's engine offers.
+ * Staff choose the engine; if they change it later, agents with an old voice
+ * keep working on the engine's default voice until the subscriber picks again.
+ */
+async function assertVoice(workspaceId: string, voice: string | undefined) {
+  if (voice === undefined) return;
+  const { voiceEngine } = await getAiSettings(workspaceId);
+  if (!voicesForEngine(voiceEngine).some((v) => v.id === voice)) {
+    throw badRequest('Choose one of the available voices');
   }
 }
 
@@ -60,6 +70,7 @@ agentsRouter.post('/', requireActiveSubscription, async (req, res) => {
   const workspaceId = wsId(req);
   const ent = await entitlementsFor(req);
   await assertWithinLimit(workspaceId, ent, 'agents');
+  await assertVoice(workspaceId, input.voice);
   await assertAgentConfig(workspaceId, ent, input);
 
   const agent = await prisma.agent.create({ data: { ...input, workspaceId } });
@@ -88,6 +99,7 @@ agentsRouter.patch('/:id', async (req, res) => {
   const existing = await prisma.agent.findFirst({ where: { id: req.params.id, workspaceId } });
   if (!existing) throw notFound('Agent');
   const ent = await entitlementsFor(req);
+  await assertVoice(workspaceId, input.voice);
   // Validate against the merged result, so a partial update can't leave the agent inconsistent.
   await assertAgentConfig(workspaceId, ent, { ...existing, ...input } as Partial<AgentInput>);
 

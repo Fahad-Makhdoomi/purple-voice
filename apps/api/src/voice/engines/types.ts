@@ -8,6 +8,8 @@ export interface EngineCallbacks {
   onTranscript(role: 'agent' | 'caller', text: string): void;
   onToolCall: ToolExecutor;
   onError(err: unknown): void;
+  /** The engine lost its model connection for good; the call cannot go on. */
+  onFatal?(err: unknown): void;
 }
 
 export interface EngineConfig {

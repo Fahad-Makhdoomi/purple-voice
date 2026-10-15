@@ -1,5 +1,6 @@
 import type { Agent } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { getAiStatus } from './ai-settings';
 
 export interface ReadinessItem {
   key: string;
@@ -12,50 +13,31 @@ export interface ReadinessItem {
 /**
  * The checklist the agent builder shows: what is still missing before this
  * agent can take calls. Activation refuses while a blocking item fails.
+ *
+ * Subscribers read this, so the AI item never names a vendor: staff set up
+ * the AI layer and its keys, and the subscriber only sees whether it's ready.
  */
 export async function agentReadiness(
   workspaceId: string,
   agent: Pick<
     Agent,
-    | 'voiceEngine'
-    | 'llmProvider'
-    | 'appointmentBookingEnabled'
-    | 'calendarIntegrationId'
-    | 'transferEnabled'
-    | 'transferNumber'
+    'appointmentBookingEnabled' | 'calendarIntegrationId' | 'transferEnabled' | 'transferNumber'
   > & { id?: string },
 ): Promise<ReadinessItem[]> {
-  const creds = await prisma.aiCredential.findMany({
-    where: { workspaceId },
-    select: { provider: true },
-  });
-  const has = (p: string) => creds.some((c) => c.provider === p);
-  const numbers = agent.id ? await prisma.phoneNumber.count({ where: { workspaceId } }) : 0;
+  const [ai, numbers] = await Promise.all([
+    getAiStatus(workspaceId),
+    agent.id ? prisma.phoneNumber.count({ where: { workspaceId } }) : 0,
+  ]);
 
-  const items: ReadinessItem[] = [];
-  if (agent.voiceEngine === 'REALTIME') {
-    items.push({
-      key: 'openai',
-      label: 'Add your OpenAI API key',
-      ok: has('OPENAI'),
+  const items: ReadinessItem[] = [
+    {
+      key: 'ai',
+      label: 'AI voice set up by the Purple Voice team',
+      ok: ai.ready,
       blocking: true,
-    });
-  } else {
-    const label = { OPENAI: 'OpenAI', ANTHROPIC: 'Claude', GEMINI: 'Gemini' }[agent.llmProvider];
-    items.push({
-      key: 'llm',
-      label: `Add your ${label} API key`,
-      ok: has(agent.llmProvider),
-      blocking: true,
-    });
-    items.push({
-      key: 'deepgram',
-      label: 'Add your Deepgram key for speech',
-      ok: has('DEEPGRAM'),
-      blocking: true,
-    });
-  }
-  items.push({ key: 'number', label: 'Connect a phone number', ok: numbers > 0, blocking: false });
+    },
+    { key: 'number', label: 'Connect a phone number', ok: numbers > 0, blocking: false },
+  ];
   if (agent.appointmentBookingEnabled) {
     items.push({
       key: 'calendar',

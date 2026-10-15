@@ -1,16 +1,29 @@
 import { Router } from 'express';
-import { paginationSchema, planUpdateSchema, staffSchema, updateStaffSchema } from '@pv/shared';
+import {
+  aiCredentialSchema,
+  aiSettingsSchema,
+  credentialProviderParamSchema,
+  CREDENTIAL_PROVIDERS,
+  paginationSchema,
+  planUpdateSchema,
+  staffSchema,
+  updateStaffSchema,
+  type PlatformAiView,
+} from '@pv/shared';
 import { z } from 'zod';
 import type { PlanCode, Prisma } from '@prisma/client';
+import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { audit } from '../lib/audit';
+import { encrypt, last4 } from '../lib/crypto';
 import { badRequest, conflict, notFound } from '../lib/http-error';
 import { hashPassword } from '../lib/password';
 import { mrrCents } from '../services/subscriptions';
 import { getSetting, setSetting } from '../services/settings';
 import { revalidate } from '../services/revalidate';
+import { verifyApiKey } from '../services/ai-keys';
 
-/** Super admin only: revenue insights, plans and pricing, staff, security, audit. */
+/** Super admin only: revenue insights, plans and pricing, staff, security, AI providers, audit. */
 export const superRouter = Router();
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -260,6 +273,77 @@ superRouter.put('/settings/security', async (req, res) => {
   });
   revalidate(['settings']);
   res.json({ value });
+});
+
+// ── AI providers ────────────────────────────────────────────────────────────
+// The default AI layer for subscribers staff haven't set up individually, and
+// the platform's own vendor keys, used by every subscriber without a key of
+// its own. Key material is never returned or audited.
+
+async function platformAiView(): Promise<PlatformAiView> {
+  const [defaults, rows] = await Promise.all([
+    getSetting('ai'),
+    prisma.platformCredential.findMany({
+      select: { provider: true, label: true, last4: true, verifiedAt: true, updatedAt: true },
+    }),
+  ]);
+  return {
+    defaults: {
+      voiceEngine: defaults.voiceEngine,
+      llmProvider: defaults.llmProvider,
+      model: defaults.model,
+    },
+    keys: CREDENTIAL_PROVIDERS.map((provider) => {
+      const row = rows.find((r) => r.provider === provider);
+      return {
+        provider,
+        configured: !!row,
+        label: row?.label ?? null,
+        last4: row?.last4 ?? null,
+        verifiedAt: row?.verifiedAt?.toISOString() ?? null,
+        updatedAt: row?.updatedAt.toISOString() ?? null,
+      };
+    }),
+    envAnthropic: !!env.ANTHROPIC_API_KEY,
+  };
+}
+
+superRouter.get('/ai', async (_req, res) => {
+  res.json(await platformAiView());
+});
+
+superRouter.put('/ai/defaults', async (req, res) => {
+  const value = await setSetting('ai', aiSettingsSchema.parse(req.body));
+  await audit(req, 'ai.defaults.updated', { entity: 'SiteSetting', entityId: 'ai', meta: value });
+  res.json(await platformAiView());
+});
+
+superRouter.put('/ai/keys', async (req, res) => {
+  const input = aiCredentialSchema.parse(req.body);
+  await verifyApiKey(input.provider, input.apiKey);
+  const key = {
+    label: input.label || null,
+    apiKeyEnc: encrypt(input.apiKey),
+    last4: last4(input.apiKey),
+    verifiedAt: new Date(),
+  };
+  await prisma.platformCredential.upsert({
+    where: { provider: input.provider },
+    create: { provider: input.provider, ...key },
+    update: key,
+  });
+  await audit(req, 'ai.platform_key.saved', {
+    entity: 'PlatformCredential',
+    entityId: input.provider,
+  });
+  res.json(await platformAiView());
+});
+
+superRouter.delete('/ai/keys/:provider', async (req, res) => {
+  const provider = credentialProviderParamSchema.parse(req.params.provider);
+  await prisma.platformCredential.deleteMany({ where: { provider } });
+  await audit(req, 'ai.platform_key.removed', { entity: 'PlatformCredential', entityId: provider });
+  res.json(await platformAiView());
 });
 
 // ── Audit log ───────────────────────────────────────────────────────────────

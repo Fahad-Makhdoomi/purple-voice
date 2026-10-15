@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useSession } from '@/lib/session';
 import { Loading, Meter, PageHeader, Section, StatusBadge, useAction } from '@/components/ui';
+import { AiSettingsPanel } from '@/components/admin/AiSettingsPanel';
 import { Field } from '@/components/forms/Field';
 import { formatDate, formatDateTime, formatDuration, formatMoney, humanize } from '@/lib/format';
 
@@ -67,7 +68,6 @@ interface Detail {
     actor: { name: string; role: string } | null;
   }>;
   telephony: Array<{ id: string; provider: string; label: string | null; publicId: string }>;
-  credentials: Array<{ provider: string; last4: string }>;
 }
 
 const OVERRIDABLE: LimitKey[] = [
@@ -296,6 +296,8 @@ export default function SubscriberPage() {
             </form>
           </Section>
 
+          <AiSettingsPanel workspaceId={workspace.id} />
+
           <Section title="Recent calls">
             {data.recentCalls.length === 0 ? (
               <p className="text-sm text-muted">No calls yet.</p>
@@ -360,10 +362,6 @@ export default function SubscriberPage() {
               <div className="flex justify-between">
                 <dt className="text-muted">Carriers</dt>
                 <dd>{data.telephony.map((t) => humanize(t.provider)).join(', ') || '—'}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted">AI keys</dt>
-                <dd>{data.credentials.map((c) => humanize(c.provider)).join(', ') || '—'}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted">Time zone</dt>

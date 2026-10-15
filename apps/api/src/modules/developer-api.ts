@@ -46,9 +46,6 @@ developerApiRouter.get('/agents', async (req, res) => {
       id: true,
       name: true,
       status: true,
-      voiceEngine: true,
-      llmProvider: true,
-      llmModel: true,
       createdAt: true,
     },
   });

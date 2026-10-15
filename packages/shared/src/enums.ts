@@ -32,14 +32,35 @@ export const CREDENTIAL_PROVIDER_LABELS: Record<CredentialProvider, string> = {
 };
 
 /**
- * How an agent turns audio into conversation.
+ * How a workspace's agents turn audio into conversation. Chosen per
+ * subscriber by staff (Admin → Subscribers → AI), never by the subscriber.
  *
- *  REALTIME  OpenAI Realtime speech-to-speech. Lowest latency, one vendor.
- *  CASCADED  speech-to-text -> any LLM (OpenAI, Claude, Gemini) -> text-to-speech.
- *            Lets the subscriber pick the model; needs a speech key as well.
+ *  REALTIME     OpenAI Realtime speech-to-speech. Needs an OpenAI key.
+ *  GEMINI_LIVE  Gemini Live speech-to-speech. Needs a Gemini key only.
+ *  CASCADED     speech-to-text -> any LLM (OpenAI, Claude, Gemini) -> text-to-speech.
+ *               Needs the LLM vendor's key plus a Deepgram key for speech.
  */
-export const VOICE_ENGINES = ['REALTIME', 'CASCADED'] as const;
+export const VOICE_ENGINES = ['REALTIME', 'GEMINI_LIVE', 'CASCADED'] as const;
 export type VoiceEngine = (typeof VOICE_ENGINES)[number];
+
+export const VOICE_ENGINE_LABELS: Record<VoiceEngine, string> = {
+  REALTIME: 'OpenAI Realtime',
+  GEMINI_LIVE: 'Gemini Live',
+  CASCADED: 'Cascaded (speech → LLM → speech)',
+};
+
+export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
+  REALTIME: 'Speech-to-speech on OpenAI. Lowest latency. Needs an OpenAI key.',
+  GEMINI_LIVE: 'Speech-to-speech on Google Gemini. Needs a Gemini key only, no Deepgram.',
+  CASCADED:
+    'Deepgram hears and speaks; OpenAI, Claude or Gemini thinks. Needs that vendor’s key and a Deepgram key.',
+};
+
+export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
+  OPENAI: 'OpenAI',
+  ANTHROPIC: 'Claude (Anthropic)',
+  GEMINI: 'Google Gemini',
+};
 
 export const AGENT_STATUSES = ['DRAFT', 'ACTIVE', 'PAUSED'] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];

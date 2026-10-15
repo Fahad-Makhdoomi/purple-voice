@@ -71,6 +71,7 @@ enum TelephonyProvider {
 
 enum VoiceEngine {
   REALTIME
+  GEMINI_LIVE
   CASCADED
 }
 
@@ -174,18 +175,18 @@ enum ContentStatus {
 // ─── Identity ────────────────────────────────────────────────────────────────
 
 model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
-  name          String
-  passwordHash  String
-  role          Role       @default(SUBSCRIBER)
-  workspaceId   String?
-  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  timezone      String     @default("UTC")
-  suspended     Boolean    @default(false)
-  lastLoginAt   DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  role         Role       @default(SUBSCRIBER)
+  workspaceId  String?
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timezone     String     @default("UTC")
+  suspended    Boolean    @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   sessions        Session[]
   passwordResets  PasswordReset[]
@@ -247,6 +248,7 @@ model Workspace {
   payments           Payment[]
   usagePeriods       UsagePeriod[]
   credentials        AiCredential[]
+  aiSettings         WorkspaceAiSettings?
   telephonyAccounts  TelephonyAccount[]
   phoneNumbers       PhoneNumber[]
   agents             Agent[]
@@ -332,19 +334,19 @@ model SubscriptionEvent {
 }
 
 model Payment {
-  id                String    @id @default(cuid())
+  id                String          @id @default(cuid())
   workspaceId       String
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace         Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   amountCents       Int
-  currency          String    @default("usd")
+  currency          String          @default("usd")
   status            String
   provider          BillingProvider @default(STRIPE)
-  providerInvoiceId String?   @unique
+  providerInvoiceId String?         @unique
   description       String?
   periodStart       DateTime?
   periodEnd         DateTime?
   paidAt            DateTime?
-  createdAt         DateTime  @default(now())
+  createdAt         DateTime        @default(now())
 
   @@index([paidAt])
   @@index([workspaceId])
@@ -369,6 +371,33 @@ model UsagePeriod {
 // ─── Credentials & telephony ────────────────────────────────────────────────
 
 /// A workspace's own API key for an AI or speech vendor (bring-your-own-key).
+/// A subscriber's AI layer, chosen by staff. Workspaces without a row use the
+/// platform default (SiteSetting "ai").
+model WorkspaceAiSettings {
+  workspaceId String      @id
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  voiceEngine VoiceEngine
+  /// The LLM vendor for the CASCADED engine; ignored by speech-to-speech engines.
+  llmProvider AiProvider  @default(OPENAI)
+  /// Realtime / Live model for speech-to-speech engines, the LLM for CASCADED.
+  model       String
+  updatedById String?
+  updatedAt   DateTime    @updatedAt
+}
+
+/// Platform-wide AI keys (Super admin → AI providers). Used for every
+/// subscriber that has no key of its own for that vendor.
+model PlatformCredential {
+  provider   CredentialProvider @id
+  label      String?
+  apiKeyEnc  String
+  last4      String
+  verifiedAt DateTime?
+  updatedAt  DateTime           @updatedAt
+}
+
+/// A subscriber's own key for one vendor, added by staff. Takes precedence
+/// over the platform key.
 model AiCredential {
   id          String             @id @default(cuid())
   workspaceId String
@@ -436,9 +465,7 @@ model Agent {
   workspace                 Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name                      String
   status                    AgentStatus @default(DRAFT)
-  voiceEngine               VoiceEngine @default(REALTIME)
-  llmProvider               AiProvider  @default(OPENAI)
-  llmModel                  String
+  /// One of the voices of the workspace's engine; the engine default is used if it no longer fits.
   voice                     String
   language                  String      @default("en-US")
   systemPrompt              String
@@ -523,30 +550,30 @@ model CampaignContact {
 }
 
 model Call {
-  id             String        @id @default(cuid())
+  id             String            @id @default(cuid())
   workspaceId    String
-  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agentId        String?
-  agent          Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agent          Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   campaignId     String?
-  campaign       Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaign       Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   contactId      String?
-  contact        CampaignContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contact        CampaignContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
   phoneNumberId  String?
-  phoneNumber    PhoneNumber?  @relation(fields: [phoneNumberId], references: [id], onDelete: SetNull)
+  phoneNumber    PhoneNumber?      @relation(fields: [phoneNumberId], references: [id], onDelete: SetNull)
   provider       TelephonyProvider
   providerCallId String?
   direction      CallDirection
   fromNumber     String
   toNumber       String
-  status         CallStatus    @default(QUEUED)
+  status         CallStatus        @default(QUEUED)
   startedAt      DateTime?
   answeredAt     DateTime?
   endedAt        DateTime?
-  durationSec    Int           @default(0)
-  billedMinutes  Int           @default(0)
+  durationSec    Int               @default(0)
+  billedMinutes  Int               @default(0)
   /// [{ role: "agent" | "caller" | "system", text, at }]
-  transcript     Json          @default("[]")
+  transcript     Json              @default("[]")
   summary        String?
   outcome        CallOutcome?
   /// -1 … 1
@@ -557,8 +584,8 @@ model Call {
   errorMessage   String?
   /// Set when post-call processing (summary, webhooks, usage) has run.
   finalizedAt    DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   appointments Appointment[]
 

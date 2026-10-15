@@ -7,6 +7,7 @@ import { notFound } from '../../lib/http-error';
 import { wsId } from '../../middleware/workspace';
 import { requireFeature } from '../../middleware/entitlements';
 import { getEntitlements, getUsage } from '../../services/entitlements';
+import { getAiStatus } from '../../services/ai-settings';
 
 export const callsRouter = Router();
 
@@ -37,23 +38,22 @@ callsRouter.get('/overview', async (req, res) => {
   since.setUTCHours(0, 0, 0, 0);
 
   const entitlements = await getEntitlements(workspaceId);
-  const [usage, telephony, credentials, recentCalls, upcoming, daily, outcomes, totals] =
-    await Promise.all([
-      getUsage(workspaceId, entitlements),
-      prisma.telephonyAccount.count({ where: { workspaceId } }),
-      prisma.aiCredential.count({ where: { workspaceId } }),
-      prisma.call.findMany({
-        where: { workspaceId },
-        orderBy: { createdAt: 'desc' },
-        take: 6,
-        include: { agent: { select: { name: true } } },
-      }),
-      prisma.appointment.findMany({
-        where: { workspaceId, startsAt: { gte: new Date() }, status: 'SCHEDULED' },
-        orderBy: { startsAt: 'asc' },
-        take: 5,
-      }),
-      prisma.$queryRaw<Array<{ day: Date; calls: bigint; minutes: bigint; answered: bigint }>>`
+  const [usage, telephony, ai, recentCalls, upcoming, daily, outcomes, totals] = await Promise.all([
+    getUsage(workspaceId, entitlements),
+    prisma.telephonyAccount.count({ where: { workspaceId } }),
+    getAiStatus(workspaceId),
+    prisma.call.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+      include: { agent: { select: { name: true } } },
+    }),
+    prisma.appointment.findMany({
+      where: { workspaceId, startsAt: { gte: new Date() }, status: 'SCHEDULED' },
+      orderBy: { startsAt: 'asc' },
+      take: 5,
+    }),
+    prisma.$queryRaw<Array<{ day: Date; calls: bigint; minutes: bigint; answered: bigint }>>`
       SELECT date_trunc('day', "createdAt") AS day,
              count(*) AS calls,
              coalesce(sum("billedMinutes"), 0) AS minutes,
@@ -61,17 +61,17 @@ callsRouter.get('/overview', async (req, res) => {
       FROM "Call"
       WHERE "workspaceId" = ${workspaceId} AND "createdAt" >= ${since}
       GROUP BY 1 ORDER BY 1`,
-      prisma.call.groupBy({
-        by: ['outcome'],
-        where: { workspaceId, createdAt: { gte: since }, outcome: { not: null } },
-        _count: { _all: true },
-      }),
-      prisma.call.aggregate({
-        where: { workspaceId, createdAt: { gte: since } },
-        _count: { _all: true },
-        _avg: { durationSec: true },
-      }),
-    ]);
+    prisma.call.groupBy({
+      by: ['outcome'],
+      where: { workspaceId, createdAt: { gte: since }, outcome: { not: null } },
+      _count: { _all: true },
+    }),
+    prisma.call.aggregate({
+      where: { workspaceId, createdAt: { gte: since } },
+      _count: { _all: true },
+      _avg: { durationSec: true },
+    }),
+  ]);
 
   const series = Array.from({ length: 14 }, (_, i) => {
     const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
@@ -92,7 +92,8 @@ callsRouter.get('/overview', async (req, res) => {
     usage,
     setup: {
       subscription: entitlements.active,
-      aiKey: credentials > 0,
+      // Staff set up the AI layer; the subscriber only learns whether it's ready.
+      ai: ai.ready,
       telephony: telephony > 0,
       number: usage.phoneNumbers > 0,
       agent: usage.agents > 0,

@@ -9,7 +9,7 @@
  */
 import crypto from 'node:crypto';
 import { PrismaClient, type Prisma } from '@prisma/client';
-import { PLAN_LIST } from '@pv/shared';
+import { DEFAULT_LLM_MODEL, DEFAULT_VOICE, PLAN_LIST } from '@pv/shared';
 import { hashPassword } from '../src/lib/password';
 
 const prisma = new PrismaClient();
@@ -90,8 +90,8 @@ const FAQS = [
   ],
   [
     'Getting started',
-    'Which AI models can my agents use?',
-    'OpenAI (including the Realtime speech-to-speech models), Claude and Gemini. You bring your own API key, so model usage is billed by the provider directly and you keep full control.',
+    'Which AI models do my agents use?',
+    'Leading speech and language models from OpenAI, Google Gemini and Anthropic Claude, including speech-to-speech models for the most natural conversations. The Purple Voice team sets up the AI for your workspace, so there are no AI keys for you to manage.',
   ],
   [
     'Pricing',
@@ -171,11 +171,11 @@ async function seedContent() {
     },
     {
       slug: 'realtime-vs-cascaded-voice',
-      title: 'Realtime or cascaded: choosing a voice engine',
+      title: 'Realtime or cascaded: how voice engines work',
       excerpt:
-        'Speech-to-speech models answer fastest. A cascaded pipeline lets you pick any model. Here is how to choose.',
+        'Speech-to-speech models answer fastest. A cascaded pipeline can use any model. Here is how they differ.',
       tags: ['product', 'ai-agents'],
-      body: "Purple Voice offers two ways to run an agent.\n\n## Realtime\nOpenAI's Realtime models hear and speak directly. Replies start in a few hundred milliseconds and interruptions feel natural. Choose it when conversational feel matters most.\n\n## Cascaded\nSpeech is transcribed, the text goes to the model you choose — Claude, Gemini or OpenAI — and the reply is spoken back. Choose it when you want a specific model's reasoning or writing style.\n\nYou can switch an agent between engines at any time and compare results in Insights.",
+      body: "Purple Voice runs agents on three kinds of voice engine.\n\n## OpenAI Realtime and Gemini Live\nSpeech-to-speech models hear and speak directly. Replies start in a few hundred milliseconds and interruptions feel natural. They suit calls where conversational feel matters most.\n\n## Cascaded\nSpeech is transcribed, the text goes to a language model — Claude, Gemini or OpenAI — and the reply is spoken back. It suits calls that need a specific model's reasoning or writing style.\n\nThe Purple Voice team sets up the engine for your workspace and can switch it at any time; your agents, prompts and campaigns stay as they are.",
     },
   ];
   for (const post of posts) {
@@ -218,15 +218,21 @@ async function seedDemo() {
       },
     },
   });
+  // Staff choose a subscriber's AI layer; the demo runs Claude on the cascaded engine.
+  await prisma.workspaceAiSettings.create({
+    data: {
+      workspaceId: workspace.id,
+      voiceEngine: 'CASCADED',
+      llmProvider: 'ANTHROPIC',
+      model: DEFAULT_LLM_MODEL.ANTHROPIC,
+    },
+  });
   const agent = await prisma.agent.create({
     data: {
       workspaceId: workspace.id,
       name: 'Ava — Solar Consultations',
       status: 'DRAFT',
-      voiceEngine: 'CASCADED',
-      llmProvider: 'ANTHROPIC',
-      llmModel: 'claude-opus-5-5',
-      voice: 'aura-2-thalia-en',
+      voice: DEFAULT_VOICE.CASCADED,
       systemPrompt:
         'You are Ava, a friendly consultant for Northwind Solar. You call homeowners who asked for a solar quote. Confirm they own the home, ask about their average monthly electricity bill and roof direction, and book a free 30-minute consultation.',
       greeting:

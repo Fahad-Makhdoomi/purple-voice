@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Bot, Plus } from 'lucide-react';
+import { LANGUAGES } from '@pv/shared';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import { EmptyState, Loading, PageHeader, StatusBadge } from '@/components/ui';
@@ -11,9 +12,7 @@ interface AgentRow {
   id: string;
   name: string;
   status: string;
-  voiceEngine: string;
-  llmProvider: string;
-  llmModel: string;
+  language: string;
   _count: { calls: number; campaigns: number };
   inboundNumbers: Array<{ id: string; e164: string }>;
 }
@@ -76,7 +75,7 @@ export default function AgentsPage() {
                 </div>
                 <h2 className="mt-4 font-semibold">{a.name}</h2>
                 <p className="mt-1 text-sm text-muted">
-                  {a.voiceEngine === 'REALTIME' ? 'Realtime' : 'Cascaded'} · {a.llmModel}
+                  {LANGUAGES.find((l) => l.id === a.language)?.label ?? a.language}
                 </p>
                 <dl className="mt-5 grid grid-cols-3 gap-2 border-t border-line pt-4 text-center">
                   <div>

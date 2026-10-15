@@ -3,22 +3,28 @@ import { env } from '../../config/env';
 import { prisma } from '../../lib/prisma';
 import { HttpError } from '../../lib/http-error';
 import { getEntitlements, getUsage } from '../entitlements';
+import { findPlatformApiKey } from '../ai-keys';
+import { getAiStatus } from '../ai-settings';
 import { Anthropic, claudeExtras } from './claude';
 
 /**
  * The in-dashboard AI support assistant (Pro). Runs on the platform's own
- * Claude key, not the subscriber's. The stable product guide is cached as a
- * prompt prefix; the workspace snapshot follows it so it can change per
- * request without invalidating the cache.
+ * Claude key (Super admin → AI providers, else ANTHROPIC_API_KEY), never a
+ * subscriber's. The stable product guide is cached as a prompt prefix; the
+ * workspace snapshot follows it so it can change per request without
+ * invalidating the cache.
+ *
+ * It answers the subscriber, so it is never told which vendors, models or
+ * keys power their agents — only whether the AI voice is ready.
  */
 
 const PRODUCT_GUIDE = `You are the Purple Voice support assistant inside a customer's dashboard.
 Purple Voice lets businesses build AI voice agents that make and answer sales calls over their own phone numbers.
 
 How the product works:
-- Integrations → AI keys: the customer brings their own API keys. OpenAI powers the Realtime engine (speech-to-speech, lowest latency). The Cascaded engine works with OpenAI, Claude or Gemini and needs a Deepgram key for speech-to-text and text-to-speech.
+- AI voice: the Purple Voice team sets up the AI that hears, thinks and speaks for the customer's agents. Customers don't choose AI providers or models and don't need any AI API keys. Until the team has finished, agents can be built but not activated; if it is taking long, the customer can open a support ticket. If asked which AI vendor or model is used, say the Purple Voice team manages it and the customer can ask through a support ticket.
 - Phone numbers: connect a Twilio or Plivo account (Account SID + Auth Token, or Auth ID + Auth Token), then pick a number. Purple Voice points the number's voice webhook at its servers automatically. Number rental is billed by the carrier, not Purple Voice. SuperPhone accounts can be saved but cannot place AI calls yet.
-- Agents: name, engine, model, voice, language, a system prompt describing who the agent is and how it sells, a greeting, a goal, and knowledge (product facts, pricing, objection handling). Optional: live call transfer to a human number, appointment booking into Google Calendar. An agent must be Active to take calls.
+- Agents: name, voice, language, a system prompt describing who the agent is and how it sells, a greeting, a goal, and knowledge (product facts, pricing, objection handling). Optional: live call transfer to a human number, appointment booking into Google Calendar. An agent must be Active to take calls.
 - Campaigns: an agent + a caller number + a contact list (CSV with a "phone" column; extra columns become {{variables}} the agent can use). Calls happen inside the campaign's call window and days, with retries for no-answers.
 - Calls: every call has a transcript, an AI summary, an outcome and a sentiment score.
 - Pro adds webhooks (signed with HMAC-SHA256 in the X-PurpleVoice-Signature header), a developer API (Bearer pv_live_… keys), automations, detailed insights, priority support and this assistant.
@@ -36,13 +42,10 @@ export interface AssistantMessage {
 
 async function workspaceSnapshot(workspaceId: string): Promise<string> {
   const ent = await getEntitlements(workspaceId);
-  const [usage, agents, creds, numbers] = await Promise.all([
+  const [usage, agents, ai, numbers] = await Promise.all([
     getUsage(workspaceId, ent),
-    prisma.agent.findMany({
-      where: { workspaceId },
-      select: { name: true, status: true, voiceEngine: true, llmProvider: true },
-    }),
-    prisma.aiCredential.findMany({ where: { workspaceId }, select: { provider: true } }),
+    prisma.agent.findMany({ where: { workspaceId }, select: { name: true, status: true } }),
+    getAiStatus(workspaceId),
     prisma.phoneNumber.findMany({
       where: { workspaceId },
       select: { e164: true, routingConfigured: true, routingError: true },
@@ -52,9 +55,9 @@ async function workspaceSnapshot(workspaceId: string): Promise<string> {
     `Customer workspace right now:`,
     `- Plan: ${ent.planName ?? 'none'} (${ent.status ?? 'no subscription'})`,
     `- Minutes used this period: ${usage.minutesUsed} of ${ent.includedMinutes ?? 'custom'}`,
-    `- AI keys connected: ${creds.map((c) => c.provider).join(', ') || 'none'}`,
+    `- AI voice: ${ai.ready ? 'ready' : 'being set up by the Purple Voice team'}`,
     `- Numbers: ${numbers.map((n) => `${n.e164}${n.routingConfigured ? '' : ` (routing problem: ${n.routingError ?? 'not configured'})`}`).join('; ') || 'none'}`,
-    `- Agents: ${agents.map((a) => `${a.name} [${a.status}, ${a.voiceEngine}, ${a.llmProvider}]`).join('; ') || 'none'}`,
+    `- Agents: ${agents.map((a) => `${a.name} [${a.status}]`).join('; ') || 'none'}`,
   ].join('\n');
 }
 
@@ -63,9 +66,10 @@ export async function streamAssistantReply(
   messages: AssistantMessage[],
   onText: (delta: string) => void,
 ): Promise<{ refused: boolean }> {
-  if (!env.ANTHROPIC_API_KEY)
+  const apiKey = await findPlatformApiKey('ANTHROPIC');
+  if (!apiKey)
     throw new HttpError(503, 'The AI assistant is not configured', 'assistant_unavailable');
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey });
   const model = env.ASSISTANT_MODEL;
 
   const stream = client.beta.messages.stream({
