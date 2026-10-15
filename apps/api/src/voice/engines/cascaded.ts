@@ -82,7 +82,8 @@ export class CascadedEngine implements VoiceEngine {
     this.playbackEndsAt = 0;
     this.cb.onInterrupt();
     this.llm.noteInterrupted(this.spokenThisTurn);
-    if (this.spokenThisTurn.trim()) this.cb.onTranscript('agent', `${this.spokenThisTurn.trim()} —`);
+    if (this.spokenThisTurn.trim())
+      this.cb.onTranscript('agent', `${this.spokenThisTurn.trim()} —`);
     this.spokenThisTurn = '';
   }
 
@@ -151,7 +152,8 @@ export class CascadedEngine implements VoiceEngine {
           this.config.voice,
           text,
           (chunk) => {
-            this.playbackEndsAt = Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
+            this.playbackEndsAt =
+              Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
             this.cb.onAudio(chunk);
           },
           signal,

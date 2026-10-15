@@ -77,4 +77,5 @@ class S3Storage implements StorageDriver {
   }
 }
 
-export const storage: StorageDriver = env.STORAGE_DRIVER === 's3' ? new S3Storage() : new LocalStorage();
+export const storage: StorageDriver =
+  env.STORAGE_DRIVER === 's3' ? new S3Storage() : new LocalStorage();

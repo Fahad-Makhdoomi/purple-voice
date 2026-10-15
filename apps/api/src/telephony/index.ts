@@ -13,7 +13,10 @@ import type {
   TwilioCredentials,
 } from './types';
 
-export function createAdapter(provider: TelephonyProvider, creds: TelephonyCredentials): TelephonyAdapter {
+export function createAdapter(
+  provider: TelephonyProvider,
+  creds: TelephonyCredentials,
+): TelephonyAdapter {
   switch (provider) {
     case 'TWILIO':
       return new TwilioAdapter(creds as TwilioCredentials);

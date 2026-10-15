@@ -11,7 +11,7 @@ import { logger } from '../lib/logger';
  */
 export function revalidate(tags: string[]): void {
   if (!env.REVALIDATE_SECRET) return;
-  void fetch(`${env.WEB_INTERNAL_URL}/api/revalidate`, {
+  void fetch(`${env.WEB_INTERNAL_URL}/internal/revalidate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-revalidate-secret': env.REVALIDATE_SECRET },
     body: JSON.stringify({ tags }),

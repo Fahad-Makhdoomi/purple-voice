@@ -120,7 +120,10 @@ export class PlivoTransport extends BaseTransport {
     }
   }
   sendAudio(payload: string) {
-    this.send({ event: 'playAudio', media: { contentType: 'audio/x-mulaw', sampleRate: 8000, payload } });
+    this.send({
+      event: 'playAudio',
+      media: { contentType: 'audio/x-mulaw', sampleRate: 8000, payload },
+    });
   }
   clearAudio() {
     this.send({ event: 'clearAudio', streamId: this.streamId });

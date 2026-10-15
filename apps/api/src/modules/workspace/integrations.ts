@@ -40,7 +40,8 @@ integrationsRouter.get('/', async (req, res) => {
 integrationsRouter.get('/google/connect', requireActiveSubscription, async (req, res) => {
   const workspaceId = wsId(req);
   const ent = await entitlementsFor(req);
-  if (!ent.features.googleCalendar) throw badRequest('Google Calendar is not included in your plan');
+  if (!ent.features.googleCalendar)
+    throw badRequest('Google Calendar is not included in your plan');
   const existing = await prisma.integration.findUnique({
     where: { workspaceId_type: { workspaceId, type: 'GOOGLE_CALENDAR' } },
   });
@@ -50,26 +51,44 @@ integrationsRouter.get('/google/connect', requireActiveSubscription, async (req,
 
 integrationsRouter.post('/', requireActiveSubscription, async (req, res) => {
   const input = integrationSchema.parse(req.body);
-  if (input.type === 'GOOGLE_CALENDAR') throw badRequest('Use the Connect button for Google Calendar');
+  if (input.type === 'GOOGLE_CALENDAR')
+    throw badRequest('Use the Connect button for Google Calendar');
   if (!input.secret) throw badRequest('Paste the webhook URL or API token for this app');
   if (input.type === 'SLACK' || input.type === 'ZAPIER') await assertPublicUrl(input.secret);
 
   const workspaceId = wsId(req);
-  const existing = await prisma.integration.findUnique({ where: { workspaceId_type: { workspaceId, type: input.type } } });
+  const existing = await prisma.integration.findUnique({
+    where: { workspaceId_type: { workspaceId, type: input.type } },
+  });
   if (!existing) await assertWithinLimit(workspaceId, await entitlementsFor(req), 'integrations');
 
   const integration = await prisma.integration.upsert({
     where: { workspaceId_type: { workspaceId, type: input.type } },
-    create: { workspaceId, type: input.type, secretsEnc: encryptJson({ secret: input.secret }), config: input.config as object },
-    update: { secretsEnc: encryptJson({ secret: input.secret }), config: input.config as object, lastError: null },
+    create: {
+      workspaceId,
+      type: input.type,
+      secretsEnc: encryptJson({ secret: input.secret }),
+      config: input.config as object,
+    },
+    update: {
+      secretsEnc: encryptJson({ secret: input.secret }),
+      config: input.config as object,
+      lastError: null,
+    },
   });
-  await audit(req, 'integration.connected', { entity: 'Integration', entityId: integration.id, meta: { type: input.type } });
+  await audit(req, 'integration.connected', {
+    entity: 'Integration',
+    entityId: integration.id,
+    meta: { type: input.type },
+  });
   res.status(201).json({ integration: { id: integration.id, type: integration.type } });
 });
 
 integrationsRouter.delete('/:id', async (req, res) => {
   const workspaceId = wsId(req);
-  const integration = await prisma.integration.findFirst({ where: { id: req.params.id, workspaceId } });
+  const integration = await prisma.integration.findFirst({
+    where: { id: req.params.id, workspaceId },
+  });
   if (!integration) throw notFound('Integration');
   await prisma.$transaction([
     prisma.agent.updateMany({
@@ -98,7 +117,12 @@ integrationCallbacksRouter.get('/google/callback', async (req, res) => {
         secretsEnc: encryptJson(tokens),
         accountLabel: email,
       },
-      update: { secretsEnc: encryptJson(tokens), accountLabel: email, lastError: null, connectedAt: new Date() },
+      update: {
+        secretsEnc: encryptJson(tokens),
+        accountLabel: email,
+        lastError: null,
+        connectedAt: new Date(),
+      },
     });
     await audit(null, 'integration.connected', {
       actorId: state.userId,

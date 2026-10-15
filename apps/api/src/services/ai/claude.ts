@@ -14,7 +14,8 @@ import Anthropic from '@anthropic-ai/sdk';
 
 type Effort = 'low' | 'medium' | 'high';
 
-const EFFORT_MODELS = /^claude-(opus-5|opus-5-5|sonnet-5|sonnet-5-5|haiku-5-5|fable-5|fable-5-1|opus-4-[678]|sonnet-4-6)$/;
+const EFFORT_MODELS =
+  /^claude-(opus-5|opus-5-5|sonnet-5|sonnet-5-5|haiku-5-5|fable-5|fable-5-1|opus-4-[678]|sonnet-4-6)$/;
 
 export function claudeExtras(
   model: string,
@@ -31,7 +32,9 @@ export function claudeExtras(
     ...(format ? { format } : {}),
   };
   return {
-    ...(supportsFallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } : {}),
+    ...(supportsFallback
+      ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }
+      : {}),
     ...(Object.keys(outputConfig).length ? { output_config: outputConfig } : {}),
   };
 }

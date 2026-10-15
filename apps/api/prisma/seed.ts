@@ -18,7 +18,11 @@ const isProd = process.env.NODE_ENV === 'production';
 async function seedPlans() {
   for (const [i, plan] of PLAN_LIST.entries()) {
     const stripePriceId =
-      plan.code === 'BASIC' ? process.env.STRIPE_PRICE_BASIC : plan.code === 'PRO' ? process.env.STRIPE_PRICE_PRO : undefined;
+      plan.code === 'BASIC'
+        ? process.env.STRIPE_PRICE_BASIC
+        : plan.code === 'PRO'
+          ? process.env.STRIPE_PRICE_PRO
+          : undefined;
     const existing = await prisma.plan.findUnique({ where: { code: plan.code } });
     if (existing) {
       if (!existing.stripePriceId && stripePriceId) {
@@ -48,34 +52,84 @@ async function seedPlans() {
 
 async function seedSuperAdmin() {
   const email = (process.env.SEED_SUPER_ADMIN_EMAIL ?? 'admin@purplevoice.local').toLowerCase();
-  if (await prisma.user.findUnique({ where: { email } })) return console.log(`✓ super admin exists (${email})`);
+  if (await prisma.user.findUnique({ where: { email } }))
+    return console.log(`✓ super admin exists (${email})`);
   let password = process.env.SEED_SUPER_ADMIN_PASSWORD;
   if (!password) {
-    if (isProd) throw new Error('Set SEED_SUPER_ADMIN_PASSWORD to seed the first super admin in production');
+    if (isProd)
+      throw new Error('Set SEED_SUPER_ADMIN_PASSWORD to seed the first super admin in production');
     password = `pv-${crypto.randomBytes(6).toString('hex')}1`;
   }
   await prisma.user.create({
-    data: { email, name: 'Super Admin', role: 'SUPER_ADMIN', passwordHash: await hashPassword(password) },
+    data: {
+      email,
+      name: 'Super Admin',
+      role: 'SUPER_ADMIN',
+      passwordHash: await hashPassword(password),
+    },
   });
-  console.log(`✓ super admin ${email}${process.env.SEED_SUPER_ADMIN_PASSWORD ? '' : ` / ${password}`}`);
+  console.log(
+    `✓ super admin ${email}${process.env.SEED_SUPER_ADMIN_PASSWORD ? '' : ` / ${password}`}`,
+  );
 }
 
 const FAQS = [
-  ['Getting started', 'What is Purple Voice?', 'Purple Voice lets you build AI voice agents that make and answer sales calls on your own phone numbers. They qualify leads, answer questions, book meetings into your calendar and hand hot prospects to your team.'],
-  ['Getting started', 'Do I need my own phone number?', 'Yes. Connect a Twilio or Plivo account and pick a number you already rent there. Number rental is billed by your carrier and is not part of a Purple Voice plan.'],
-  ['Getting started', 'Which AI models can my agents use?', 'OpenAI (including the Realtime speech-to-speech models), Claude and Gemini. You bring your own API key, so model usage is billed by the provider directly and you keep full control.'],
-  ['Pricing', 'What counts as a call minute?', 'Talk time on connected calls, rounded up to the next minute per call, the same way carriers bill. Unanswered calls use no minutes.'],
-  ['Pricing', 'What happens if I use all my minutes?', 'New calls pause until your next billing period or until you upgrade. Running campaigns pause automatically and resume when you have minutes again.'],
-  ['Pricing', 'Can I cancel any time?', 'Yes. Cancel from the billing page and your plan stays active until the end of the period you paid for.'],
-  ['Calling', 'Can the agent transfer a call to a person?', 'Yes. Turn on call transfer and set the number to ring. The agent tells the caller it is connecting them and hands the live call over.'],
-  ['Calling', 'How does appointment booking work?', 'Connect Google Calendar and switch on booking for an agent. During the call it checks your real availability, offers open slots and books the meeting with an invite to the prospect.'],
-  ['Compliance', 'Is it legal to call people with an AI agent?', 'Rules differ by country. In many places, including under the US TCPA, automated or AI-voiced calls need the recipient\'s prior consent, and you must honour do-not-call requests. Purple Voice gives you calling windows and automatic do-not-call handling; you are responsible for having consent for the numbers you upload.'],
+  [
+    'Getting started',
+    'What is Purple Voice?',
+    'Purple Voice lets you build AI voice agents that make and answer sales calls on your own phone numbers. They qualify leads, answer questions, book meetings into your calendar and hand hot prospects to your team.',
+  ],
+  [
+    'Getting started',
+    'Do I need my own phone number?',
+    'Yes. Connect a Twilio or Plivo account and pick a number you already rent there. Number rental is billed by your carrier and is not part of a Purple Voice plan.',
+  ],
+  [
+    'Getting started',
+    'Which AI models can my agents use?',
+    'OpenAI (including the Realtime speech-to-speech models), Claude and Gemini. You bring your own API key, so model usage is billed by the provider directly and you keep full control.',
+  ],
+  [
+    'Pricing',
+    'What counts as a call minute?',
+    'Talk time on connected calls, rounded up to the next minute per call, the same way carriers bill. Unanswered calls use no minutes.',
+  ],
+  [
+    'Pricing',
+    'What happens if I use all my minutes?',
+    'New calls pause until your next billing period or until you upgrade. Running campaigns pause automatically and resume when you have minutes again.',
+  ],
+  [
+    'Pricing',
+    'Can I cancel any time?',
+    'Yes. Cancel from the billing page and your plan stays active until the end of the period you paid for.',
+  ],
+  [
+    'Calling',
+    'Can the agent transfer a call to a person?',
+    'Yes. Turn on call transfer and set the number to ring. The agent tells the caller it is connecting them and hands the live call over.',
+  ],
+  [
+    'Calling',
+    'How does appointment booking work?',
+    'Connect Google Calendar and switch on booking for an agent. During the call it checks your real availability, offers open slots and books the meeting with an invite to the prospect.',
+  ],
+  [
+    'Compliance',
+    'Is it legal to call people with an AI agent?',
+    "Rules differ by country. In many places, including under the US TCPA, automated or AI-voiced calls need the recipient's prior consent, and you must honour do-not-call requests. Purple Voice gives you calling windows and automatic do-not-call handling; you are responsible for having consent for the numbers you upload.",
+  ],
 ] as const;
 
 async function seedContent() {
   if ((await prisma.faq.count()) === 0) {
     await prisma.faq.createMany({
-      data: FAQS.map(([category, question, answer], sortOrder) => ({ category, question, answer, sortOrder })),
+      data: FAQS.map(([category, question, answer], sortOrder) => ({
+        category,
+        question,
+        answer,
+        sortOrder,
+      })),
     });
     console.log('✓ FAQs');
   }
@@ -106,16 +160,18 @@ async function seedContent() {
     {
       slug: 'ai-voice-agents-for-sales',
       title: 'What an AI voice agent actually does on a sales call',
-      excerpt: 'From the first hello to a booked demo: the moments where an AI agent earns its place on your team.',
+      excerpt:
+        'From the first hello to a booked demo: the moments where an AI agent earns its place on your team.',
       tags: ['sales', 'ai-agents'],
-      body: 'Most sales calls follow the same arc: open, qualify, handle an objection or two, and agree a next step. That repeatability is exactly what an AI voice agent is good at.\n\n## Opening\nThe agent greets the prospect by name, says who it is calling for and why, in a sentence.\n\n## Qualifying\nIt asks your qualification questions one at a time and listens. Answers land in the call summary, so your team never re-asks.\n\n## Objections\nPut your top objections and the best answers in the agent\'s knowledge. It uses them naturally, not as a script.\n\n## The next step\nWhen the prospect is ready, the agent checks your calendar and books the meeting — or transfers the call to a person while the interest is warm.',
+      body: "Most sales calls follow the same arc: open, qualify, handle an objection or two, and agree a next step. That repeatability is exactly what an AI voice agent is good at.\n\n## Opening\nThe agent greets the prospect by name, says who it is calling for and why, in a sentence.\n\n## Qualifying\nIt asks your qualification questions one at a time and listens. Answers land in the call summary, so your team never re-asks.\n\n## Objections\nPut your top objections and the best answers in the agent's knowledge. It uses them naturally, not as a script.\n\n## The next step\nWhen the prospect is ready, the agent checks your calendar and books the meeting — or transfers the call to a person while the interest is warm.",
     },
     {
       slug: 'realtime-vs-cascaded-voice',
       title: 'Realtime or cascaded: choosing a voice engine',
-      excerpt: 'Speech-to-speech models answer fastest. A cascaded pipeline lets you pick any model. Here is how to choose.',
+      excerpt:
+        'Speech-to-speech models answer fastest. A cascaded pipeline lets you pick any model. Here is how to choose.',
       tags: ['product', 'ai-agents'],
-      body: 'Purple Voice offers two ways to run an agent.\n\n## Realtime\nOpenAI\'s Realtime models hear and speak directly. Replies start in a few hundred milliseconds and interruptions feel natural. Choose it when conversational feel matters most.\n\n## Cascaded\nSpeech is transcribed, the text goes to the model you choose — Claude, Gemini or OpenAI — and the reply is spoken back. Choose it when you want a specific model\'s reasoning or writing style.\n\nYou can switch an agent between engines at any time and compare results in Insights.',
+      body: "Purple Voice offers two ways to run an agent.\n\n## Realtime\nOpenAI's Realtime models hear and speak directly. Replies start in a few hundred milliseconds and interruptions feel natural. Choose it when conversational feel matters most.\n\n## Cascaded\nSpeech is transcribed, the text goes to the model you choose — Claude, Gemini or OpenAI — and the reply is spoken back. Choose it when you want a specific model's reasoning or writing style.\n\nYou can switch an agent between engines at any time and compare results in Insights.",
     },
   ];
   for (const post of posts) {
@@ -132,7 +188,8 @@ async function seedContent() {
 async function seedDemo() {
   if (isProd || process.env.SEED_DEMO === 'false') return;
   const email = 'demo@purplevoice.local';
-  if (await prisma.user.findUnique({ where: { email } })) return console.log(`✓ demo subscriber exists (${email})`);
+  if (await prisma.user.findUnique({ where: { email } }))
+    return console.log(`✓ demo subscriber exists (${email})`);
 
   const pro = await prisma.plan.findUniqueOrThrow({ where: { code: 'PRO' } });
   const now = new Date();
@@ -140,7 +197,9 @@ async function seedDemo() {
   const workspace = await prisma.workspace.create({
     data: {
       name: 'Northwind Solar',
-      users: { create: { email, name: 'Dana Demo', passwordHash: await hashPassword('demo-password-1') } },
+      users: {
+        create: { email, name: 'Dana Demo', passwordHash: await hashPassword('demo-password-1') },
+      },
       subscription: {
         create: {
           planId: pro.id,
@@ -150,7 +209,9 @@ async function seedDemo() {
           currentPeriodEnd: periodEnd,
         },
       },
-      subscriptionEvents: { create: { type: 'CREATED', toPlan: 'PRO', mrrDeltaCents: pro.priceMonthlyCents ?? 0 } },
+      subscriptionEvents: {
+        create: { type: 'CREATED', toPlan: 'PRO', mrrDeltaCents: pro.priceMonthlyCents ?? 0 },
+      },
     },
   });
   const agent = await prisma.agent.create({
@@ -164,21 +225,32 @@ async function seedDemo() {
       voice: 'aura-2-thalia-en',
       systemPrompt:
         'You are Ava, a friendly consultant for Northwind Solar. You call homeowners who asked for a solar quote. Confirm they own the home, ask about their average monthly electricity bill and roof direction, and book a free 30-minute consultation.',
-      greeting: 'Hi {{first_name}}, this is Ava from Northwind Solar — you asked about a solar quote. Is now a good time?',
+      greeting:
+        'Hi {{first_name}}, this is Ava from Northwind Solar — you asked about a solar quote. Is now a good time?',
       goal: 'Book a free consultation with homeowners who spend over $100 a month on electricity.',
-      knowledge: 'Panels from $9,800 after incentives. 25-year warranty. Installation takes one day.',
+      knowledge:
+        'Panels from $9,800 after incentives. 25-year warranty. Installation takes one day.',
       appointmentBookingEnabled: true,
       timezone: 'America/New_York',
     },
   });
 
-  const outcomes = ['APPOINTMENT_BOOKED', 'INTERESTED', 'NOT_INTERESTED', 'CALLBACK_REQUESTED', 'VOICEMAIL', 'OTHER'] as const;
+  const outcomes = [
+    'APPOINTMENT_BOOKED',
+    'INTERESTED',
+    'NOT_INTERESTED',
+    'CALLBACK_REQUESTED',
+    'VOICEMAIL',
+    'OTHER',
+  ] as const;
   const calls: Prisma.CallCreateManyInput[] = [];
   let minutes = 0;
   for (let d = 13; d >= 0; d--) {
     const perDay = 6 + Math.floor(Math.random() * 10);
     for (let i = 0; i < perDay; i++) {
-      const created = new Date(now.getTime() - d * 24 * 60 * 60 * 1000 - Math.random() * 8 * 60 * 60 * 1000);
+      const created = new Date(
+        now.getTime() - d * 24 * 60 * 60 * 1000 - Math.random() * 8 * 60 * 60 * 1000,
+      );
       const answered = Math.random() > 0.3;
       const duration = answered ? 40 + Math.floor(Math.random() * 300) : 0;
       const billed = Math.ceil(duration / 60);
@@ -198,10 +270,16 @@ async function seedDemo() {
         billedMinutes: billed,
         outcome: answered ? outcomes[Math.floor(Math.random() * outcomes.length)] : null,
         sentiment: answered ? Math.round((Math.random() * 1.6 - 0.6) * 100) / 100 : null,
-        summary: answered ? 'Homeowner confirmed ownership, monthly bill around $180. Interested in panels; asked about financing.' : null,
+        summary: answered
+          ? 'Homeowner confirmed ownership, monthly bill around $180. Interested in panels; asked about financing.'
+          : null,
         transcript: answered
           ? [
-              { role: 'agent', text: 'Hi, this is Ava from Northwind Solar — you asked about a solar quote. Is now a good time?', at: created.toISOString() },
+              {
+                role: 'agent',
+                text: 'Hi, this is Ava from Northwind Solar — you asked about a solar quote. Is now a good time?',
+                at: created.toISOString(),
+              },
               { role: 'caller', text: 'Sure, I have a few minutes.', at: created.toISOString() },
             ]
           : [],

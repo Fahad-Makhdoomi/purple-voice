@@ -10,6 +10,25 @@ import { getEntitlements, getUsage } from '../../services/entitlements';
 
 export const callsRouter = Router();
 
+// ── Context: what every dashboard page needs about the workspace ───────────
+
+callsRouter.get('/context', async (req, res) => {
+  const workspaceId = wsId(req);
+  const [workspace, entitlements] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { id: true, name: true, timezone: true, suspended: true },
+    }),
+    getEntitlements(workspaceId),
+  ]);
+  res.json({
+    workspace,
+    entitlements,
+    usage: await getUsage(workspaceId, entitlements),
+    actingAsStaff: !!req.actingAsStaff,
+  });
+});
+
 // ── Overview (dashboard home) ───────────────────────────────────────────────
 
 callsRouter.get('/overview', async (req, res) => {
@@ -18,22 +37,23 @@ callsRouter.get('/overview', async (req, res) => {
   since.setUTCHours(0, 0, 0, 0);
 
   const entitlements = await getEntitlements(workspaceId);
-  const [usage, telephony, credentials, recentCalls, upcoming, daily, outcomes, totals] = await Promise.all([
-    getUsage(workspaceId, entitlements),
-    prisma.telephonyAccount.count({ where: { workspaceId } }),
-    prisma.aiCredential.count({ where: { workspaceId } }),
-    prisma.call.findMany({
-      where: { workspaceId },
-      orderBy: { createdAt: 'desc' },
-      take: 6,
-      include: { agent: { select: { name: true } } },
-    }),
-    prisma.appointment.findMany({
-      where: { workspaceId, startsAt: { gte: new Date() }, status: 'SCHEDULED' },
-      orderBy: { startsAt: 'asc' },
-      take: 5,
-    }),
-    prisma.$queryRaw<Array<{ day: Date; calls: bigint; minutes: bigint; answered: bigint }>>`
+  const [usage, telephony, credentials, recentCalls, upcoming, daily, outcomes, totals] =
+    await Promise.all([
+      getUsage(workspaceId, entitlements),
+      prisma.telephonyAccount.count({ where: { workspaceId } }),
+      prisma.aiCredential.count({ where: { workspaceId } }),
+      prisma.call.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+        include: { agent: { select: { name: true } } },
+      }),
+      prisma.appointment.findMany({
+        where: { workspaceId, startsAt: { gte: new Date() }, status: 'SCHEDULED' },
+        orderBy: { startsAt: 'asc' },
+        take: 5,
+      }),
+      prisma.$queryRaw<Array<{ day: Date; calls: bigint; minutes: bigint; answered: bigint }>>`
       SELECT date_trunc('day', "createdAt") AS day,
              count(*) AS calls,
              coalesce(sum("billedMinutes"), 0) AS minutes,
@@ -41,21 +61,23 @@ callsRouter.get('/overview', async (req, res) => {
       FROM "Call"
       WHERE "workspaceId" = ${workspaceId} AND "createdAt" >= ${since}
       GROUP BY 1 ORDER BY 1`,
-    prisma.call.groupBy({
-      by: ['outcome'],
-      where: { workspaceId, createdAt: { gte: since }, outcome: { not: null } },
-      _count: { _all: true },
-    }),
-    prisma.call.aggregate({
-      where: { workspaceId, createdAt: { gte: since } },
-      _count: { _all: true },
-      _avg: { durationSec: true },
-    }),
-  ]);
+      prisma.call.groupBy({
+        by: ['outcome'],
+        where: { workspaceId, createdAt: { gte: since }, outcome: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.call.aggregate({
+        where: { workspaceId, createdAt: { gte: since } },
+        _count: { _all: true },
+        _avg: { durationSec: true },
+      }),
+    ]);
 
   const series = Array.from({ length: 14 }, (_, i) => {
     const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
-    const row = daily.find((d) => new Date(d.day).toISOString().slice(0, 10) === day.toISOString().slice(0, 10));
+    const row = daily.find(
+      (d) => new Date(d.day).toISOString().slice(0, 10) === day.toISOString().slice(0, 10),
+    );
     return {
       day: day.toISOString().slice(0, 10),
       calls: Number(row?.calls ?? 0),
@@ -184,7 +206,16 @@ callsRouter.get('/insights', requireFeature('detailedInsights'), async (req, res
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const [byAgent, byCampaign, byHour, byOutcome, outbound, sentiment] = await Promise.all([
-    prisma.$queryRaw<Array<{ agentId: string; name: string; calls: bigint; minutes: bigint; booked: bigint; avgSec: number | null }>>`
+    prisma.$queryRaw<
+      Array<{
+        agentId: string;
+        name: string;
+        calls: bigint;
+        minutes: bigint;
+        booked: bigint;
+        avgSec: number | null;
+      }>
+    >`
       SELECT a.id AS "agentId", a.name,
              count(c.*) AS calls,
              coalesce(sum(c."billedMinutes"), 0) AS minutes,
@@ -193,7 +224,9 @@ callsRouter.get('/insights', requireFeature('detailedInsights'), async (req, res
       FROM "Call" c JOIN "Agent" a ON a.id = c."agentId"
       WHERE c."workspaceId" = ${workspaceId} AND c."createdAt" >= ${since}
       GROUP BY a.id, a.name ORDER BY calls DESC`,
-    prisma.$queryRaw<Array<{ campaignId: string; name: string; calls: bigint; answered: bigint; booked: bigint }>>`
+    prisma.$queryRaw<
+      Array<{ campaignId: string; name: string; calls: bigint; answered: bigint; booked: bigint }>
+    >`
       SELECT p.id AS "campaignId", p.name,
              count(c.*) AS calls,
              count(*) FILTER (WHERE c."answeredAt" IS NOT NULL) AS answered,
@@ -234,7 +267,12 @@ callsRouter.get('/insights', requireFeature('detailedInsights'), async (req, res
     connectRate: outboundTotal ? connected / outboundTotal : 0,
     averageSentiment: sentiment._avg.sentiment,
     outcomes: byOutcome.map((o) => ({ outcome: o.outcome ?? 'NONE', count: o._count._all })),
-    agents: byAgent.map((r) => ({ ...r, calls: Number(r.calls), minutes: Number(r.minutes), booked: Number(r.booked) })),
+    agents: byAgent.map((r) => ({
+      ...r,
+      calls: Number(r.calls),
+      minutes: Number(r.minutes),
+      booked: Number(r.booked),
+    })),
     campaigns: byCampaign.map((r) => ({
       ...r,
       calls: Number(r.calls),

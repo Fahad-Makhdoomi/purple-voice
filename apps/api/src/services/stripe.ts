@@ -11,7 +11,8 @@ import { HttpError } from '../lib/http-error';
 
 const API = 'https://api.stripe.com/v1';
 
-type FormValue = string | number | boolean | null | undefined | FormValue[] | { [k: string]: FormValue };
+type FormValue =
+  string | number | boolean | null | undefined | FormValue[] | { [k: string]: FormValue };
 
 /** Stripe's bracket encoding: a[b][0][c]=d */
 function toForm(value: Record<string, FormValue>): URLSearchParams {
@@ -19,15 +20,21 @@ function toForm(value: Record<string, FormValue>): URLSearchParams {
   const walk = (prefix: string, v: FormValue) => {
     if (v === undefined || v === null) return;
     if (Array.isArray(v)) v.forEach((item, i) => walk(`${prefix}[${i}]`, item));
-    else if (typeof v === 'object') for (const [k, inner] of Object.entries(v)) walk(`${prefix}[${k}]`, inner);
+    else if (typeof v === 'object')
+      for (const [k, inner] of Object.entries(v)) walk(`${prefix}[${k}]`, inner);
     else out.append(prefix, String(v));
   };
   for (const [k, v] of Object.entries(value)) walk(k, v);
   return out;
 }
 
-async function stripe<T>(method: 'GET' | 'POST', path: string, body?: Record<string, FormValue>): Promise<T> {
-  if (!env.STRIPE_SECRET_KEY) throw new HttpError(503, 'Billing is not configured', 'billing_unavailable');
+async function stripe<T>(
+  method: 'GET' | 'POST',
+  path: string,
+  body?: Record<string, FormValue>,
+): Promise<T> {
+  if (!env.STRIPE_SECRET_KEY)
+    throw new HttpError(503, 'Billing is not configured', 'billing_unavailable');
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
@@ -129,7 +136,10 @@ export async function updateSubscriptionPrice(sub: StripeSubscription, priceId: 
 }
 
 /** Period bounds moved from the subscription onto its items in newer API versions. */
-export function subscriptionPeriod(sub: StripeSubscription): { start: Date | null; end: Date | null } {
+export function subscriptionPeriod(sub: StripeSubscription): {
+  start: Date | null;
+  end: Date | null;
+} {
   const item = sub.items.data[0];
   const start = item?.current_period_start ?? sub.current_period_start;
   const end = item?.current_period_end ?? sub.current_period_end;
@@ -167,7 +177,8 @@ export function verifyWebhook(rawBody: Buffer, header: string | undefined): Stri
     .digest('hex');
   const ok = signatures.some(
     (sig) =>
-      sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)),
+      sig.length === expected.length &&
+      crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)),
   );
   if (!ok) throw new HttpError(400, 'Invalid webhook signature');
   return JSON.parse(rawBody.toString('utf8')) as StripeEvent;

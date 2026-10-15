@@ -25,13 +25,21 @@ function matches(condition: Condition, data: Record<string, unknown>): boolean {
   }
 }
 
-async function runAction(workspaceId: string, action: Action, event: WebhookEvent, data: Record<string, unknown>) {
+async function runAction(
+  workspaceId: string,
+  action: Action,
+  event: WebhookEvent,
+  data: Record<string, unknown>,
+) {
   switch (action.type) {
     case 'webhook': {
       const url = await assertPublicUrl(action.url);
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'PurpleVoice-Automations/1.0' },
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'PurpleVoice-Automations/1.0',
+        },
         body: JSON.stringify({ event, data }),
         signal: AbortSignal.timeout(10_000),
       });
@@ -67,9 +75,12 @@ async function runAction(workspaceId: string, action: Action, event: WebhookEven
       return;
     }
     case 'add_to_campaign': {
-      const phone = (data.direction === 'INBOUND' ? data.fromNumber : data.toNumber) as string | undefined;
+      const phone = (data.direction === 'INBOUND' ? data.fromNumber : data.toNumber) as
+        string | undefined;
       if (!phone) return;
-      const campaign = await prisma.campaign.findFirst({ where: { id: action.campaignId, workspaceId } });
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: action.campaignId, workspaceId },
+      });
       if (!campaign) throw new Error('Campaign not found');
       await prisma.campaignContact.upsert({
         where: { campaignId_phone: { campaignId: campaign.id, phone } },
@@ -92,8 +103,14 @@ async function runAction(workspaceId: string, action: Action, event: WebhookEven
 }
 
 /** Evaluates every active automation for this trigger. One failing rule never stops the others. */
-export async function runAutomations(workspaceId: string, event: WebhookEvent, data: Record<string, unknown>) {
-  const rules = await prisma.automation.findMany({ where: { workspaceId, trigger: event, active: true } });
+export async function runAutomations(
+  workspaceId: string,
+  event: WebhookEvent,
+  data: Record<string, unknown>,
+) {
+  const rules = await prisma.automation.findMany({
+    where: { workspaceId, trigger: event, active: true },
+  });
   for (const rule of rules) {
     const conditions = z.array(automationConditionSchema).safeParse(rule.conditions);
     const actions = z.array(automationActionSchema).safeParse(rule.actions);
@@ -106,7 +123,10 @@ export async function runAutomations(workspaceId: string, event: WebhookEvent, d
         await runAction(workspaceId, action, event, data);
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        logger.warn({ err, automationId: rule.id, action: action.type }, 'Automation action failed');
+        logger.warn(
+          { err, automationId: rule.id, action: action.type },
+          'Automation action failed',
+        );
       }
     }
     await prisma.automation.update({

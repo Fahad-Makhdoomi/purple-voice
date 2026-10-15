@@ -20,7 +20,10 @@ export async function resolveWorkspace(req: Request, _res: Response, next: NextF
   if (isStaff(user.role)) {
     const requested = req.header(WORKSPACE_HEADER);
     if (!requested) throw badRequest('Choose a customer workspace first');
-    const ws = await prisma.workspace.findUnique({ where: { id: requested }, select: { id: true } });
+    const ws = await prisma.workspace.findUnique({
+      where: { id: requested },
+      select: { id: true },
+    });
     if (!ws) throw notFound('Workspace');
     req.workspaceId = ws.id;
     req.actingAsStaff = true;

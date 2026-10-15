@@ -38,9 +38,15 @@ async function workspaceSnapshot(workspaceId: string): Promise<string> {
   const ent = await getEntitlements(workspaceId);
   const [usage, agents, creds, numbers] = await Promise.all([
     getUsage(workspaceId, ent),
-    prisma.agent.findMany({ where: { workspaceId }, select: { name: true, status: true, voiceEngine: true, llmProvider: true } }),
+    prisma.agent.findMany({
+      where: { workspaceId },
+      select: { name: true, status: true, voiceEngine: true, llmProvider: true },
+    }),
     prisma.aiCredential.findMany({ where: { workspaceId }, select: { provider: true } }),
-    prisma.phoneNumber.findMany({ where: { workspaceId }, select: { e164: true, routingConfigured: true, routingError: true } }),
+    prisma.phoneNumber.findMany({
+      where: { workspaceId },
+      select: { e164: true, routingConfigured: true, routingError: true },
+    }),
   ]);
   return [
     `Customer workspace right now:`,
@@ -57,7 +63,8 @@ export async function streamAssistantReply(
   messages: AssistantMessage[],
   onText: (delta: string) => void,
 ): Promise<{ refused: boolean }> {
-  if (!env.ANTHROPIC_API_KEY) throw new HttpError(503, 'The AI assistant is not configured', 'assistant_unavailable');
+  if (!env.ANTHROPIC_API_KEY)
+    throw new HttpError(503, 'The AI assistant is not configured', 'assistant_unavailable');
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.ASSISTANT_MODEL;
 

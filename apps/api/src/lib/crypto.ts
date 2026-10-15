@@ -10,7 +10,9 @@ import { env } from '../config/env';
 const KEY = (() => {
   const buf = Buffer.from(env.APP_ENCRYPTION_KEY, 'base64');
   if (buf.length !== 32) {
-    throw new Error('APP_ENCRYPTION_KEY must be 32 bytes, base64 encoded (openssl rand -base64 32)');
+    throw new Error(
+      'APP_ENCRYPTION_KEY must be 32 bytes, base64 encoded (openssl rand -base64 32)',
+    );
   }
   return buf;
 })();

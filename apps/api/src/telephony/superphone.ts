@@ -68,6 +68,9 @@ export class SuperPhoneAdapter implements TelephonyAdapter {
   }
 
   sayAndHangupDocument(message: string): VoiceDocument {
-    return { contentType: 'text/xml', body: `<Response><Say>${escapeXml(message)}</Say><Hangup/></Response>` };
+    return {
+      contentType: 'text/xml',
+      body: `<Response><Say>${escapeXml(message)}</Say><Hangup/></Response>`,
+    };
   }
 }

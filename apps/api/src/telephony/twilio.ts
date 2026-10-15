@@ -17,7 +17,11 @@ export class TwilioAdapter implements TelephonyAdapter {
 
   constructor(private readonly creds: TwilioCredentials) {}
 
-  private async request<T>(method: 'GET' | 'POST', path: string, form?: Record<string, string | string[]>) {
+  private async request<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    form?: Record<string, string | string[]>,
+  ) {
     const body = new URLSearchParams();
     for (const [k, v] of Object.entries(form ?? {})) {
       for (const item of Array.isArray(v) ? v : [v]) body.append(k, item);
@@ -65,7 +69,8 @@ export class TwilioAdapter implements TelephonyAdapter {
         `/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(input.e164)}`,
       );
       sid = found.incoming_phone_numbers[0]?.sid;
-      if (!sid) throw new TelephonyError(`${input.e164} is not a number on this Twilio account`, 404);
+      if (!sid)
+        throw new TelephonyError(`${input.e164} is not a number on this Twilio account`, 404);
     }
     await this.request('POST', `/IncomingPhoneNumbers/${sid}.json`, {
       VoiceUrl: input.inboundUrl,
@@ -91,7 +96,9 @@ export class TwilioAdapter implements TelephonyAdapter {
   }
 
   async transferCall(providerCallId: string, to: string) {
-    await this.request('POST', `/Calls/${providerCallId}.json`, { Twiml: this.transferDocument(to).body });
+    await this.request('POST', `/Calls/${providerCallId}.json`, {
+      Twiml: this.transferDocument(to).body,
+    });
   }
 
   async hangup(providerCallId: string) {
@@ -123,7 +130,10 @@ export class TwilioAdapter implements TelephonyAdapter {
 }
 
 /** Maps Twilio CallStatus values to ours. */
-export const TWILIO_STATUS: Record<string, 'QUEUED' | 'RINGING' | 'IN_PROGRESS' | 'COMPLETED' | 'BUSY' | 'FAILED' | 'NO_ANSWER' | 'CANCELED'> = {
+export const TWILIO_STATUS: Record<
+  string,
+  'QUEUED' | 'RINGING' | 'IN_PROGRESS' | 'COMPLETED' | 'BUSY' | 'FAILED' | 'NO_ANSWER' | 'CANCELED'
+> = {
   queued: 'QUEUED',
   initiated: 'QUEUED',
   ringing: 'RINGING',

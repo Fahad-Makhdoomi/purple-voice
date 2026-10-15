@@ -37,9 +37,15 @@ const STRIPE_STATUS: Record<string, SubscriptionStatus> = {
 
 async function priceIdFor(code: PlanCode): Promise<string> {
   const plan = await prisma.plan.findUnique({ where: { code } });
-  const fromEnv = code === 'BASIC' ? env.STRIPE_PRICE_BASIC : code === 'PRO' ? env.STRIPE_PRICE_PRO : undefined;
+  const fromEnv =
+    code === 'BASIC' ? env.STRIPE_PRICE_BASIC : code === 'PRO' ? env.STRIPE_PRICE_PRO : undefined;
   const id = plan?.stripePriceId ?? fromEnv;
-  if (!id) throw new HttpError(503, `No Stripe price configured for the ${code} plan`, 'billing_unavailable');
+  if (!id)
+    throw new HttpError(
+      503,
+      `No Stripe price configured for the ${code} plan`,
+      'billing_unavailable',
+    );
   return id;
 }
 
@@ -83,57 +89,68 @@ async function workspaceForStripe(customerId?: string, subscriptionId?: string, 
 
 // ── Stripe webhook: raw body, no auth, verified by signature ───────────────
 
-billingRouter.post('/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
-  const event = verifyWebhook(req.body as Buffer, req.header('stripe-signature'));
-  const obj = event.data.object;
+billingRouter.post(
+  '/webhook',
+  express.raw({ type: 'application/json', limit: '1mb' }),
+  async (req, res) => {
+    const event = verifyWebhook(req.body as Buffer, req.header('stripe-signature'));
+    const obj = event.data.object;
 
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = obj as StripeCheckoutSession;
-      const workspaceId = session.client_reference_id ?? session.metadata?.workspaceId;
-      if (workspaceId && session.subscription) {
-        await syncStripeSubscription(workspaceId, await retrieveSubscription(session.subscription));
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = obj as StripeCheckoutSession;
+        const workspaceId = session.client_reference_id ?? session.metadata?.workspaceId;
+        if (workspaceId && session.subscription) {
+          await syncStripeSubscription(
+            workspaceId,
+            await retrieveSubscription(session.subscription),
+          );
+        }
+        break;
       }
-      break;
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const sub = obj as StripeSubscription;
+        const workspaceId = await workspaceForStripe(
+          sub.customer,
+          sub.id,
+          sub.metadata?.workspaceId,
+        );
+        if (workspaceId) await syncStripeSubscription(workspaceId, sub);
+        else logger.warn({ subscription: sub.id }, 'Stripe subscription for unknown workspace');
+        break;
+      }
+      case 'invoice.paid': {
+        const invoice = obj as StripeInvoice;
+        const workspaceId = await workspaceForStripe(invoice.customer);
+        if (!workspaceId) break;
+        const line = invoice.lines?.data[0];
+        const paidAt = invoice.status_transitions?.paid_at;
+        await prisma.payment.upsert({
+          where: { providerInvoiceId: invoice.id },
+          create: {
+            workspaceId,
+            amountCents: invoice.amount_paid,
+            currency: invoice.currency,
+            status: 'paid',
+            provider: 'STRIPE',
+            providerInvoiceId: invoice.id,
+            description: line?.description,
+            periodStart: line?.period ? new Date(line.period.start * 1000) : null,
+            periodEnd: line?.period ? new Date(line.period.end * 1000) : null,
+            paidAt: paidAt ? new Date(paidAt * 1000) : new Date(),
+          },
+          update: { status: 'paid' },
+        });
+        break;
+      }
+      default:
+        break;
     }
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-    case 'customer.subscription.deleted': {
-      const sub = obj as StripeSubscription;
-      const workspaceId = await workspaceForStripe(sub.customer, sub.id, sub.metadata?.workspaceId);
-      if (workspaceId) await syncStripeSubscription(workspaceId, sub);
-      else logger.warn({ subscription: sub.id }, 'Stripe subscription for unknown workspace');
-      break;
-    }
-    case 'invoice.paid': {
-      const invoice = obj as StripeInvoice;
-      const workspaceId = await workspaceForStripe(invoice.customer);
-      if (!workspaceId) break;
-      const line = invoice.lines?.data[0];
-      const paidAt = invoice.status_transitions?.paid_at;
-      await prisma.payment.upsert({
-        where: { providerInvoiceId: invoice.id },
-        create: {
-          workspaceId,
-          amountCents: invoice.amount_paid,
-          currency: invoice.currency,
-          status: 'paid',
-          provider: 'STRIPE',
-          providerInvoiceId: invoice.id,
-          description: line?.description,
-          periodStart: line?.period ? new Date(line.period.start * 1000) : null,
-          periodEnd: line?.period ? new Date(line.period.end * 1000) : null,
-          paidAt: paidAt ? new Date(paidAt * 1000) : new Date(),
-        },
-        update: { status: 'paid' },
-      });
-      break;
-    }
-    default:
-      break;
-  }
-  res.json({ received: true });
-});
+    res.json({ received: true });
+  },
+);
 
 // ── Workspace billing ───────────────────────────────────────────────────────
 // This router is mounted ahead of the global JSON parser (the webhook needs
@@ -183,13 +200,21 @@ billingRouter.post('/checkout', async (req, res) => {
   const current = await prisma.subscription.findUnique({ where: { workspaceId } });
 
   if (!env.stripeEnabled) {
-    if (!env.billingBypass) throw new HttpError(503, 'Billing is not configured yet', 'billing_unavailable');
+    if (!env.billingBypass)
+      throw new HttpError(503, 'Billing is not configured yet', 'billing_unavailable');
     const now = new Date();
     const end = new Date(now);
     end.setUTCMonth(end.getUTCMonth() + 1);
     await applySubscriptionChange(
       workspaceId,
-      { planCode, status: 'ACTIVE', provider: 'MANUAL', currentPeriodStart: now, currentPeriodEnd: end, cancelAtPeriodEnd: false },
+      {
+        planCode,
+        status: 'ACTIVE',
+        provider: 'MANUAL',
+        currentPeriodStart: now,
+        currentPeriodEnd: end,
+        cancelAtPeriodEnd: false,
+      },
       { note: 'Development billing bypass' },
     );
     await audit(req, 'billing.dev_activate', { meta: { planCode } });
@@ -199,7 +224,10 @@ billingRouter.post('/checkout', async (req, res) => {
   const priceId = await priceIdFor(planCode);
 
   // Already subscribed through Stripe: switch the price in place (prorated).
-  if (current?.stripeSubscriptionId && ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(current.status)) {
+  if (
+    current?.stripeSubscriptionId &&
+    ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(current.status)
+  ) {
     const sub = await retrieveSubscription(current.stripeSubscriptionId);
     const updated = await updateSubscriptionPrice(sub, priceId);
     await syncStripeSubscription(workspaceId, updated);
@@ -230,7 +258,8 @@ billingRouter.post('/cancel', async (req, res) => {
   const workspaceId = wsId(req);
   const sub = await prisma.subscription.findUnique({ where: { workspaceId } });
   if (!sub) throw notFound('Subscription');
-  if (sub.provider === 'STRIPE') throw badRequest('Manage your Stripe subscription from the billing portal');
+  if (sub.provider === 'STRIPE')
+    throw badRequest('Manage your Stripe subscription from the billing portal');
   await applySubscriptionChange(workspaceId, { cancelAtPeriodEnd: true });
   await audit(req, 'billing.cancel_requested');
   res.json({ ok: true });

@@ -3,10 +3,16 @@ import { describe, isValidTimeZone } from './time';
 
 /** Replaces {{name}}, {{company}} and any CSV column {{field}} with the contact's values. */
 export function fillVariables(text: string, vars: Record<string, string>): string {
-  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => vars[key.toLowerCase()] ?? '');
+  return text.replace(
+    /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+    (_m, key: string) => vars[key.toLowerCase()] ?? '',
+  );
 }
 
-export function contactVariables(contact: CampaignContact | null, call: Pick<Call, 'direction' | 'fromNumber' | 'toNumber'>) {
+export function contactVariables(
+  contact: CampaignContact | null,
+  call: Pick<Call, 'direction' | 'fromNumber' | 'toNumber'>,
+) {
   const fields = (contact?.fields as Record<string, unknown> | null) ?? {};
   const vars: Record<string, string> = {
     name: contact?.name ?? '',

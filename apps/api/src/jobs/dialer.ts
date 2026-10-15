@@ -12,7 +12,11 @@ export function withinCallWindow(
 ): boolean {
   const tz = isValidTimeZone(c.timezone) ? c.timezone : 'UTC';
   const local = utcToZoned(now, tz);
-  return c.callDays.includes(local.weekday) && local.time >= c.callWindowStart && local.time < c.callWindowEnd;
+  return (
+    c.callDays.includes(local.weekday) &&
+    local.time >= c.callWindowStart &&
+    local.time < c.callWindowEnd
+  );
 }
 
 /**
@@ -73,7 +77,10 @@ export async function dialerTick(): Promise<void> {
             data: { status: 'PENDING', attempts: { decrement: 1 } },
           });
           if (/minutes/i.test(err.message)) {
-            await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSED' } });
+            await prisma.campaign.update({
+              where: { id: campaign.id },
+              data: { status: 'PAUSED' },
+            });
             logger.info({ campaignId: campaign.id }, 'Campaign paused: minutes used up');
           }
           break;

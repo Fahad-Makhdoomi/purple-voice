@@ -60,7 +60,10 @@ export function withinLimit(limit: number | null, currentCount: number, adding =
   return currentCount + adding <= limit;
 }
 
-export function hasFeature(ent: Pick<Entitlements, 'active' | 'features'>, key: FeatureKey): boolean {
+export function hasFeature(
+  ent: Pick<Entitlements, 'active' | 'features'>,
+  key: FeatureKey,
+): boolean {
   return ent.active && ent.features[key];
 }
 

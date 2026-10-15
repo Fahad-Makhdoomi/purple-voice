@@ -9,7 +9,12 @@ import type { Agent } from '@prisma/client';
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: { type: 'object'; properties: Record<string, unknown>; required: string[]; additionalProperties: false };
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required: string[];
+    additionalProperties: false;
+  };
   schema: z.ZodTypeAny;
 }
 
@@ -29,7 +34,9 @@ export const TOOL_SCHEMAS = {
 };
 export type ToolName = keyof typeof TOOL_SCHEMAS;
 
-export function toolsForAgent(agent: Pick<Agent, 'appointmentBookingEnabled' | 'transferEnabled' | 'transferNumber'>): ToolDefinition[] {
+export function toolsForAgent(
+  agent: Pick<Agent, 'appointmentBookingEnabled' | 'transferEnabled' | 'transferNumber'>,
+): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
   if (agent.appointmentBookingEnabled) {
     tools.push(
@@ -52,10 +59,20 @@ export function toolsForAgent(agent: Pick<Agent, 'appointmentBookingEnabled' | '
         parameters: {
           type: 'object',
           properties: {
-            start: { type: 'string', description: 'Slot start in the business time zone, YYYY-MM-DDTHH:mm, exactly as returned by check_availability.' },
+            start: {
+              type: 'string',
+              description:
+                'Slot start in the business time zone, YYYY-MM-DDTHH:mm, exactly as returned by check_availability.',
+            },
             name: { type: 'string', description: "The person's full name." },
-            email: { type: 'string', description: 'Email for the calendar invite, if they gave one.' },
-            notes: { type: 'string', description: 'Anything the team should know before the meeting.' },
+            email: {
+              type: 'string',
+              description: 'Email for the calendar invite, if they gave one.',
+            },
+            notes: {
+              type: 'string',
+              description: 'Anything the team should know before the meeting.',
+            },
           },
           required: ['start', 'name'],
           additionalProperties: false,
@@ -71,7 +88,9 @@ export function toolsForAgent(agent: Pick<Agent, 'appointmentBookingEnabled' | '
         'Transfer the call to a human on the team. Use when the person asks for a human, or is ready to buy and needs details you cannot give. Tell them you are connecting them first.',
       parameters: {
         type: 'object',
-        properties: { reason: { type: 'string', description: 'Why the call is being transferred.' } },
+        properties: {
+          reason: { type: 'string', description: 'Why the call is being transferred.' },
+        },
         required: ['reason'],
         additionalProperties: false,
       },

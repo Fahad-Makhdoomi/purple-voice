@@ -22,7 +22,8 @@ import { PLIVO_STATUS } from './plivo';
  */
 export const telephonyWebhooksRouter = Router();
 
-const UNAVAILABLE = 'Sorry, no one is available to take your call right now. Please try again later. Goodbye.';
+const UNAVAILABLE =
+  'Sorry, no one is available to take your call right now. Please try again later. Goodbye.';
 
 function provider(param: string): TelephonyProvider {
   const p = param.toUpperCase();
@@ -63,7 +64,8 @@ telephonyWebhooksRouter.post('/:provider/inbound', async (req, res) => {
   const body = req.body as Record<string, string>;
 
   const agent = number.inboundAgent;
-  if (!agent || agent.status !== 'ACTIVE') return send(res, adapter.sayAndHangupDocument(UNAVAILABLE));
+  if (!agent || agent.status !== 'ACTIVE')
+    return send(res, adapter.sayAndHangupDocument(UNAVAILABLE));
   const gate = await canStartCall(number.workspaceId);
   if (!gate.ok) {
     logger.info({ numberId, reason: gate.reason }, 'Inbound call refused');
@@ -104,7 +106,9 @@ telephonyWebhooksRouter.post('/:provider/voice', async (req, res) => {
 
   const body = req.body as Record<string, string>;
   // Plivo's call id only exists once the call is answered; until now we held its request id.
-  await applyCallStatus(call.id, 'IN_PROGRESS', { providerCallId: p === 'PLIVO' ? body.CallUUID : undefined });
+  await applyCallStatus(call.id, 'IN_PROGRESS', {
+    providerCallId: p === 'PLIVO' ? body.CallUUID : undefined,
+  });
   send(res, adapter.streamDocument(mediaStreamUrl(p, call.id)));
 });
 
@@ -121,7 +125,9 @@ telephonyWebhooksRouter.post('/:provider/status', async (req, res) => {
     if (!verifySubject('status', numberId, req.query.sig)) throw forbidden('Bad signature');
     const providerCallId = body.CallSid ?? body.CallUUID;
     const call = providerCallId
-      ? await prisma.call.findFirst({ where: { provider: p, providerCallId, phoneNumberId: numberId } })
+      ? await prisma.call.findFirst({
+          where: { provider: p, providerCallId, phoneNumberId: numberId },
+        })
       : null;
     callId = call?.id ?? null;
   }
@@ -129,7 +135,9 @@ telephonyWebhooksRouter.post('/:provider/status', async (req, res) => {
   const status = mapStatus(p, body);
   if (callId && status) {
     const duration = Number(body.CallDuration ?? body.Duration ?? NaN);
-    await applyCallStatus(callId, status, { durationSec: Number.isFinite(duration) ? duration : undefined });
+    await applyCallStatus(callId, status, {
+      durationSec: Number.isFinite(duration) ? duration : undefined,
+    });
   }
   res.status(204).end();
 });

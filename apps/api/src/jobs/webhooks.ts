@@ -15,7 +15,11 @@ function backoffMs(attempt: number) {
  * Header a receiver verifies: `t=<unix>,v1=<hex hmac-sha256(secret, "<t>.<body>")>`.
  * The timestamp lets receivers reject replays.
  */
-export function signatureHeader(secret: string, body: string, timestamp = Math.floor(Date.now() / 1000)) {
+export function signatureHeader(
+  secret: string,
+  body: string,
+  timestamp = Math.floor(Date.now() / 1000),
+) {
   return `t=${timestamp},v1=${hmacSha256Hex(secret, `${timestamp}.${body}`)}`;
 }
 
@@ -54,7 +58,10 @@ export async function deliverWebhooks(): Promise<void> {
               'User-Agent': 'PurpleVoice-Webhooks/1.0',
               'X-PurpleVoice-Event': delivery.event,
               'X-PurpleVoice-Delivery': delivery.id,
-              'X-PurpleVoice-Signature': signatureHeader(decrypt(delivery.endpoint.secretEnc), body),
+              'X-PurpleVoice-Signature': signatureHeader(
+                decrypt(delivery.endpoint.secretEnc),
+                body,
+              ),
             },
             body,
             redirect: 'manual',
@@ -74,7 +81,11 @@ export async function deliverWebhooks(): Promise<void> {
           attempts,
           responseStatus: status,
           lastError: error,
-          status: succeeded ? 'SUCCEEDED' : attempts >= MAX_ATTEMPTS || !delivery.endpoint.active ? 'FAILED' : 'PENDING',
+          status: succeeded
+            ? 'SUCCEEDED'
+            : attempts >= MAX_ATTEMPTS || !delivery.endpoint.active
+              ? 'FAILED'
+              : 'PENDING',
           deliveredAt: succeeded ? new Date() : null,
           nextAttemptAt: new Date(Date.now() + backoffMs(attempts)),
         },

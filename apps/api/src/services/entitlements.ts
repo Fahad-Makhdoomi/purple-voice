@@ -90,7 +90,10 @@ export async function getEntitlements(workspaceId: string): Promise<Entitlements
  * The usage window minutes are counted in: the subscription's billing period
  * when we know it, otherwise the current calendar month (UTC).
  */
-export function usageWindow(ent: Pick<Entitlements, 'currentPeriodStart' | 'currentPeriodEnd'>, now = new Date()) {
+export function usageWindow(
+  ent: Pick<Entitlements, 'currentPeriodStart' | 'currentPeriodEnd'>,
+  now = new Date(),
+) {
   if (ent.currentPeriodStart && ent.currentPeriodEnd) {
     const start = new Date(ent.currentPeriodStart);
     const end = new Date(ent.currentPeriodEnd);
@@ -202,7 +205,7 @@ export async function canStartCall(
     if (used >= ent.includedMinutes) return { ok: false, reason: 'Monthly call minutes used up' };
   }
   const live = await COUNTERS.concurrentCalls!(workspaceId);
-  if (live >= ent.limits.concurrentCalls) return { ok: false, reason: 'Concurrent call limit reached' };
+  if (live >= ent.limits.concurrentCalls)
+    return { ok: false, reason: 'Concurrent call limit reached' };
   return { ok: true };
 }
-

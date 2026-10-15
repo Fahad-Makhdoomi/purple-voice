@@ -18,7 +18,17 @@ import { assertWithinLimit } from '../../services/entitlements';
 
 export const campaignsRouter = Router();
 
-const KNOWN_COLUMNS = new Set(['phone', 'phone_number', 'number', 'mobile', 'name', 'full_name', 'email', 'company', 'notes']);
+const KNOWN_COLUMNS = new Set([
+  'phone',
+  'phone_number',
+  'number',
+  'mobile',
+  'name',
+  'full_name',
+  'email',
+  'company',
+  'notes',
+]);
 
 async function findCampaign(workspaceId: string, id: string) {
   const campaign = await prisma.campaign.findFirst({ where: { id, workspaceId } });
@@ -30,7 +40,10 @@ async function assertRefs(workspaceId: string, agentId?: string, phoneNumberId?:
   if (agentId && !(await prisma.agent.findFirst({ where: { id: agentId, workspaceId } }))) {
     throw badRequest('Choose one of your agents');
   }
-  if (phoneNumberId && !(await prisma.phoneNumber.findFirst({ where: { id: phoneNumberId, workspaceId } }))) {
+  if (
+    phoneNumberId &&
+    !(await prisma.phoneNumber.findFirst({ where: { id: phoneNumberId, workspaceId } }))
+  ) {
     throw badRequest('Choose one of your connected numbers');
   }
 }
@@ -69,7 +82,11 @@ campaignsRouter.post('/', requireActiveSubscription, async (req, res) => {
   await assertWithinLimit(workspaceId, ent, 'campaigns');
   await assertRefs(workspaceId, input.agentId, input.phoneNumberId);
   const campaign = await prisma.campaign.create({
-    data: { ...input, workspaceId, concurrency: Math.min(input.concurrency, ent.limits.concurrentCalls) },
+    data: {
+      ...input,
+      workspaceId,
+      concurrency: Math.min(input.concurrency, ent.limits.concurrentCalls),
+    },
   });
   await audit(req, 'campaign.created', { entity: 'Campaign', entityId: campaign.id });
   res.status(201).json({ campaign });
@@ -86,9 +103,21 @@ campaignsRouter.get('/:id', async (req, res) => {
   });
   if (!campaign) throw notFound('Campaign');
   const [byStatus, byOutcome, minutes] = await Promise.all([
-    prisma.campaignContact.groupBy({ by: ['status'], where: { campaignId: campaign.id }, _count: { _all: true } }),
-    prisma.call.groupBy({ by: ['outcome'], where: { campaignId: campaign.id }, _count: { _all: true } }),
-    prisma.call.aggregate({ where: { campaignId: campaign.id }, _sum: { billedMinutes: true }, _count: { _all: true } }),
+    prisma.campaignContact.groupBy({
+      by: ['status'],
+      where: { campaignId: campaign.id },
+      _count: { _all: true },
+    }),
+    prisma.call.groupBy({
+      by: ['outcome'],
+      where: { campaignId: campaign.id },
+      _count: { _all: true },
+    }),
+    prisma.call.aggregate({
+      where: { campaignId: campaign.id },
+      _sum: { billedMinutes: true },
+      _count: { _all: true },
+    }),
   ]);
   res.json({
     campaign,
@@ -114,7 +143,9 @@ campaignsRouter.patch('/:id', async (req, res) => {
     where: { id: campaign.id },
     data: {
       ...input,
-      concurrency: input.concurrency ? Math.min(input.concurrency, ent.limits.concurrentCalls) : undefined,
+      concurrency: input.concurrency
+        ? Math.min(input.concurrency, ent.limits.concurrentCalls)
+        : undefined,
     },
   });
   res.json({ campaign: updated });
@@ -122,7 +153,8 @@ campaignsRouter.patch('/:id', async (req, res) => {
 
 campaignsRouter.delete('/:id', async (req, res) => {
   const campaign = await findCampaign(wsId(req), req.params.id);
-  if (campaign.status === 'RUNNING') throw badRequest('Pause or cancel the campaign before deleting it');
+  if (campaign.status === 'RUNNING')
+    throw badRequest('Pause or cancel the campaign before deleting it');
   await prisma.campaign.delete({ where: { id: campaign.id } });
   await audit(req, 'campaign.deleted', { entity: 'Campaign', entityId: campaign.id });
   res.json({ ok: true });
@@ -134,7 +166,10 @@ campaignsRouter.get('/:id/contacts', async (req, res) => {
   const workspaceId = wsId(req);
   const campaign = await findCampaign(workspaceId, req.params.id);
   const { page, pageSize, q } = paginationSchema.parse(req.query);
-  const status = z.enum(['PENDING', 'CALLING', 'COMPLETED', 'FAILED', 'NO_ANSWER', 'DO_NOT_CALL']).optional().parse(req.query.status || undefined);
+  const status = z
+    .enum(['PENDING', 'CALLING', 'COMPLETED', 'FAILED', 'NO_ANSWER', 'DO_NOT_CALL'])
+    .optional()
+    .parse(req.query.status || undefined);
   const where: Prisma.CampaignContactWhereInput = {
     campaignId: campaign.id,
     ...(status ? { status } : {}),
@@ -169,7 +204,8 @@ campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res
   }
 
   const rows: Record<string, unknown>[] = input.csv ? parseCsv(input.csv) : (input.contacts ?? []);
-  if (!rows.length) throw badRequest('No contacts found. CSV files need a header row with a "phone" column.');
+  if (!rows.length)
+    throw badRequest('No contacts found. CSV files need a header row with a "phone" column.');
 
   const seen = new Set<string>();
   const valid: Prisma.CampaignContactCreateManyInput[] = [];
@@ -188,7 +224,8 @@ campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res
       company: row.company || undefined,
       notes: row.notes || undefined,
     });
-    if (!parsed.success) return invalid.push({ row: idx + 2, reason: parsed.error.issues[0]?.message ?? 'Invalid' });
+    if (!parsed.success)
+      return invalid.push({ row: idx + 2, reason: parsed.error.issues[0]?.message ?? 'Invalid' });
     const extra = Object.fromEntries(
       Object.entries(row).filter(([k, v]) => !KNOWN_COLUMNS.has(k) && v !== '' && v !== undefined),
     );
@@ -211,7 +248,11 @@ campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res
   });
 
   const result = await prisma.campaignContact.createMany({ data: valid, skipDuplicates: true });
-  await audit(req, 'campaign.contacts_added', { entity: 'Campaign', entityId: campaign.id, meta: { added: result.count } });
+  await audit(req, 'campaign.contacts_added', {
+    entity: 'Campaign',
+    entityId: campaign.id,
+    meta: { added: result.count },
+  });
   res.status(201).json({
     added: result.count,
     duplicates: valid.length - result.count,
@@ -239,12 +280,18 @@ campaignsRouter.post('/:id/start', requireActiveSubscription, async (req, res) =
     include: { agent: true, phoneNumber: true },
   });
   if (!campaign) throw notFound('Campaign');
-  if (!['DRAFT', 'PAUSED'].includes(campaign.status)) throw badRequest(`Campaign is ${campaign.status.toLowerCase()}`);
-  if (campaign.agent.status !== 'ACTIVE') throw badRequest(`Activate the agent "${campaign.agent.name}" first`);
+  if (!['DRAFT', 'PAUSED'].includes(campaign.status))
+    throw badRequest(`Campaign is ${campaign.status.toLowerCase()}`);
+  if (campaign.agent.status !== 'ACTIVE')
+    throw badRequest(`Activate the agent "${campaign.agent.name}" first`);
   if (!campaign.phoneNumber.routingConfigured) {
-    throw badRequest('The caller number is not connected to Purple Voice yet. Re-sync it under Phone numbers.');
+    throw badRequest(
+      'The caller number is not connected to Purple Voice yet. Re-sync it under Phone numbers.',
+    );
   }
-  const pending = await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'PENDING' } });
+  const pending = await prisma.campaignContact.count({
+    where: { campaignId: campaign.id, status: 'PENDING' },
+  });
   if (!pending) throw badRequest('Add contacts before starting');
 
   const updated = await prisma.campaign.update({
@@ -258,14 +305,18 @@ campaignsRouter.post('/:id/start', requireActiveSubscription, async (req, res) =
 campaignsRouter.post('/:id/pause', async (req, res) => {
   const campaign = await findCampaign(wsId(req), req.params.id);
   if (campaign.status !== 'RUNNING') throw badRequest('Only running campaigns can be paused');
-  const updated = await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSED' } });
+  const updated = await prisma.campaign.update({
+    where: { id: campaign.id },
+    data: { status: 'PAUSED' },
+  });
   await audit(req, 'campaign.paused', { entity: 'Campaign', entityId: campaign.id });
   res.json({ campaign: updated });
 });
 
 campaignsRouter.post('/:id/cancel', async (req, res) => {
   const campaign = await findCampaign(wsId(req), req.params.id);
-  if (['COMPLETED', 'CANCELED'].includes(campaign.status)) throw badRequest('Campaign already finished');
+  if (['COMPLETED', 'CANCELED'].includes(campaign.status))
+    throw badRequest('Campaign already finished');
   const updated = await prisma.campaign.update({
     where: { id: campaign.id },
     data: { status: 'CANCELED', completedAt: new Date() },

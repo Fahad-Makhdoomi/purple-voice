@@ -115,12 +115,17 @@ export const env = {
   isTest: raw.NODE_ENV === 'test',
   publicApiUrl: (raw.PUBLIC_API_URL ?? raw.APP_URL).replace(/\/$/, ''),
   appUrl: raw.APP_URL.replace(/\/$/, ''),
-  corsOrigins: raw.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  corsOrigins: raw.CORS_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   stripeEnabled: !!raw.STRIPE_SECRET_KEY,
   billingBypass: raw.NODE_ENV !== 'production' && raw.BILLING_DEV_BYPASS && !raw.STRIPE_SECRET_KEY,
   googleEnabled: !!raw.GOOGLE_CLIENT_ID && !!raw.GOOGLE_CLIENT_SECRET,
   captchaEnabled: raw.CAPTCHA_PROVIDER !== 'none' && !!raw.CAPTCHA_SECRET_KEY,
-  storagePublicUrl: (raw.STORAGE_PUBLIC_URL ?? `${raw.APP_URL.replace(/\/$/, '')}/uploads`).replace(/\/$/, ''),
+  storagePublicUrl: (raw.STORAGE_PUBLIC_URL ?? `${raw.APP_URL.replace(/\/$/, '')}/uploads`).replace(
+    /\/$/,
+    '',
+  ),
 };
 
 /** wss:// origin for media streams, derived from the public API URL. */

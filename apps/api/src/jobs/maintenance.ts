@@ -55,17 +55,30 @@ export async function maintenanceTick(): Promise<void> {
     select: { workspaceId: true },
   });
   for (const s of lapsed) {
-    await applySubscriptionChange(s.workspaceId, { status: 'CANCELED' }, { note: 'Manual subscription lapsed' });
+    await applySubscriptionChange(
+      s.workspaceId,
+      { status: 'CANCELED' },
+      { note: 'Manual subscription lapsed' },
+    );
   }
 
   const cutoff = new Date(now - 30 * 24 * 60 * MIN);
-  await prisma.session.deleteMany({ where: { OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { lt: cutoff } }] } });
+  await prisma.session.deleteMany({
+    where: { OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { lt: cutoff } }] },
+  });
   await prisma.passwordReset.deleteMany({ where: { expiresAt: { lt: cutoff } } });
-  await prisma.webhookDelivery.deleteMany({ where: { createdAt: { lt: new Date(now - 90 * 24 * 60 * MIN) } } });
+  await prisma.webhookDelivery.deleteMany({
+    where: { createdAt: { lt: new Date(now - 90 * 24 * 60 * MIN) } },
+  });
 
   if (stuckRinging.length || stuckLive.length || unfinalized.length || lapsed.length) {
     logger.info(
-      { stuckRinging: stuckRinging.length, stuckLive: stuckLive.length, unfinalized: unfinalized.length, lapsed: lapsed.length },
+      {
+        stuckRinging: stuckRinging.length,
+        stuckLive: stuckLive.length,
+        unfinalized: unfinalized.length,
+        lapsed: lapsed.length,
+      },
       'Maintenance pass',
     );
   }

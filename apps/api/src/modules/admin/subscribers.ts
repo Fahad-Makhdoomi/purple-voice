@@ -16,7 +16,9 @@ subscribersRouter.get('/', async (req, res) => {
   const filters = z
     .object({
       plan: z.enum(['BASIC', 'PRO', 'ENTERPRISE', 'NONE']).optional(),
-      status: z.enum(['INCOMPLETE', 'TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED', 'UNPAID']).optional(),
+      status: z
+        .enum(['INCOMPLETE', 'TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED', 'UNPAID'])
+        .optional(),
     })
     .parse({ plan: req.query.plan || undefined, status: req.query.status || undefined });
 
@@ -45,7 +47,11 @@ subscribersRouter.get('/', async (req, res) => {
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: {
-        users: { where: { role: 'SUBSCRIBER' }, take: 1, select: { id: true, name: true, email: true, lastLoginAt: true } },
+        users: {
+          where: { role: 'SUBSCRIBER' },
+          take: 1,
+          select: { id: true, name: true, email: true, lastLoginAt: true },
+        },
         subscription: { include: { plan: { select: { code: true, name: true } } } },
         _count: { select: { agents: true, phoneNumbers: true, calls: true } },
       },
@@ -76,32 +82,66 @@ subscribersRouter.get('/:id', async (req, res) => {
   const workspace = await prisma.workspace.findUnique({
     where: { id: req.params.id },
     include: {
-      users: { select: { id: true, name: true, email: true, role: true, lastLoginAt: true, createdAt: true, suspended: true } },
+      users: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          lastLoginAt: true,
+          createdAt: true,
+          suspended: true,
+        },
+      },
       subscription: { include: { plan: true } },
     },
   });
   if (!workspace) throw notFound('Workspace');
 
   const entitlements = await getEntitlements(workspace.id);
-  const [usage, events, payments, recentCalls, auditLog, telephony, credentials] = await Promise.all([
-    getUsage(workspace.id, entitlements),
-    prisma.subscriptionEvent.findMany({ where: { workspaceId: workspace.id }, orderBy: { occurredAt: 'desc' }, take: 30 }),
-    prisma.payment.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: 'desc' }, take: 24 }),
-    prisma.call.findMany({
-      where: { workspaceId: workspace.id },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      select: { id: true, direction: true, status: true, toNumber: true, fromNumber: true, durationSec: true, outcome: true, createdAt: true },
-    }),
-    prisma.auditLog.findMany({
-      where: { workspaceId: workspace.id },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-      include: { actor: { select: { name: true, role: true } } },
-    }),
-    prisma.telephonyAccount.findMany({ where: { workspaceId: workspace.id }, select: { id: true, provider: true, label: true, publicId: true } }),
-    prisma.aiCredential.findMany({ where: { workspaceId: workspace.id }, select: { provider: true, last4: true, verifiedAt: true } }),
-  ]);
+  const [usage, events, payments, recentCalls, auditLog, telephony, credentials] =
+    await Promise.all([
+      getUsage(workspace.id, entitlements),
+      prisma.subscriptionEvent.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { occurredAt: 'desc' },
+        take: 30,
+      }),
+      prisma.payment.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: 'desc' },
+        take: 24,
+      }),
+      prisma.call.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          direction: true,
+          status: true,
+          toNumber: true,
+          fromNumber: true,
+          durationSec: true,
+          outcome: true,
+          createdAt: true,
+        },
+      }),
+      prisma.auditLog.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        include: { actor: { select: { name: true, role: true } } },
+      }),
+      prisma.telephonyAccount.findMany({
+        where: { workspaceId: workspace.id },
+        select: { id: true, provider: true, label: true, publicId: true },
+      }),
+      prisma.aiCredential.findMany({
+        where: { workspaceId: workspace.id },
+        select: { provider: true, last4: true, verifiedAt: true },
+      }),
+    ]);
 
   res.json({
     workspace: {
@@ -136,7 +176,9 @@ subscribersRouter.patch('/:id', async (req, res) => {
         data: { revokedAt: new Date() },
       });
     }
-    await audit(req, input.suspended ? 'workspace.suspended' : 'workspace.unsuspended', { workspaceId: workspace.id });
+    await audit(req, input.suspended ? 'workspace.suspended' : 'workspace.unsuspended', {
+      workspaceId: workspace.id,
+    });
   }
   res.json({ workspace });
 });
@@ -149,7 +191,9 @@ subscribersRouter.patch('/:id/subscription', async (req, res) => {
   // Stripe is the source of truth for plan and status on Stripe-billed workspaces;
   // changing them here would be overwritten by the next webhook.
   if (current?.provider === 'STRIPE' && (input.planCode || input.status)) {
-    throw badRequest('This workspace pays through Stripe. Change its plan or status in Stripe; it syncs back automatically.');
+    throw badRequest(
+      'This workspace pays through Stripe. Change its plan or status in Stripe; it syncs back automatically.',
+    );
   }
   if (!current && !input.planCode) throw badRequest('Choose a plan to create a subscription');
 
@@ -164,7 +208,10 @@ subscribersRouter.patch('/:id/subscription', async (req, res) => {
       cancelAtPeriodEnd: input.cancelAtPeriodEnd,
       customPriceCents: input.customPriceCents,
       customMinutes: input.customMinutes,
-      customLimits: input.customLimits === null ? null : (input.customLimits as Prisma.InputJsonValue | undefined),
+      customLimits:
+        input.customLimits === null
+          ? null
+          : (input.customLimits as Prisma.InputJsonValue | undefined),
     },
     { note: input.note ?? `Changed by ${req.user!.name}` },
   );

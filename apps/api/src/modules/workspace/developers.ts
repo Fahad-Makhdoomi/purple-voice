@@ -44,7 +44,9 @@ webhooks.post('/', async (req, res) => {
   });
   await audit(req, 'webhook.created', { entity: 'WebhookEndpoint', entityId: endpoint.id });
   // The signing secret is shown once, now.
-  res.status(201).json({ endpoint: { id: endpoint.id, url: endpoint.url, events: endpoint.events }, secret });
+  res
+    .status(201)
+    .json({ endpoint: { id: endpoint.id, url: endpoint.url, events: endpoint.events }, secret });
 });
 
 webhooks.patch('/:id', async (req, res) => {
@@ -69,13 +71,17 @@ webhooks.post('/:id/rotate-secret', async (req, res) => {
 });
 
 webhooks.delete('/:id', async (req, res) => {
-  const result = await prisma.webhookEndpoint.deleteMany({ where: { id: req.params.id, workspaceId: wsId(req) } });
+  const result = await prisma.webhookEndpoint.deleteMany({
+    where: { id: req.params.id, workspaceId: wsId(req) },
+  });
   if (!result.count) throw notFound('Webhook endpoint');
   res.json({ ok: true });
 });
 
 webhooks.post('/:id/test', async (req, res) => {
-  const endpoint = await prisma.webhookEndpoint.findFirst({ where: { id: req.params.id, workspaceId: wsId(req) } });
+  const endpoint = await prisma.webhookEndpoint.findFirst({
+    where: { id: req.params.id, workspaceId: wsId(req) },
+  });
   if (!endpoint) throw notFound('Webhook endpoint');
   const delivery = await prisma.webhookDelivery.create({
     data: {
@@ -94,7 +100,9 @@ webhooks.post('/:id/test', async (req, res) => {
 });
 
 webhooks.get('/:id/deliveries', async (req, res) => {
-  const endpoint = await prisma.webhookEndpoint.findFirst({ where: { id: req.params.id, workspaceId: wsId(req) } });
+  const endpoint = await prisma.webhookEndpoint.findFirst({
+    where: { id: req.params.id, workspaceId: wsId(req) },
+  });
   if (!endpoint) throw notFound('Webhook endpoint');
   const deliveries = await prisma.webhookDelivery.findMany({
     where: { endpointId: endpoint.id },
@@ -160,11 +168,15 @@ const automations = Router();
 automations.use(requireFeature('advancedAutomations'));
 
 async function validateActions(actions: Array<{ type: string; url?: string }>) {
-  for (const action of actions) if (action.type === 'webhook' && action.url) await assertPublicUrl(action.url);
+  for (const action of actions)
+    if (action.type === 'webhook' && action.url) await assertPublicUrl(action.url);
 }
 
 automations.get('/', async (req, res) => {
-  const rules = await prisma.automation.findMany({ where: { workspaceId: wsId(req) }, orderBy: { createdAt: 'desc' } });
+  const rules = await prisma.automation.findMany({
+    where: { workspaceId: wsId(req) },
+    orderBy: { createdAt: 'desc' },
+  });
   res.json({ automations: rules });
 });
 
@@ -204,7 +216,9 @@ automations.patch('/:id', async (req, res) => {
 });
 
 automations.delete('/:id', async (req, res) => {
-  const result = await prisma.automation.deleteMany({ where: { id: req.params.id, workspaceId: wsId(req) } });
+  const result = await prisma.automation.deleteMany({
+    where: { id: req.params.id, workspaceId: wsId(req) },
+  });
   if (!result.count) throw notFound('Automation');
   res.json({ ok: true });
 });

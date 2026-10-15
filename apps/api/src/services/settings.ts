@@ -50,7 +50,10 @@ export async function getSetting<K extends SettingKey>(key: K): Promise<SettingV
   return (parsed.success ? parsed.data : DEFAULTS[key]) as SettingValue<K>;
 }
 
-export async function setSetting<K extends SettingKey>(key: K, value: unknown): Promise<SettingValue<K>> {
+export async function setSetting<K extends SettingKey>(
+  key: K,
+  value: unknown,
+): Promise<SettingValue<K>> {
   const data = SCHEMAS[key].parse(value) as SettingValue<K>;
   await prisma.siteSetting.upsert({
     where: { key },

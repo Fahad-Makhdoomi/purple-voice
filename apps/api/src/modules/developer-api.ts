@@ -23,13 +23,16 @@ async function apiKeyAuth(req: Request, _res: Response, next: NextFunction) {
   const row = await prisma.apiKey.findUnique({ where: { keyHash: sha256(key) } });
   if (!row || row.revokedAt) throw unauthorized('Invalid API key');
   const ent = await getEntitlements(row.workspaceId);
-  if (!ent.active || !ent.features.developerApi) throw planLimit('The developer API requires an active Pro plan');
+  if (!ent.active || !ent.features.developerApi)
+    throw planLimit('The developer API requires an active Pro plan');
   req.workspaceId = row.workspaceId;
   req.apiKeyId = row.id;
   req.entitlements = ent;
   // Coarse last-used stamp; one write per key per minute at most.
   if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 60_000) {
-    void prisma.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
+    void prisma.apiKey
+      .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+      .catch(() => undefined);
   }
   next();
 }
@@ -39,14 +42,28 @@ developerApiRouter.use(apiKeyAuth, apiLimiter);
 developerApiRouter.get('/agents', async (req, res) => {
   const agents = await prisma.agent.findMany({
     where: { workspaceId: req.workspaceId },
-    select: { id: true, name: true, status: true, voiceEngine: true, llmProvider: true, llmModel: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      voiceEngine: true,
+      llmProvider: true,
+      llmModel: true,
+      createdAt: true,
+    },
   });
   res.json({ data: agents });
 });
 
 developerApiRouter.get('/calls', async (req, res) => {
   const f = callFiltersSchema.parse(req.query);
-  const where = { workspaceId: req.workspaceId, agentId: f.agentId, campaignId: f.campaignId, direction: f.direction, outcome: f.outcome };
+  const where = {
+    workspaceId: req.workspaceId,
+    agentId: f.agentId,
+    campaignId: f.campaignId,
+    direction: f.direction,
+    outcome: f.outcome,
+  };
   const [calls, total] = await Promise.all([
     prisma.call.findMany({
       where,
@@ -54,8 +71,18 @@ developerApiRouter.get('/calls', async (req, res) => {
       skip: (f.page - 1) * f.pageSize,
       take: f.pageSize,
       select: {
-        id: true, direction: true, status: true, fromNumber: true, toNumber: true, durationSec: true,
-        outcome: true, sentiment: true, summary: true, agentId: true, campaignId: true, createdAt: true,
+        id: true,
+        direction: true,
+        status: true,
+        fromNumber: true,
+        toNumber: true,
+        durationSec: true,
+        outcome: true,
+        sentiment: true,
+        summary: true,
+        agentId: true,
+        campaignId: true,
+        createdAt: true,
       },
     }),
     prisma.call.count({ where }),
@@ -83,14 +110,26 @@ developerApiRouter.post('/calls', async (req, res) => {
   ]);
   if (!agent) throw notFound('Active agent');
   if (!number) throw notFound('Phone number');
-  const call = await startOutboundCall({ workspaceId, agentId: agent.id, phoneNumberId: number.id, to: input.to });
+  const call = await startOutboundCall({
+    workspaceId,
+    agentId: agent.id,
+    phoneNumberId: number.id,
+    to: input.to,
+  });
   res.status(201).json({ data: { id: call.id, status: call.status } });
 });
 
 developerApiRouter.get('/campaigns', async (req, res) => {
   const campaigns = await prisma.campaign.findMany({
     where: { workspaceId: req.workspaceId },
-    select: { id: true, name: true, status: true, agentId: true, phoneNumberId: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      agentId: true,
+      phoneNumberId: true,
+      createdAt: true,
+    },
   });
   res.json({ data: campaigns });
 });
@@ -105,7 +144,10 @@ developerApiRouter.post('/campaigns/:id/contacts', async (req, res) => {
     .filter((r) => r.success)
     .map((r) => r.data!);
   const current = await prisma.campaignContact.count({ where: { campaignId: campaign.id } });
-  await assertWithinLimit(workspaceId, req.entitlements!, 'contactsPerCampaign', { current, adding: valid.length });
+  await assertWithinLimit(workspaceId, req.entitlements!, 'contactsPerCampaign', {
+    current,
+    adding: valid.length,
+  });
   const result = await prisma.campaignContact.createMany({
     data: valid.map((c) => ({
       campaignId: campaign.id,
@@ -118,5 +160,7 @@ developerApiRouter.post('/campaigns/:id/contacts', async (req, res) => {
     })),
     skipDuplicates: true,
   });
-  res.status(201).json({ data: { added: result.count, rejected: (contacts?.length ?? 0) - valid.length } });
+  res
+    .status(201)
+    .json({ data: { added: result.count, rejected: (contacts?.length ?? 0) - valid.length } });
 });

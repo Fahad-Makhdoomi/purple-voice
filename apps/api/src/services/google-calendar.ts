@@ -29,7 +29,8 @@ export function googleRedirectUri(): string {
 }
 
 export function googleAuthUrl(state: string): string {
-  if (!env.googleEnabled) throw new HttpError(503, 'Google Calendar is not configured on this server');
+  if (!env.googleEnabled)
+    throw new HttpError(503, 'Google Calendar is not configured on this server');
   const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   u.searchParams.set('client_id', env.GOOGLE_CLIENT_ID!);
   u.searchParams.set('redirect_uri', googleRedirectUri());
@@ -65,12 +66,20 @@ async function tokenRequest(params: Record<string, string>) {
   return json;
 }
 
-export async function exchangeCode(code: string): Promise<{ tokens: GoogleTokens; email: string | null }> {
-  const json = await tokenRequest({ code, grant_type: 'authorization_code', redirect_uri: googleRedirectUri() });
+export async function exchangeCode(
+  code: string,
+): Promise<{ tokens: GoogleTokens; email: string | null }> {
+  const json = await tokenRequest({
+    code,
+    grant_type: 'authorization_code',
+    redirect_uri: googleRedirectUri(),
+  });
   let email: string | null = null;
   if (json.id_token) {
     try {
-      email = JSON.parse(Buffer.from(json.id_token.split('.')[1] ?? '', 'base64url').toString('utf8')).email ?? null;
+      email =
+        JSON.parse(Buffer.from(json.id_token.split('.')[1] ?? '', 'base64url').toString('utf8'))
+          .email ?? null;
     } catch {
       email = null;
     }
@@ -91,7 +100,10 @@ async function accessToken(integration: Integration): Promise<string> {
   if (tokens.expiresAt - 60_000 > Date.now()) return tokens.accessToken;
   if (!tokens.refreshToken) throw new HttpError(400, 'Reconnect Google Calendar');
 
-  const json = await tokenRequest({ grant_type: 'refresh_token', refresh_token: tokens.refreshToken });
+  const json = await tokenRequest({
+    grant_type: 'refresh_token',
+    refresh_token: tokens.refreshToken,
+  });
   const next: GoogleTokens = {
     accessToken: json.access_token!,
     refreshToken: json.refresh_token ?? tokens.refreshToken,
@@ -115,30 +127,46 @@ async function calendarFetch<T>(integration: Integration, path: string, body: un
   const json = (await res.json()) as T & { error?: { message?: string } };
   if (!res.ok) {
     const message = json.error?.message ?? `Google Calendar error ${res.status}`;
-    await prisma.integration.update({ where: { id: integration.id }, data: { lastError: message } });
+    await prisma.integration.update({
+      where: { id: integration.id },
+      data: { lastError: message },
+    });
     throw new HttpError(502, message, 'google_calendar');
   }
   return json;
 }
 
 export async function busySlots(integration: Integration, from: Date, to: Date) {
-  const json = await calendarFetch<{ calendars: Record<string, { busy: Array<{ start: string; end: string }> }> }>(
-    integration,
-    '/freeBusy',
-    { timeMin: from.toISOString(), timeMax: to.toISOString(), items: [{ id: 'primary' }] },
-  );
+  const json = await calendarFetch<{
+    calendars: Record<string, { busy: Array<{ start: string; end: string }> }>;
+  }>(integration, '/freeBusy', {
+    timeMin: from.toISOString(),
+    timeMax: to.toISOString(),
+    items: [{ id: 'primary' }],
+  });
   return json.calendars.primary?.busy ?? [];
 }
 
 export async function createEvent(
   integration: Integration,
-  event: { summary: string; description: string; start: Date; end: Date; timeZone: string; attendeeEmail?: string },
+  event: {
+    summary: string;
+    description: string;
+    start: Date;
+    end: Date;
+    timeZone: string;
+    attendeeEmail?: string;
+  },
 ) {
-  return calendarFetch<{ id: string; htmlLink: string }>(integration, '/calendars/primary/events?sendUpdates=all', {
-    summary: event.summary,
-    description: event.description,
-    start: { dateTime: event.start.toISOString(), timeZone: event.timeZone },
-    end: { dateTime: event.end.toISOString(), timeZone: event.timeZone },
-    attendees: event.attendeeEmail ? [{ email: event.attendeeEmail }] : undefined,
-  });
+  return calendarFetch<{ id: string; htmlLink: string }>(
+    integration,
+    '/calendars/primary/events?sendUpdates=all',
+    {
+      summary: event.summary,
+      description: event.description,
+      start: { dateTime: event.start.toISOString(), timeZone: event.timeZone },
+      end: { dateTime: event.end.toISOString(), timeZone: event.timeZone },
+      attendees: event.attendeeEmail ? [{ email: event.attendeeEmail }] : undefined,
+    },
+  );
 }

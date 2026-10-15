@@ -6,17 +6,25 @@ import { badRequest } from '../lib/http-error';
 import { CREDENTIAL_PROVIDER_LABELS } from '@pv/shared';
 
 /** A workspace's decrypted key for a vendor, or a clear error telling them to add one. */
-export async function requireApiKey(workspaceId: string, provider: CredentialProvider): Promise<string> {
+export async function requireApiKey(
+  workspaceId: string,
+  provider: CredentialProvider,
+): Promise<string> {
   const cred = await prisma.aiCredential.findUnique({
     where: { workspaceId_provider: { workspaceId, provider } },
   });
   if (!cred) {
-    throw badRequest(`Add your ${CREDENTIAL_PROVIDER_LABELS[provider]} API key under Integrations first`);
+    throw badRequest(
+      `Add your ${CREDENTIAL_PROVIDER_LABELS[provider]} API key under Integrations first`,
+    );
   }
   return decrypt(cred.apiKeyEnc);
 }
 
-export async function findApiKey(workspaceId: string, provider: CredentialProvider): Promise<string | null> {
+export async function findApiKey(
+  workspaceId: string,
+  provider: CredentialProvider,
+): Promise<string | null> {
   const cred = await prisma.aiCredential.findUnique({
     where: { workspaceId_provider: { workspaceId, provider } },
   });
@@ -44,10 +52,13 @@ export async function verifyApiKey(provider: CredentialProvider, apiKey: string)
         return;
       }
       case 'GEMINI': {
-        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1', {
-          headers: { 'x-goog-api-key': apiKey },
-          signal: AbortSignal.timeout(10_000),
-        });
+        const res = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+          {
+            headers: { 'x-goog-api-key': apiKey },
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return;
       }
@@ -61,7 +72,10 @@ export async function verifyApiKey(provider: CredentialProvider, apiKey: string)
       }
     }
   } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+    if (
+      err instanceof Anthropic.AuthenticationError ||
+      err instanceof Anthropic.PermissionDeniedError
+    ) {
       throw badRequest('Claude rejected that API key');
     }
     throw badRequest(

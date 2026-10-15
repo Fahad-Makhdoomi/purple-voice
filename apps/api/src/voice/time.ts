@@ -18,7 +18,14 @@ function offsetMs(instant: Date, timeZone: string): number {
       .formatToParts(instant)
       .map((p) => [p.type, p.value]),
   );
-  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const asUtc = Date.UTC(
+    +parts.year,
+    +parts.month - 1,
+    +parts.day,
+    +parts.hour,
+    +parts.minute,
+    +parts.second,
+  );
   return asUtc - instant.getTime();
 }
 
@@ -49,7 +56,11 @@ export function utcToZoned(instant: Date, timeZone: string) {
       .map((p) => [p.type, p.value]),
   );
   const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}`, weekday };
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+    weekday,
+  };
 }
 
 export function describe(instant: Date, timeZone: string): string {

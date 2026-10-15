@@ -33,7 +33,8 @@ export class ClaudeConversation implements LlmConversation {
   }
 
   noteInterrupted(spokenText: string) {
-    if (spokenText.trim()) this.messages.push({ role: 'assistant', content: `${spokenText.trim()} —` });
+    if (spokenText.trim())
+      this.messages.push({ role: 'assistant', content: `${spokenText.trim()} —` });
   }
 
   async turn(userText: string, h: TurnHandlers): Promise<void> {
@@ -83,7 +84,11 @@ export class ClaudeConversation implements LlmConversation {
         });
       }
       this.messages.push({ role: 'user', content: results });
-      if (final.content.some((b) => b.type === 'tool_use' && (b.name === 'end_call' || b.name === 'transfer_call'))) {
+      if (
+        final.content.some(
+          (b) => b.type === 'tool_use' && (b.name === 'end_call' || b.name === 'transfer_call'),
+        )
+      ) {
         return;
       }
     }

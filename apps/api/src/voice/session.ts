@@ -1,4 +1,12 @@
-import type { Agent, Call, CampaignContact, Integration, PhoneNumber, TelephonyAccount, Workspace } from '@prisma/client';
+import type {
+  Agent,
+  Call,
+  CampaignContact,
+  Integration,
+  PhoneNumber,
+  TelephonyAccount,
+  Workspace,
+} from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { signedCallbackUrl } from '../lib/signed-url';
@@ -66,7 +74,9 @@ export class CallSession {
     this.call = call;
     this.providerCallId = call.providerCallId ?? undefined;
     this.adapter = adapterForAccount(call.phoneNumber.telephonyAccount);
-    this.transcript = Array.isArray(call.transcript) ? (call.transcript as unknown as TranscriptLine[]) : [];
+    this.transcript = Array.isArray(call.transcript)
+      ? (call.transcript as unknown as TranscriptLine[])
+      : [];
 
     this.transport.onStart(({ providerCallId }) => {
       if (providerCallId && !this.providerCallId) this.providerCallId = providerCallId;
@@ -77,7 +87,10 @@ export class CallSession {
       this.engine = await this.createEngine(call.agent);
     } catch (err) {
       logger.error({ err, callId: this.callId }, 'Could not start voice engine');
-      await prisma.call.update({ where: { id: this.callId }, data: { errorMessage: (err as Error).message } });
+      await prisma.call.update({
+        where: { id: this.callId },
+        data: { errorMessage: (err as Error).message },
+      });
       await this.hangup();
       return;
     }
@@ -89,7 +102,10 @@ export class CallSession {
       this.note('Maximum call duration reached');
       void this.hangup();
     }, call.agent.maxCallDurationSec * 1000);
-    this.flushTimer = setInterval(() => void saveTranscript(this.callId, this.transcript), TRANSCRIPT_FLUSH_MS);
+    this.flushTimer = setInterval(
+      () => void saveTranscript(this.callId, this.transcript),
+      TRANSCRIPT_FLUSH_MS,
+    );
 
     await emitEvent(call.workspaceId, 'call.started', {
       callId: call.id,
@@ -130,7 +146,15 @@ export class CallSession {
       const apiKey = await findApiKey(this.call.workspaceId, 'OPENAI');
       if (!apiKey) throw new Error('No OpenAI key for the Realtime engine');
       return new OpenAIRealtimeEngine(
-        { apiKey, model: agent.llmModel, voice: agent.voice, language: agent.language, instructions, greeting, tools },
+        {
+          apiKey,
+          model: agent.llmModel,
+          voice: agent.voice,
+          language: agent.language,
+          instructions,
+          greeting,
+          tools,
+        },
         callbacks,
       );
     }
@@ -184,15 +208,27 @@ export class CallSession {
           return await this.availability(agent, date, tz);
         }
         case 'book_appointment': {
-          const input = parsed.data as { start: string; name: string; email?: string; notes?: string };
+          const input = parsed.data as {
+            start: string;
+            name: string;
+            email?: string;
+            notes?: string;
+          };
           return await this.book(agent, input, tz);
         }
         case 'transfer_call': {
-          if (!agent.transferNumber || !this.providerCallId) return 'Error: transfer is not available on this call';
-          this.note(`Transferring to ${agent.transferNumber}: ${(parsed.data as { reason: string }).reason}`);
+          if (!agent.transferNumber || !this.providerCallId)
+            return 'Error: transfer is not available on this call';
+          this.note(
+            `Transferring to ${agent.transferNumber}: ${(parsed.data as { reason: string }).reason}`,
+          );
           await prisma.call.update({
             where: { id: this.callId },
-            data: { status: 'TRANSFERRED', transferredTo: agent.transferNumber, outcome: 'TRANSFERRED' },
+            data: {
+              status: 'TRANSFERRED',
+              transferredTo: agent.transferNumber,
+              outcome: 'TRANSFERRED',
+            },
           });
           await this.waitForPlayback();
           await this.adapter.transferCall(
@@ -218,7 +254,11 @@ export class CallSession {
   private async calendar(agent: Agent): Promise<Integration | null> {
     if (!agent.calendarIntegrationId) return null;
     return prisma.integration.findFirst({
-      where: { id: agent.calendarIntegrationId, workspaceId: this.call.workspaceId, type: 'GOOGLE_CALENDAR' },
+      where: {
+        id: agent.calendarIntegrationId,
+        workspaceId: this.call.workspaceId,
+        type: 'GOOGLE_CALENDAR',
+      },
     });
   }
 
@@ -227,14 +267,20 @@ export class CallSession {
     const dayEnd = zonedToUtc(date, BUSINESS_HOURS.end, tz);
     const now = new Date(Date.now() + 60 * 60 * 1000);
     if (dayEnd <= now) return `No availability on ${date}; that day has passed or is nearly over.`;
-    if (utcToZoned(dayStart, tz).weekday % 6 === 0) return `${date} is a weekend day; no appointments then.`;
+    if (utcToZoned(dayStart, tz).weekday % 6 === 0)
+      return `${date} is a weekend day; no appointments then.`;
 
     const integration = await this.calendar(agent);
     const busy = [
       ...(integration ? await busySlots(integration, dayStart, dayEnd) : []),
       ...(
         await prisma.appointment.findMany({
-          where: { workspaceId: this.call.workspaceId, status: 'SCHEDULED', startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
+          where: {
+            workspaceId: this.call.workspaceId,
+            status: 'SCHEDULED',
+            startsAt: { lt: dayEnd },
+            endsAt: { gt: dayStart },
+          },
           select: { startsAt: true, endsAt: true },
         })
       ).map((a) => ({ start: a.startsAt.toISOString(), end: a.endsAt.toISOString() })),
@@ -242,7 +288,11 @@ export class CallSession {
 
     const slotMs = agent.appointmentDurationMin * 60_000;
     const slots: string[] = [];
-    for (let t = dayStart.getTime(); t + slotMs <= dayEnd.getTime() && slots.length < 8; t += 30 * 60_000) {
+    for (
+      let t = dayStart.getTime();
+      t + slotMs <= dayEnd.getTime() && slots.length < 8;
+      t += 30 * 60_000
+    ) {
       if (t < now.getTime()) continue;
       if (busy.some((b) => t < b.end && t + slotMs > b.start)) continue;
       const z = utcToZoned(new Date(t), tz);
@@ -253,14 +303,23 @@ export class CallSession {
       : `No open slots on ${date}. Offer another day.`;
   }
 
-  private async book(agent: Agent, input: { start: string; name: string; email?: string; notes?: string }, tz: string) {
+  private async book(
+    agent: Agent,
+    input: { start: string; name: string; email?: string; notes?: string },
+    tz: string,
+  ) {
     const [date, time] = input.start.split('T');
     const startsAt = zonedToUtc(date, time, tz);
     const endsAt = new Date(startsAt.getTime() + agent.appointmentDurationMin * 60_000);
     if (startsAt.getTime() < Date.now()) return 'Error: that time is in the past.';
 
     const clash = await prisma.appointment.count({
-      where: { workspaceId: this.call.workspaceId, status: 'SCHEDULED', startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+      where: {
+        workspaceId: this.call.workspaceId,
+        status: 'SCHEDULED',
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+      },
     });
     if (clash) return 'Error: that slot was just taken. Check availability again.';
 
@@ -271,7 +330,12 @@ export class CallSession {
     if (integration) {
       const event = await createEvent(integration, {
         summary: `${this.call.workspace.name} × ${input.name}`,
-        description: [`Booked by ${agent.name} (Purple Voice) during a call with ${phone}.`, input.notes].filter(Boolean).join('\n\n'),
+        description: [
+          `Booked by ${agent.name} (Purple Voice) during a call with ${phone}.`,
+          input.notes,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
         start: startsAt,
         end: endsAt,
         timeZone: tz,
@@ -297,7 +361,10 @@ export class CallSession {
         externalEventUrl,
       },
     });
-    await prisma.call.update({ where: { id: this.callId }, data: { outcome: 'APPOINTMENT_BOOKED' } });
+    await prisma.call.update({
+      where: { id: this.callId },
+      data: { outcome: 'APPOINTMENT_BOOKED' },
+    });
     this.note(`Appointment booked for ${describe(startsAt, tz)}`);
     await emitEvent(this.call.workspaceId, 'appointment.booked', {
       appointmentId: appointment.id,
@@ -314,7 +381,9 @@ export class CallSession {
 
   private async hangup() {
     if (this.providerCallId) {
-      await this.adapter.hangup(this.providerCallId).catch((err) => logger.warn({ err }, 'Hangup failed'));
+      await this.adapter
+        .hangup(this.providerCallId)
+        .catch((err) => logger.warn({ err }, 'Hangup failed'));
     }
     this.transport.close();
   }
@@ -331,7 +400,10 @@ export class CallSession {
       // The carrier's status callback normally closes the call. If it never
       // arrives (misconfigured webhook), close it ourselves.
       setTimeout(async () => {
-        const call = await prisma.call.findUnique({ where: { id: this.callId }, select: { status: true } });
+        const call = await prisma.call.findUnique({
+          where: { id: this.callId },
+          select: { status: true },
+        });
         if (call && !isTerminal(call.status)) await applyCallStatus(this.callId, 'COMPLETED');
       }, 30_000);
     } catch (err) {

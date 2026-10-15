@@ -1,3 +1,4 @@
+import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -36,7 +37,8 @@ export function createApp() {
     pinoHttp({
       logger,
       autoLogging: { ignore: (req) => req.url === '/api/health' },
-      customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+      customLogLevel: (_req, res, err) =>
+        err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
     }),
   );
   app.use(
@@ -53,6 +55,20 @@ export function createApp() {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ ok: true, time: new Date().toISOString() });
   });
+
+  // Local uploads. In production nginx serves /uploads directly from disk and
+  // never reaches this; it keeps development and nginx-less installs working.
+  if (env.STORAGE_DRIVER === 'local') {
+    app.use(
+      '/uploads',
+      express.static(path.resolve(process.cwd(), env.STORAGE_LOCAL_PATH), {
+        immutable: true,
+        maxAge: '365d',
+        index: false,
+        dotfiles: 'deny',
+      }),
+    );
+  }
 
   // Mounted before the JSON parser: the Stripe webhook needs the raw body.
   app.use('/api/billing', billingRouter);

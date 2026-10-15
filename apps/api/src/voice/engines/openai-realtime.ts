@@ -26,9 +26,12 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
   ) {}
 
   async start(): Promise<void> {
-    const ws = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(this.config.model)}`, {
-      headers: { Authorization: `Bearer ${this.config.apiKey}` },
-    });
+    const ws = new WebSocket(
+      `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(this.config.model)}`,
+      {
+        headers: { Authorization: `Bearer ${this.config.apiKey}` },
+      },
+    );
     this.ws = ws;
 
     await new Promise<void>((resolve, reject) => {
@@ -59,8 +62,15 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
         audio: {
           input: {
             format: { type: 'audio/pcmu' },
-            turn_detection: { type: 'server_vad', silence_duration_ms: 500, prefix_padding_ms: 300 },
-            transcription: { model: 'gpt-4o-mini-transcribe', language: this.config.language.slice(0, 2) },
+            turn_detection: {
+              type: 'server_vad',
+              silence_duration_ms: 500,
+              prefix_padding_ms: 300,
+            },
+            transcription: {
+              model: 'gpt-4o-mini-transcribe',
+              language: this.config.language.slice(0, 2),
+            },
           },
           output: { format: { type: 'audio/pcmu' }, voice: this.config.voice },
         },
@@ -150,7 +160,9 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
   }
 
   private async handleToolCalls(output: Array<Record<string, any>>) {
-    const calls = output.filter((item) => item.type === 'function_call' && !this.handledCalls.has(item.call_id));
+    const calls = output.filter(
+      (item) => item.type === 'function_call' && !this.handledCalls.has(item.call_id),
+    );
     if (!calls.length) return;
     let continueConversation = false;
     for (const item of calls) {
@@ -161,7 +173,9 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
       } catch {
         args = { __invalid: item.arguments };
       }
-      const result = await this.cb.onToolCall(item.name, args).catch((err: Error) => `Error: ${err.message}`);
+      const result = await this.cb
+        .onToolCall(item.name, args)
+        .catch((err: Error) => `Error: ${err.message}`);
       this.send({
         type: 'conversation.item.create',
         item: { type: 'function_call_output', call_id: item.call_id, output: result },

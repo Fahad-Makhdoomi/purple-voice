@@ -22,7 +22,10 @@ publicRouter.use((_req, res, next) => {
 });
 
 publicRouter.get('/plans', async (_req, res) => {
-  const plans = await prisma.plan.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } });
+  const plans = await prisma.plan.findMany({
+    where: { active: true },
+    orderBy: { sortOrder: 'asc' },
+  });
   res.json({
     plans: plans.map((p) => ({
       code: p.code,
@@ -52,7 +55,11 @@ const published = () => ({ status: 'PUBLISHED' as const, publishedAt: { lte: new
 
 publicRouter.get('/posts', async (req, res) => {
   const { page, pageSize } = paginationSchema.parse(req.query);
-  const tag = z.string().max(40).optional().parse(req.query.tag || undefined);
+  const tag = z
+    .string()
+    .max(40)
+    .optional()
+    .parse(req.query.tag || undefined);
   const where = { ...published(), ...(tag ? { tags: { has: tag } } : {}) };
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
@@ -100,7 +107,9 @@ publicRouter.get('/pages', async (_req, res) => {
 });
 
 publicRouter.get('/pages/:slug', async (req, res) => {
-  const page = await prisma.page.findFirst({ where: { slug: req.params.slug, status: 'PUBLISHED' } });
+  const page = await prisma.page.findFirst({
+    where: { slug: req.params.slug, status: 'PUBLISHED' },
+  });
   if (!page) throw notFound('Page');
   res.json({ page });
 });
@@ -116,7 +125,9 @@ publicRouter.get('/settings', async (_req, res) => {
     analytics,
     captcha: {
       provider: env.captchaEnabled ? env.CAPTCHA_PROVIDER : 'none',
-      forms: env.captchaEnabled ? security.captcha : { signup: false, login: false, forgotPassword: false, contact: false },
+      forms: env.captchaEnabled
+        ? security.captcha
+        : { signup: false, login: false, forgotPassword: false, contact: false },
     },
   });
 });
@@ -124,8 +135,14 @@ publicRouter.get('/settings', async (_req, res) => {
 /** Everything the sitemap needs in one request. */
 publicRouter.get('/sitemap', async (_req, res) => {
   const [pages, posts] = await Promise.all([
-    prisma.page.findMany({ where: { status: 'PUBLISHED', noindex: false }, select: { slug: true, updatedAt: true } }),
-    prisma.post.findMany({ where: { ...published(), noindex: false }, select: { slug: true, updatedAt: true } }),
+    prisma.page.findMany({
+      where: { status: 'PUBLISHED', noindex: false },
+      select: { slug: true, updatedAt: true },
+    }),
+    prisma.post.findMany({
+      where: { ...published(), noindex: false },
+      select: { slug: true, updatedAt: true },
+    }),
   ]);
   res.json({ pages, posts });
 });

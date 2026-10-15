@@ -1,5 +1,8 @@
 import OpenAI from 'openai';
-import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from 'openai/resources/chat/completions';
 import type { ToolDefinition } from '../tools';
 import { MAX_TOOL_ROUNDS, type LlmConversation, type TurnHandlers } from './types';
 
@@ -24,7 +27,8 @@ export class OpenAIConversation implements LlmConversation {
   }
 
   noteInterrupted(spokenText: string) {
-    if (spokenText.trim()) this.messages.push({ role: 'assistant', content: `${spokenText.trim()} —` });
+    if (spokenText.trim())
+      this.messages.push({ role: 'assistant', content: `${spokenText.trim()} —` });
   }
 
   async turn(userText: string, h: TurnHandlers): Promise<void> {

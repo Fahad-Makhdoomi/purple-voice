@@ -26,10 +26,19 @@ const JSON_SCHEMA = {
   additionalProperties: false,
   required: ['summary', 'outcome', 'sentiment', 'followUp'],
   properties: {
-    summary: { type: 'string', description: '2–4 sentence summary of the call for a sales manager.' },
+    summary: {
+      type: 'string',
+      description: '2–4 sentence summary of the call for a sales manager.',
+    },
     outcome: { type: 'string', enum: [...CALL_OUTCOMES] },
-    sentiment: { type: 'number', description: "Caller's sentiment from -1 (hostile) to 1 (enthusiastic)." },
-    followUp: { type: 'string', description: 'The single most useful next step, or an empty string.' },
+    sentiment: {
+      type: 'number',
+      description: "Caller's sentiment from -1 (hostile) to 1 (enthusiastic).",
+    },
+    followUp: {
+      type: 'string',
+      description: 'The single most useful next step, or an empty string.',
+    },
   },
 } as const;
 
@@ -77,7 +86,9 @@ export async function summarizeCall(
         logger.warn({ workspaceId }, 'Claude declined to summarise a call');
         return null;
       }
-      const text = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')?.text;
+      const text = response.content.find(
+        (b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text',
+      )?.text;
       return text ? summarySchema.parse(JSON.parse(text)) : null;
     }
 
@@ -92,7 +103,11 @@ export async function summarizeCall(
         ],
         response_format: {
           type: 'json_schema',
-          json_schema: { name: 'call_summary', strict: true, schema: JSON_SCHEMA as unknown as Record<string, unknown> },
+          json_schema: {
+            name: 'call_summary',
+            strict: true,
+            schema: JSON_SCHEMA as unknown as Record<string, unknown>,
+          },
         },
       });
       const text = completion.choices[0]?.message.content;

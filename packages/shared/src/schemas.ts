@@ -95,7 +95,10 @@ export const telephonyAccountSchema = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('TWILIO'),
     label: z.string().trim().max(80).optional(),
-    accountSid: z.string().trim().regex(/^AC[0-9a-fA-F]{32}$/, 'Twilio Account SID starts with AC'),
+    accountSid: z
+      .string()
+      .trim()
+      .regex(/^AC[0-9a-fA-F]{32}$/, 'Twilio Account SID starts with AC'),
     authToken: z.string().trim().min(16).max(200),
   }),
   z.object({

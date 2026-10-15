@@ -57,8 +57,17 @@ async function issueSession(req: Request, res: Response, user: User, familyId?: 
     path: '/',
     maxAge: env.ACCESS_TOKEN_TTL_MIN * 60 * 1000,
   });
-  res.cookie(REFRESH_COOKIE, refreshToken, { ...baseCookie(), path: REFRESH_PATH, maxAge: refreshMs });
-  res.cookie(ROLE_COOKIE, user.role, { ...baseCookie(), httpOnly: false, path: '/', maxAge: refreshMs });
+  res.cookie(REFRESH_COOKIE, refreshToken, {
+    ...baseCookie(),
+    path: REFRESH_PATH,
+    maxAge: refreshMs,
+  });
+  res.cookie(ROLE_COOKIE, user.role, {
+    ...baseCookie(),
+    httpOnly: false,
+    path: '/',
+    maxAge: refreshMs,
+  });
   return session;
 }
 
@@ -68,7 +77,9 @@ function clearSession(res: Response) {
   res.clearCookie(ROLE_COOKIE, { ...baseCookie(), httpOnly: false, path: '/' });
 }
 
-function publicUser(user: Pick<User, 'id' | 'email' | 'name' | 'role' | 'workspaceId' | 'timezone'>) {
+function publicUser(
+  user: Pick<User, 'id' | 'email' | 'name' | 'role' | 'workspaceId' | 'timezone'>,
+) {
   return {
     id: user.id,
     email: user.email,
@@ -125,7 +136,10 @@ authRouter.post('/login', authLimiter, async (req, res) => {
 
 authRouter.post('/refresh', async (req, res) => {
   const token = req.cookies?.[REFRESH_COOKIE];
-  if (typeof token !== 'string' || !token) throw unauthorized();
+  if (typeof token !== 'string' || !token) {
+    clearSession(res);
+    throw unauthorized();
+  }
 
   const session = await prisma.session.findUnique({
     where: { tokenHash: sha256(token) },
@@ -256,7 +270,9 @@ authRouter.post('/forgot-password', authLimiter, async (req, res) => {
 
 authRouter.post('/reset-password', authLimiter, async (req, res) => {
   const input = resetPasswordSchema.parse(req.body);
-  const reset = await prisma.passwordReset.findUnique({ where: { tokenHash: sha256(input.token) } });
+  const reset = await prisma.passwordReset.findUnique({
+    where: { tokenHash: sha256(input.token) },
+  });
   if (!reset || reset.usedAt || reset.expiresAt < new Date()) {
     throw badRequest('This reset link has expired. Request a new one.');
   }

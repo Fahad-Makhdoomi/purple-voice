@@ -36,7 +36,9 @@ supportRouter.post('/tickets', async (req, res) => {
       workspaceId,
       subject: input.subject,
       priority,
-      messages: { create: { authorId: req.user!.id, fromStaff: !!req.actingAsStaff, body: input.body } },
+      messages: {
+        create: { authorId: req.user!.id, fromStaff: !!req.actingAsStaff, body: input.body },
+      },
     },
   });
   notifyStaff(
@@ -62,13 +64,23 @@ supportRouter.get('/tickets/:id', async (req, res) => {
 
 supportRouter.post('/tickets/:id/messages', async (req, res) => {
   const input = ticketReplySchema.parse(req.body);
-  const ticket = await prisma.ticket.findFirst({ where: { id: req.params.id, workspaceId: wsId(req) } });
+  const ticket = await prisma.ticket.findFirst({
+    where: { id: req.params.id, workspaceId: wsId(req) },
+  });
   if (!ticket) throw notFound('Ticket');
   const message = await prisma.ticketMessage.create({
-    data: { ticketId: ticket.id, authorId: req.user!.id, fromStaff: !!req.actingAsStaff, body: input.body },
+    data: {
+      ticketId: ticket.id,
+      authorId: req.user!.id,
+      fromStaff: !!req.actingAsStaff,
+      body: input.body,
+    },
   });
   await prisma.ticket.update({ where: { id: ticket.id }, data: { status: 'OPEN' } });
-  notifyStaff(`Reply on: ${ticket.subject}`, `${input.body}\n\n${env.appUrl}/admin/support/${ticket.id}`);
+  notifyStaff(
+    `Reply on: ${ticket.subject}`,
+    `${input.body}\n\n${env.appUrl}/admin/support/${ticket.id}`,
+  );
   res.status(201).json({ message });
 });
 
@@ -78,21 +90,32 @@ supportRouter.post('/tickets/:id/messages', async (req, res) => {
  *   data: {"done": true}     — end of reply
  *   data: {"error": "..."}   — failure after streaming started
  */
-supportRouter.post('/assistant', requireFeature('aiSupportAssistant'), assistantLimiter, async (req, res) => {
-  const { messages } = assistantMessageSchema.parse(req.body);
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
+supportRouter.post(
+  '/assistant',
+  requireFeature('aiSupportAssistant'),
+  assistantLimiter,
+  async (req, res) => {
+    const { messages } = assistantMessageSchema.parse(req.body);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
 
-  const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-  try {
-    const { refused } = await streamAssistantReply(wsId(req), messages, (delta) => send({ delta }));
-    if (refused) send({ delta: "\n\nI can't help with that one. Please open a support ticket and the team will take a look." });
-    send({ done: true });
-  } catch (err) {
-    logger.error({ err }, 'Assistant reply failed');
-    send({ error: 'The assistant is unavailable right now. Please try again or open a ticket.' });
-  }
-  res.end();
-});
+    const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+    try {
+      const { refused } = await streamAssistantReply(wsId(req), messages, (delta) =>
+        send({ delta }),
+      );
+      if (refused)
+        send({
+          delta:
+            "\n\nI can't help with that one. Please open a support ticket and the team will take a look.",
+        });
+      send({ done: true });
+    } catch (err) {
+      logger.error({ err }, 'Assistant reply failed');
+      send({ error: 'The assistant is unavailable right now. Please try again or open a ticket.' });
+    }
+    res.end();
+  },
+);

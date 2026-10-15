@@ -49,7 +49,10 @@ credentialsRouter.put('/', async (req, res) => {
       verifiedAt: new Date(),
     },
   });
-  await audit(req, 'credential.saved', { entity: 'AiCredential', meta: { provider: input.provider } });
+  await audit(req, 'credential.saved', {
+    entity: 'AiCredential',
+    meta: { provider: input.provider },
+  });
   res.json({ ok: true });
 });
 

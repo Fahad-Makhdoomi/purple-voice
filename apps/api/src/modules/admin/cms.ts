@@ -85,7 +85,15 @@ cmsRouter.get('/posts', async (req, res) => {
       orderBy: { updatedAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      select: { id: true, slug: true, title: true, status: true, publishedAt: true, updatedAt: true, tags: true },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        status: true,
+        publishedAt: true,
+        updatedAt: true,
+        tags: true,
+      },
     }),
     prisma.post.count({ where }),
   ]);
@@ -104,7 +112,8 @@ cmsRouter.post('/posts', async (req, res) => {
     data: {
       ...input,
       authorId: req.user!.id,
-      publishedAt: input.status === 'PUBLISHED' ? (input.publishedAt ?? new Date()) : input.publishedAt,
+      publishedAt:
+        input.status === 'PUBLISHED' ? (input.publishedAt ?? new Date()) : input.publishedAt,
     },
   });
   await audit(req, 'cms.post_created', { entity: 'Post', entityId: post.id });
@@ -121,7 +130,9 @@ cmsRouter.patch('/posts/:id', async (req, res) => {
     data: {
       ...input,
       publishedAt:
-        input.status === 'PUBLISHED' && !before.publishedAt && !input.publishedAt ? new Date() : input.publishedAt,
+        input.status === 'PUBLISHED' && !before.publishedAt && !input.publishedAt
+          ? new Date()
+          : input.publishedAt,
     },
   });
   await audit(req, 'cms.post_updated', { entity: 'Post', entityId: post.id });
@@ -150,7 +161,10 @@ cmsRouter.post('/faqs', async (req, res) => {
 });
 
 cmsRouter.patch('/faqs/:id', async (req, res) => {
-  const faq = await prisma.faq.update({ where: { id: req.params.id }, data: updateFaqSchema.parse(req.body) });
+  const faq = await prisma.faq.update({
+    where: { id: req.params.id },
+    data: updateFaqSchema.parse(req.body),
+  });
   revalidate(['faqs']);
   res.json({ faq });
 });
@@ -182,15 +196,22 @@ cmsRouter.put('/settings/:key', async (req, res) => {
 /** Drafts SEO metadata for a page or post with Claude (platform key). */
 cmsRouter.post('/ai/seo-suggest', async (req, res) => {
   const input = seoSuggestSchema.parse(req.body);
-  if (!env.ANTHROPIC_API_KEY) throw new HttpError(503, 'AI is not configured', 'assistant_unavailable');
+  if (!env.ANTHROPIC_API_KEY)
+    throw new HttpError(503, 'AI is not configured', 'assistant_unavailable');
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const schema = {
     type: 'object',
     additionalProperties: false,
     required: ['seoTitle', 'seoDescription', 'excerpt'],
     properties: {
-      seoTitle: { type: 'string', description: 'Search result title, at most 60 characters, no brand suffix.' },
-      seoDescription: { type: 'string', description: 'Meta description, 140–160 characters, with a clear benefit.' },
+      seoTitle: {
+        type: 'string',
+        description: 'Search result title, at most 60 characters, no brand suffix.',
+      },
+      seoDescription: {
+        type: 'string',
+        description: 'Meta description, 140–160 characters, with a clear benefit.',
+      },
       excerpt: { type: 'string', description: 'One or two sentence teaser for listing pages.' },
     },
   };
@@ -199,11 +220,16 @@ cmsRouter.post('/ai/seo-suggest', async (req, res) => {
     max_tokens: 16000,
     system:
       'You write search metadata for Purple Voice, an AI voice-agent platform for sales teams. Write plainly, specifically and without hype. Respect the length limits exactly.',
-    messages: [{ role: 'user', content: `Title: ${input.title}\n\nContent:\n${input.body.slice(0, 60000)}` }],
+    messages: [
+      { role: 'user', content: `Title: ${input.title}\n\nContent:\n${input.body.slice(0, 60000)}` },
+    ],
     ...claudeExtras(env.ASSISTANT_MODEL, 'low', { type: 'json_schema', schema }),
   });
-  if (response.stop_reason === 'refusal') throw badRequest('The AI could not write metadata for this content');
-  const text = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')?.text ?? '{}';
+  if (response.stop_reason === 'refusal')
+    throw badRequest('The AI could not write metadata for this content');
+  const text =
+    response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')?.text ??
+    '{}';
   const parsed = z
     .object({ seoTitle: z.string(), seoDescription: z.string(), excerpt: z.string() })
     .parse(JSON.parse(text));
@@ -224,17 +250,35 @@ const upload = multer({
 
 cmsRouter.get('/media', async (req, res) => {
   const { page, pageSize, q } = paginationSchema.parse(req.query);
-  const folder = z.string().max(120).optional().parse(req.query.folder || undefined);
+  const folder = z
+    .string()
+    .max(120)
+    .optional()
+    .parse(req.query.folder || undefined);
   const where: Prisma.MediaAssetWhereInput = {
     ...(folder ? { folder } : {}),
     ...(q
-      ? { OR: [{ filename: { contains: q, mode: 'insensitive' } }, { alt: { contains: q, mode: 'insensitive' } }] }
+      ? {
+          OR: [
+            { filename: { contains: q, mode: 'insensitive' } },
+            { alt: { contains: q, mode: 'insensitive' } },
+          ],
+        }
       : {}),
   };
   const [assets, total, folders] = await Promise.all([
-    prisma.mediaAsset.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.mediaAsset.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
     prisma.mediaAsset.count({ where }),
-    prisma.mediaAsset.groupBy({ by: ['folder'], _count: { _all: true }, orderBy: { folder: 'asc' } }),
+    prisma.mediaAsset.groupBy({
+      by: ['folder'],
+      _count: { _all: true },
+      orderBy: { folder: 'asc' },
+    }),
   ]);
   res.json({
     assets,
@@ -275,10 +319,21 @@ cmsRouter.patch('/media/:id', async (req, res) => {
 cmsRouter.delete('/media/:id', async (req, res) => {
   const asset = await prisma.mediaAsset.findUnique({ where: { id: req.params.id } });
   if (!asset) throw notFound('Image');
-  const usedIn = await prisma.post.count({
-    where: { OR: [{ coverImageUrl: asset.url }, { ogImageUrl: asset.url }, { body: { contains: asset.url } }] },
-  }) + await prisma.page.count({ where: { OR: [{ ogImageUrl: asset.url }, { body: { contains: asset.url } }] } });
-  if (usedIn) throw badRequest(`This image is used on ${usedIn} page(s) or post(s). Remove it there first.`);
+  const usedIn =
+    (await prisma.post.count({
+      where: {
+        OR: [
+          { coverImageUrl: asset.url },
+          { ogImageUrl: asset.url },
+          { body: { contains: asset.url } },
+        ],
+      },
+    })) +
+    (await prisma.page.count({
+      where: { OR: [{ ogImageUrl: asset.url }, { body: { contains: asset.url } }] },
+    }));
+  if (usedIn)
+    throw badRequest(`This image is used on ${usedIn} page(s) or post(s). Remove it there first.`);
   await deleteImage(asset.id);
   await audit(req, 'media.deleted', { entity: 'MediaAsset', entityId: asset.id });
   res.json({ ok: true });

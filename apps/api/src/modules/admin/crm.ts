@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { leadUpdateSchema, paginationSchema, ticketReplySchema, ticketUpdateSchema } from '@pv/shared';
+import {
+  leadUpdateSchema,
+  paginationSchema,
+  ticketReplySchema,
+  ticketUpdateSchema,
+} from '@pv/shared';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { env } from '../../config/env';
@@ -14,27 +19,45 @@ export const crmRouter = Router();
 crmRouter.get('/overview', async (_req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [workspaces, active, signupsWeek, openTickets, urgentTickets, newLeads, callsToday, liveCalls, recentSignups] =
-    await Promise.all([
-      prisma.workspace.count(),
-      prisma.subscription.count({ where: { status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] } } }),
-      prisma.workspace.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.ticket.count({ where: { status: { in: ['OPEN', 'PENDING'] } } }),
-      prisma.ticket.count({ where: { status: 'OPEN', priority: { in: ['HIGH', 'URGENT'] } } }),
-      prisma.lead.count({ where: { status: 'NEW' } }),
-      prisma.call.count({ where: { createdAt: { gte: dayAgo } } }),
-      prisma.call.count({ where: { status: { in: ['RINGING', 'IN_PROGRESS'] } } }),
-      prisma.workspace.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 6,
-        include: {
-          users: { take: 1, select: { name: true, email: true } },
-          subscription: { select: { status: true, plan: { select: { name: true } } } },
-        },
-      }),
-    ]);
+  const [
+    workspaces,
+    active,
+    signupsWeek,
+    openTickets,
+    urgentTickets,
+    newLeads,
+    callsToday,
+    liveCalls,
+    recentSignups,
+  ] = await Promise.all([
+    prisma.workspace.count(),
+    prisma.subscription.count({ where: { status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] } } }),
+    prisma.workspace.count({ where: { createdAt: { gte: weekAgo } } }),
+    prisma.ticket.count({ where: { status: { in: ['OPEN', 'PENDING'] } } }),
+    prisma.ticket.count({ where: { status: 'OPEN', priority: { in: ['HIGH', 'URGENT'] } } }),
+    prisma.lead.count({ where: { status: 'NEW' } }),
+    prisma.call.count({ where: { createdAt: { gte: dayAgo } } }),
+    prisma.call.count({ where: { status: { in: ['RINGING', 'IN_PROGRESS'] } } }),
+    prisma.workspace.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+      include: {
+        users: { take: 1, select: { name: true, email: true } },
+        subscription: { select: { status: true, plan: { select: { name: true } } } },
+      },
+    }),
+  ]);
   res.json({
-    counts: { workspaces, active, signupsWeek, openTickets, urgentTickets, newLeads, callsToday, liveCalls },
+    counts: {
+      workspaces,
+      active,
+      signupsWeek,
+      openTickets,
+      urgentTickets,
+      newLeads,
+      callsToday,
+      liveCalls,
+    },
     recentSignups,
   });
 });
@@ -53,7 +76,10 @@ crmRouter.get('/staff', async (_req, res) => {
 
 crmRouter.get('/leads', async (req, res) => {
   const { page, pageSize, q } = paginationSchema.parse(req.query);
-  const status = z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'WON', 'LOST']).optional().parse(req.query.status || undefined);
+  const status = z
+    .enum(['NEW', 'CONTACTED', 'QUALIFIED', 'WON', 'LOST'])
+    .optional()
+    .parse(req.query.status || undefined);
   const where: Prisma.LeadWhereInput = {
     ...(status ? { status } : {}),
     ...(q
@@ -89,21 +115,34 @@ crmRouter.get('/leads', async (req, res) => {
 crmRouter.patch('/leads/:id', async (req, res) => {
   const input = leadUpdateSchema.parse(req.body);
   const lead = await prisma.lead.update({ where: { id: req.params.id }, data: input });
-  await audit(req, 'lead.updated', { entity: 'Lead', entityId: lead.id, meta: input as Prisma.InputJsonValue });
+  await audit(req, 'lead.updated', {
+    entity: 'Lead',
+    entityId: lead.id,
+    meta: input as Prisma.InputJsonValue,
+  });
   res.json({ lead });
 });
 
 // ── Support queue ───────────────────────────────────────────────────────────
 
 crmRouter.get('/tickets', async (req, res) => {
-  const status = z.enum(['OPEN', 'PENDING', 'RESOLVED', 'CLOSED']).optional().parse(req.query.status || undefined);
+  const status = z
+    .enum(['OPEN', 'PENDING', 'RESOLVED', 'CLOSED'])
+    .optional()
+    .parse(req.query.status || undefined);
   const tickets = await prisma.ticket.findMany({
     where: status ? { status } : { status: { in: ['OPEN', 'PENDING'] } },
     // Priority support: Pro / Enterprise tickets surface first.
     orderBy: [{ priority: 'desc' }, { updatedAt: 'asc' }],
     take: 200,
     include: {
-      workspace: { select: { id: true, name: true, subscription: { select: { plan: { select: { code: true } } } } } },
+      workspace: {
+        select: {
+          id: true,
+          name: true,
+          subscription: { select: { plan: { select: { code: true } } } },
+        },
+      },
       assignee: { select: { id: true, name: true } },
       _count: { select: { messages: true } },
     },
@@ -117,7 +156,10 @@ crmRouter.get('/tickets/:id', async (req, res) => {
     include: {
       workspace: { select: { id: true, name: true } },
       assignee: { select: { id: true, name: true } },
-      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { name: true, email: true } } } },
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        include: { author: { select: { name: true, email: true } } },
+      },
     },
   });
   if (!ticket) throw notFound('Ticket');
@@ -134,7 +176,11 @@ crmRouter.post('/tickets/:id/messages', async (req, res) => {
   const input = ticketReplySchema.parse(req.body);
   const ticket = await prisma.ticket.findUnique({
     where: { id: req.params.id },
-    include: { workspace: { include: { users: { where: { role: 'SUBSCRIBER' }, select: { email: true, name: true } } } } },
+    include: {
+      workspace: {
+        include: { users: { where: { role: 'SUBSCRIBER' }, select: { email: true, name: true } } },
+      },
+    },
   });
   if (!ticket) throw notFound('Ticket');
   const message = await prisma.ticketMessage.create({

@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { agentSchema, testCallSchema, updateAgentSchema, type AgentInput, type Entitlements } from '@pv/shared';
+import {
+  agentSchema,
+  testCallSchema,
+  updateAgentSchema,
+  type AgentInput,
+  type Entitlements,
+} from '@pv/shared';
 import { prisma } from '../../lib/prisma';
 import { audit } from '../../lib/audit';
 import { badRequest, notFound, planLimit } from '../../lib/http-error';
@@ -12,9 +18,15 @@ import { startOutboundCall } from '../../services/calls';
 export const agentsRouter = Router();
 
 /** Cross-field rules zod can't see: plan features, engine/provider pairing, owned references. */
-async function assertAgentConfig(workspaceId: string, ent: Entitlements, input: Partial<AgentInput>) {
+async function assertAgentConfig(
+  workspaceId: string,
+  ent: Entitlements,
+  input: Partial<AgentInput>,
+) {
   if (input.voiceEngine === 'REALTIME' && input.llmProvider && input.llmProvider !== 'OPENAI') {
-    throw badRequest('The Realtime engine runs on OpenAI. Choose the Cascaded engine to use Claude or Gemini.');
+    throw badRequest(
+      'The Realtime engine runs on OpenAI. Choose the Cascaded engine to use Claude or Gemini.',
+    );
   }
   if (input.transferEnabled) {
     if (!ent.features.callTransfer) throw planLimit('Call transfer is not included in your plan');
@@ -82,7 +94,8 @@ agentsRouter.patch('/:id', async (req, res) => {
   if (input.status === 'ACTIVE') {
     const readiness = await agentReadiness(workspaceId, { ...existing, ...input });
     const blocking = readiness.filter((r) => !r.ok && r.blocking);
-    if (blocking.length) throw badRequest(`Before activating: ${blocking.map((b) => b.label).join('; ')}`);
+    if (blocking.length)
+      throw badRequest(`Before activating: ${blocking.map((b) => b.label).join('; ')}`);
   }
 
   const agent = await prisma.agent.update({ where: { id: existing.id }, data: input });
@@ -95,7 +108,8 @@ agentsRouter.delete('/:id', async (req, res) => {
   const agent = await prisma.agent.findFirst({ where: { id: req.params.id, workspaceId } });
   if (!agent) throw notFound('Agent');
   const campaigns = await prisma.campaign.count({ where: { agentId: agent.id } });
-  if (campaigns) throw badRequest('This agent is used by campaigns. Reassign or delete them first.');
+  if (campaigns)
+    throw badRequest('This agent is used by campaigns. Reassign or delete them first.');
   await prisma.agent.delete({ where: { id: agent.id } });
   await audit(req, 'agent.deleted', { entity: 'Agent', entityId: agent.id });
   res.json({ ok: true });
@@ -107,7 +121,9 @@ agentsRouter.post('/:id/test-call', requireActiveSubscription, async (req, res) 
   const workspaceId = wsId(req);
   const agent = await prisma.agent.findFirst({ where: { id: String(req.params.id), workspaceId } });
   if (!agent) throw notFound('Agent');
-  const number = await prisma.phoneNumber.findFirst({ where: { id: input.phoneNumberId, workspaceId } });
+  const number = await prisma.phoneNumber.findFirst({
+    where: { id: input.phoneNumberId, workspaceId },
+  });
   if (!number) throw notFound('Phone number');
 
   const call = await startOutboundCall({

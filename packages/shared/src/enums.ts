@@ -44,13 +44,7 @@ export type VoiceEngine = (typeof VOICE_ENGINES)[number];
 export const AGENT_STATUSES = ['DRAFT', 'ACTIVE', 'PAUSED'] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
 
-export const CAMPAIGN_STATUSES = [
-  'DRAFT',
-  'RUNNING',
-  'PAUSED',
-  'COMPLETED',
-  'CANCELED',
-] as const;
+export const CAMPAIGN_STATUSES = ['DRAFT', 'RUNNING', 'PAUSED', 'COMPLETED', 'CANCELED'] as const;
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 
 export const CONTACT_STATUSES = [

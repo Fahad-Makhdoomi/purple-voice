@@ -37,16 +37,17 @@ export function signedCallbackUrl(
  * Expires after `ttlSec`; tampering or expiry returns null.
  */
 export function signState(payload: Record<string, string>, ttlSec = 600): string {
-  const body = Buffer.from(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + ttlSec })).toString(
-    'base64url',
-  );
+  const body = Buffer.from(
+    JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + ttlSec }),
+  ).toString('base64url');
   return `${body}.${hmacSha256Hex(env.URL_SIGNING_SECRET, `state:${body}`)}`;
 }
 
 export function verifyState<T extends Record<string, string>>(state: unknown): T | null {
   if (typeof state !== 'string') return null;
   const [body, sig] = state.split('.');
-  if (!body || !sig || !safeEqual(hmacSha256Hex(env.URL_SIGNING_SECRET, `state:${body}`), sig)) return null;
+  if (!body || !sig || !safeEqual(hmacSha256Hex(env.URL_SIGNING_SECRET, `state:${body}`), sig))
+    return null;
   try {
     const data = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as T & { exp: number };
     return data.exp > Date.now() / 1000 ? data : null;

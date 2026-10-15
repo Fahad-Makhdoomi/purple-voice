@@ -49,8 +49,11 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   if (url.username || url.password) throw badRequest('Remove credentials from the URL');
 
   const host = url.hostname.replace(/^\[|\]$/g, '');
-  const addresses = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
+  const addresses = net.isIP(host)
+    ? [host]
+    : (await dns.lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
   if (!addresses.length) throw badRequest(`Could not resolve ${host}`);
-  if (env.isProd && addresses.some(isPrivateIp)) throw badRequest('That URL points to a private network');
+  if (env.isProd && addresses.some(isPrivateIp))
+    throw badRequest('That URL points to a private network');
   return url;
 }

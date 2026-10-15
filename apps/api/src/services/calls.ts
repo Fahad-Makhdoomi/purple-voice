@@ -9,7 +9,14 @@ import { emitEvent } from '../events';
 import { canStartCall, getEntitlements, recordUsage } from './entitlements';
 import { summarizeCall, type TranscriptLine } from './ai/summarize';
 
-const TERMINAL: CallStatus[] = ['COMPLETED', 'TRANSFERRED', 'NO_ANSWER', 'BUSY', 'FAILED', 'CANCELED'];
+const TERMINAL: CallStatus[] = [
+  'COMPLETED',
+  'TRANSFERRED',
+  'NO_ANSWER',
+  'BUSY',
+  'FAILED',
+  'CANCELED',
+];
 export const isTerminal = (s: CallStatus) => TERMINAL.includes(s);
 
 /** Gives the media stream a moment to flush the transcript before we summarise. */
@@ -98,9 +105,13 @@ export async function applyCallStatus(
   if (isTerminal(next)) setTimeout(() => void finalizeCall(callId), FINALIZE_DELAY_MS);
 }
 
-function contactStatusFor(call: Pick<Call, 'status'>, outcome: CallOutcome | null): ContactStatus | null {
+function contactStatusFor(
+  call: Pick<Call, 'status'>,
+  outcome: CallOutcome | null,
+): ContactStatus | null {
   if (outcome === 'DO_NOT_CALL') return 'DO_NOT_CALL';
-  if (call.status === 'NO_ANSWER' || call.status === 'BUSY' || outcome === 'VOICEMAIL') return 'NO_ANSWER';
+  if (call.status === 'NO_ANSWER' || call.status === 'BUSY' || outcome === 'VOICEMAIL')
+    return 'NO_ANSWER';
   if (call.status === 'FAILED' || call.status === 'CANCELED') return 'FAILED';
   return 'COMPLETED';
 }
@@ -126,7 +137,9 @@ export async function finalizeCall(callId: string): Promise<void> {
     const endedAt = call.endedAt ?? new Date();
     const durationSec =
       call.durationSec ||
-      (call.answeredAt ? Math.max(0, Math.round((endedAt.getTime() - call.answeredAt.getTime()) / 1000)) : 0);
+      (call.answeredAt
+        ? Math.max(0, Math.round((endedAt.getTime() - call.answeredAt.getTime()) / 1000))
+        : 0);
     const billedMinutes = billableMinutes(durationSec);
     if (billedMinutes > 0) await recordUsage(call.workspaceId, billedMinutes);
 
@@ -139,7 +152,9 @@ export async function finalizeCall(callId: string): Promise<void> {
     if (call.agent && ent.features.callSummary && transcript.length) {
       const result = await summarizeCall(call.workspaceId, call.agent, transcript);
       if (result) {
-        summary = result.followUp ? `${result.summary}\n\nNext step: ${result.followUp}` : result.summary;
+        summary = result.followUp
+          ? `${result.summary}\n\nNext step: ${result.followUp}`
+          : result.summary;
         outcome = outcome ?? result.outcome;
         sentiment = result.sentiment;
       }
@@ -186,8 +201,13 @@ export async function finalizeCall(callId: string): Promise<void> {
       summary,
       transferredTo: call.transferredTo,
     };
-    await emitEvent(call.workspaceId, call.status === 'TRANSFERRED' ? 'call.transferred' : 'call.completed', data);
-    if (call.contactId) await emitEvent(call.workspaceId, 'contact.updated', { contactId: call.contactId, outcome });
+    await emitEvent(
+      call.workspaceId,
+      call.status === 'TRANSFERRED' ? 'call.transferred' : 'call.completed',
+      data,
+    );
+    if (call.contactId)
+      await emitEvent(call.workspaceId, 'contact.updated', { contactId: call.contactId, outcome });
     if (call.campaignId) await completeCampaignIfDone(call.campaignId);
   } catch (err) {
     logger.error({ err, callId }, 'Call finalisation failed');

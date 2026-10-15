@@ -46,7 +46,11 @@ export class PlivoAdapter implements TelephonyAdapter {
       'GET',
       '/Number/?limit=20',
     );
-    return data.objects.map((n) => ({ id: n.number, e164: `+${n.number}`, friendlyName: n.alias ?? undefined }));
+    return data.objects.map((n) => ({
+      id: n.number,
+      e164: `+${n.number}`,
+      friendlyName: n.alias ?? undefined,
+    }));
   }
 
   /**
@@ -133,7 +137,10 @@ export class PlivoAdapter implements TelephonyAdapter {
 }
 
 /** Maps Plivo CallStatus values (ring/answer/hangup callbacks) to ours. */
-export const PLIVO_STATUS: Record<string, 'RINGING' | 'IN_PROGRESS' | 'COMPLETED' | 'BUSY' | 'FAILED' | 'NO_ANSWER' | 'CANCELED'> = {
+export const PLIVO_STATUS: Record<
+  string,
+  'RINGING' | 'IN_PROGRESS' | 'COMPLETED' | 'BUSY' | 'FAILED' | 'NO_ANSWER' | 'CANCELED'
+> = {
   ringing: 'RINGING',
   'in-progress': 'IN_PROGRESS',
   completed: 'COMPLETED',

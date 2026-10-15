@@ -33,36 +33,49 @@ superRouter.get('/insights', async (_req, res) => {
   const yearStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-  const [subs, events30, eventsYear, payments, signups, totalWorkspaces, everSubscribed, usage, topUsage] =
-    await Promise.all([
-      prisma.subscription.findMany({ include: { plan: true } }),
-      prisma.subscriptionEvent.findMany({ where: { occurredAt: { gte: windowStart } } }),
-      prisma.subscriptionEvent.findMany({ where: { occurredAt: { gte: yearStart } } }),
-      prisma.payment.findMany({ where: { paidAt: { gte: yearStart }, status: 'paid' } }),
-      prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
+  const [
+    subs,
+    events30,
+    eventsYear,
+    payments,
+    signups,
+    totalWorkspaces,
+    everSubscribed,
+    usage,
+    topUsage,
+  ] = await Promise.all([
+    prisma.subscription.findMany({ include: { plan: true } }),
+    prisma.subscriptionEvent.findMany({ where: { occurredAt: { gte: windowStart } } }),
+    prisma.subscriptionEvent.findMany({ where: { occurredAt: { gte: yearStart } } }),
+    prisma.payment.findMany({ where: { paidAt: { gte: yearStart }, status: 'paid' } }),
+    prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
         SELECT date_trunc('day', "createdAt") AS day, count(*) AS count
         FROM "Workspace" WHERE "createdAt" >= ${windowStart}
         GROUP BY 1 ORDER BY 1`,
-      prisma.workspace.count(),
-      prisma.subscription.count(),
-      prisma.call.aggregate({
-        where: { createdAt: { gte: monthStart } },
-        _sum: { billedMinutes: true },
-        _count: { _all: true },
-      }),
-      prisma.usagePeriod.findMany({
-        where: { periodEnd: { gt: now } },
-        orderBy: { minutesUsed: 'desc' },
-        take: 5,
-        include: { workspace: { select: { id: true, name: true } } },
-      }),
-    ]);
+    prisma.workspace.count(),
+    prisma.subscription.count(),
+    prisma.call.aggregate({
+      where: { createdAt: { gte: monthStart } },
+      _sum: { billedMinutes: true },
+      _count: { _all: true },
+    }),
+    prisma.usagePeriod.findMany({
+      where: { periodEnd: { gt: now } },
+      orderBy: { minutesUsed: 'desc' },
+      take: 5,
+      include: { workspace: { select: { id: true, name: true } } },
+    }),
+  ]);
 
   const paying = subs.filter((s) => mrrCents(s) > 0);
   const mrr = paying.reduce((n, s) => n + mrrCents(s), 0);
   const byPlan = (['BASIC', 'PRO', 'ENTERPRISE'] as PlanCode[]).map((code) => {
     const rows = paying.filter((s) => s.plan.code === code);
-    return { plan: code, subscribers: rows.length, mrrCents: rows.reduce((n, s) => n + mrrCents(s), 0) };
+    return {
+      plan: code,
+      subscribers: rows.length,
+      mrrCents: rows.reduce((n, s) => n + mrrCents(s), 0),
+    };
   });
 
   const count = (type: string) => events30.filter((e) => e.type === type).length;
@@ -81,7 +94,8 @@ superRouter.get('/insights', async (_req, res) => {
   const months = lastMonths(12);
   const movement = months.map((month) => {
     const rows = eventsYear.filter((e) => monthKey(e.occurredAt) === month);
-    const sum = (types: string[]) => rows.filter((e) => types.includes(e.type)).reduce((n, e) => n + e.mrrDeltaCents, 0);
+    const sum = (types: string[]) =>
+      rows.filter((e) => types.includes(e.type)).reduce((n, e) => n + e.mrrDeltaCents, 0);
     return {
       month,
       newCents: sum(['CREATED', 'REACTIVATED']),
@@ -94,7 +108,9 @@ superRouter.get('/insights', async (_req, res) => {
   });
   const revenue = months.map((month) => ({
     month,
-    cents: payments.filter((p) => p.paidAt && monthKey(p.paidAt) === month).reduce((n, p) => n + p.amountCents, 0),
+    cents: payments
+      .filter((p) => p.paidAt && monthKey(p.paidAt) === month)
+      .reduce((n, p) => n + p.amountCents, 0),
   }));
 
   res.json({
@@ -121,7 +137,11 @@ superRouter.get('/insights', async (_req, res) => {
       const row = signups.find((s) => new Date(s.day).toISOString().slice(0, 10) === day);
       return { day, count: Number(row?.count ?? 0) };
     }),
-    topUsage: topUsage.map((u) => ({ workspace: u.workspace, minutes: u.minutesUsed, calls: u.callCount })),
+    topUsage: topUsage.map((u) => ({
+      workspace: u.workspace,
+      minutes: u.minutesUsed,
+      calls: u.callCount,
+    })),
   });
 });
 
@@ -149,7 +169,11 @@ superRouter.patch('/plans/:code', async (req, res) => {
         : undefined,
     },
   });
-  await audit(req, 'plan.updated', { entity: 'Plan', entityId: plan.id, meta: input as Prisma.InputJsonValue });
+  await audit(req, 'plan.updated', {
+    entity: 'Plan',
+    entityId: plan.id,
+    meta: input as Prisma.InputJsonValue,
+  });
   revalidate(['plans']);
   res.json({ plan });
 });
@@ -160,25 +184,44 @@ superRouter.get('/staff', async (_req, res) => {
   const staff = await prisma.user.findMany({
     where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, name: true, email: true, role: true, suspended: true, lastLoginAt: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      suspended: true,
+      lastLoginAt: true,
+      createdAt: true,
+    },
   });
   res.json({ staff });
 });
 
 superRouter.post('/staff', async (req, res) => {
   const input = staffSchema.parse(req.body);
-  if (await prisma.user.findUnique({ where: { email: input.email } })) throw conflict('That email is already in use');
+  if (await prisma.user.findUnique({ where: { email: input.email } }))
+    throw conflict('That email is already in use');
   const user = await prisma.user.create({
-    data: { name: input.name, email: input.email, role: input.role, passwordHash: await hashPassword(input.password) },
+    data: {
+      name: input.name,
+      email: input.email,
+      role: input.role,
+      passwordHash: await hashPassword(input.password),
+    },
     select: { id: true, name: true, email: true, role: true },
   });
-  await audit(req, 'staff.created', { entity: 'User', entityId: user.id, meta: { role: input.role } });
+  await audit(req, 'staff.created', {
+    entity: 'User',
+    entityId: user.id,
+    meta: { role: input.role },
+  });
   res.status(201).json({ user });
 });
 
 superRouter.patch('/staff/:id', async (req, res) => {
   const input = updateStaffSchema.parse(req.body);
-  if (req.params.id === req.user!.id) throw badRequest("You can't change your own role or suspend yourself");
+  if (req.params.id === req.user!.id)
+    throw badRequest("You can't change your own role or suspend yourself");
   const target = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!target || target.role === 'SUBSCRIBER') throw notFound('Staff member');
   if (target.role === 'SUPER_ADMIN' && (input.role === 'ADMIN' || input.suspended)) {
@@ -191,9 +234,16 @@ superRouter.patch('/staff/:id', async (req, res) => {
     select: { id: true, name: true, email: true, role: true, suspended: true },
   });
   if (input.suspended) {
-    await prisma.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await prisma.session.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
-  await audit(req, 'staff.updated', { entity: 'User', entityId: user.id, meta: input as Prisma.InputJsonValue });
+  await audit(req, 'staff.updated', {
+    entity: 'User',
+    entityId: user.id,
+    meta: input as Prisma.InputJsonValue,
+  });
   res.json({ user });
 });
 
@@ -205,7 +255,9 @@ superRouter.get('/settings/security', async (_req, res) => {
 
 superRouter.put('/settings/security', async (req, res) => {
   const value = await setSetting('security', req.body);
-  await audit(req, 'settings.security_updated', { meta: value as unknown as Prisma.InputJsonValue });
+  await audit(req, 'settings.security_updated', {
+    meta: value as unknown as Prisma.InputJsonValue,
+  });
   revalidate(['settings']);
   res.json({ value });
 });
@@ -215,7 +267,12 @@ superRouter.put('/settings/security', async (req, res) => {
 superRouter.get('/audit', async (req, res) => {
   const { page, pageSize, q } = paginationSchema.parse(req.query);
   const where: Prisma.AuditLogWhereInput = q
-    ? { OR: [{ action: { contains: q } }, { actor: { email: { contains: q, mode: 'insensitive' } } }] }
+    ? {
+        OR: [
+          { action: { contains: q } },
+          { actor: { email: { contains: q, mode: 'insensitive' } } },
+        ],
+      }
     : {};
   const [entries, total] = await Promise.all([
     prisma.auditLog.findMany({
@@ -223,7 +280,10 @@ superRouter.get('/audit', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { actor: { select: { name: true, email: true, role: true } }, workspace: { select: { name: true } } },
+      include: {
+        actor: { select: { name: true, email: true, role: true } },
+        workspace: { select: { name: true } },
+      },
     }),
     prisma.auditLog.count({ where }),
   ]);

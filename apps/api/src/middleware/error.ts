@@ -5,7 +5,9 @@ import { HttpError } from '../lib/http-error';
 import { logger } from '../lib/logger';
 
 export function notFoundHandler(req: Request, res: Response) {
-  res.status(404).json({ error: { code: 'not_found', message: `No route for ${req.method} ${req.path}` } });
+  res
+    .status(404)
+    .json({ error: { code: 'not_found', message: `No route for ${req.method} ${req.path}` } });
 }
 
 // Express recognises error handlers by arity, so `next` must stay in the signature.
@@ -40,7 +42,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     }
     if (err.code === 'P2003') {
       res.status(409).json({
-        error: { code: 'conflict', message: 'It is still in use elsewhere. Remove those links first.' },
+        error: {
+          code: 'conflict',
+          message: 'It is still in use elsewhere. Remove those links first.',
+        },
       });
       return;
     }

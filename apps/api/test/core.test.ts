@@ -3,7 +3,13 @@ import crypto from 'node:crypto';
 import { billableMinutes, mergeLimits, withinLimit, PLAN_CATALOG } from '@pv/shared';
 import { decrypt, encrypt, encryptJson, decryptJson } from '../src/lib/crypto';
 import { hashPassword, verifyPassword } from '../src/lib/password';
-import { signState, signSubject, signedCallbackUrl, verifyState, verifySubject } from '../src/lib/signed-url';
+import {
+  signState,
+  signSubject,
+  signedCallbackUrl,
+  verifyState,
+  verifySubject,
+} from '../src/lib/signed-url';
 import { parseCsv, toE164 } from '../src/lib/csv';
 import { signatureHeader } from '../src/jobs/webhooks';
 import { verifyWebhook } from '../src/services/stripe';
@@ -88,7 +94,9 @@ describe('signed callback URLs', () => {
 
 describe('contact import', () => {
   it('parses quoted CSV with extra columns', () => {
-    const rows = parseCsv('Phone,Name,Deal Size\n"+1 (415) 555-0123","Lee, Sam",5000\r\n4155550199,Ana,\n');
+    const rows = parseCsv(
+      'Phone,Name,Deal Size\n"+1 (415) 555-0123","Lee, Sam",5000\r\n4155550199,Ana,\n',
+    );
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual({ phone: '+1 (415) 555-0123', name: 'Lee, Sam', deal_size: '5000' });
   });
@@ -106,14 +114,22 @@ describe('webhook signatures', () => {
   it('signs outgoing webhooks receivers can verify', () => {
     const body = JSON.stringify({ hello: 'world' });
     const header = signatureHeader('whsec_test', body, 1700000000);
-    const expected = crypto.createHmac('sha256', 'whsec_test').update(`1700000000.${body}`).digest('hex');
+    const expected = crypto
+      .createHmac('sha256', 'whsec_test')
+      .update(`1700000000.${body}`)
+      .digest('hex');
     expect(header).toBe(`t=1700000000,v1=${expected}`);
   });
 
   it('accepts correctly signed Stripe webhooks and rejects the rest', () => {
-    const body = Buffer.from(JSON.stringify({ id: 'evt_1', type: 'invoice.paid', data: { object: {} } }));
+    const body = Buffer.from(
+      JSON.stringify({ id: 'evt_1', type: 'invoice.paid', data: { object: {} } }),
+    );
     const t = Math.floor(Date.now() / 1000);
-    const sig = crypto.createHmac('sha256', 'whsec_stripe').update(`${t}.${body.toString()}`).digest('hex');
+    const sig = crypto
+      .createHmac('sha256', 'whsec_stripe')
+      .update(`${t}.${body.toString()}`)
+      .digest('hex');
     expect(verifyWebhook(body, `t=${t},v1=${sig}`).id).toBe('evt_1');
     expect(() => verifyWebhook(body, undefined)).toThrow();
     expect(() => verifyWebhook(body, `t=${t},v1=${'0'.repeat(64)}`)).toThrow();

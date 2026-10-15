@@ -17,7 +17,8 @@ export class GeminiConversation implements LlmConversation {
   }
 
   noteInterrupted(spokenText: string) {
-    if (spokenText.trim()) this.contents.push({ role: 'model', parts: [{ text: `${spokenText.trim()} —` }] });
+    if (spokenText.trim())
+      this.contents.push({ role: 'model', parts: [{ text: `${spokenText.trim()} —` }] });
   }
 
   async turn(userText: string, h: TurnHandlers): Promise<void> {
@@ -59,7 +60,9 @@ export class GeminiConversation implements LlmConversation {
       const responses: Part[] = [];
       for (const call of calls) {
         const output = await h.onToolCall(call.name ?? '', call.args ?? {});
-        responses.push({ functionResponse: { id: call.id, name: call.name, response: { result: output } } });
+        responses.push({
+          functionResponse: { id: call.id, name: call.name, response: { result: output } },
+        });
       }
       this.contents.push({ role: 'user', parts: responses });
       if (calls.some((c) => c.name === 'end_call' || c.name === 'transfer_call')) return;
