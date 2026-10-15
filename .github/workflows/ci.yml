@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck (shared, api, web)
+        run: npm run typecheck
+      - name: API unit tests
+        run: npm test -w @pv/api
+      - name: Static images are WebP with no duplicates
+        run: npm run images:check -w @pv/web
+      - name: Build the web app
+        # No API is running in CI: public pages fall back to built-in content.
+        run: npm run build -w @pv/web
+        env:
+          NEXT_PUBLIC_SITE_URL: https://purplevoice.ai
+          API_INTERNAL_URL: http://127.0.0.1:9
