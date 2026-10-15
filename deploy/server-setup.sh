@@ -15,8 +15,8 @@ apt-get update
 apt-get -y upgrade
 apt-get install -y curl git ufw nginx certbot python3-certbot-nginx postgresql-16 build-essential
 
-echo "==> Node.js 20 LTS + PM2"
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+echo "==> Node.js 22 LTS + PM2"
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y nodejs
 npm install -g pm2@latest
 

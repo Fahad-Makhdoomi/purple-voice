@@ -16,6 +16,7 @@ import {
   ScrollText,
   ShieldCheck,
   TrendingUp,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { isSuperAdmin } from '@pv/shared';
@@ -80,6 +81,7 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
           },
         ]
       : []),
+    { items: [{ href: '/admin/account', label: 'Your account', icon: UserRound }] },
   ];
 
   return (

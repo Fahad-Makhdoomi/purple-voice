@@ -1,17 +1,16 @@
 'use client';
 
-import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useWorkspace } from '@/lib/workspace';
 import { PageHeader, Section, useAction } from '@/components/ui';
 import { Field } from '@/components/forms/Field';
+import { PasswordSection } from '@/components/account/PasswordSection';
 
 export default function SettingsPage() {
   const { me, reload } = useSession();
   const { workspace, actingAsStaff, reload: reloadWs } = useWorkspace();
   const { busy, run } = useAction();
-  const [pwKey, setPwKey] = useState(0);
 
   return (
     <>
@@ -83,55 +82,7 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {!actingAsStaff && (
-          <Section title="Password" description="Changing it signs you out on every other device.">
-            <form
-              key={pwKey}
-              className="grid gap-5 sm:grid-cols-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                void run(async () => {
-                  await api('/auth/change-password', {
-                    body: { currentPassword: f.get('current'), newPassword: f.get('next') },
-                  });
-                  setPwKey((k) => k + 1);
-                }, 'Password changed');
-              }}
-            >
-              <Field id="current" label="Current password">
-                <input
-                  id="current"
-                  name="current"
-                  type="password"
-                  className="input"
-                  required
-                  autoComplete="current-password"
-                />
-              </Field>
-              <Field
-                id="next"
-                label="New password"
-                help="At least 10 characters, with a letter and a number."
-              >
-                <input
-                  id="next"
-                  name="next"
-                  type="password"
-                  className="input"
-                  required
-                  minLength={10}
-                  autoComplete="new-password"
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <button className="btn btn-primary" disabled={busy}>
-                  Change password
-                </button>
-              </div>
-            </form>
-          </Section>
-        )}
+        {!actingAsStaff && <PasswordSection />}
         {actingAsStaff && (
           <p className="text-sm text-muted">
             Profile settings belong to the customer and aren&apos;t editable while acting as staff.

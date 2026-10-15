@@ -56,8 +56,12 @@ async function seedSuperAdmin() {
     return console.log(`✓ super admin exists (${email})`);
   let password = process.env.SEED_SUPER_ADMIN_PASSWORD;
   if (!password) {
-    if (isProd)
+    if (isProd) {
+      // Another super admin already runs the platform: nothing to bootstrap.
+      if (await prisma.user.count({ where: { role: 'SUPER_ADMIN' } }))
+        return console.log('✓ super admin exists');
       throw new Error('Set SEED_SUPER_ADMIN_PASSWORD to seed the first super admin in production');
+    }
     password = `pv-${crypto.randomBytes(6).toString('hex')}1`;
   }
   await prisma.user.create({

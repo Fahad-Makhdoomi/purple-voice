@@ -8,7 +8,8 @@ updates ship. Architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Every setting:
 
 ## 1. What runs where
 
-One VPS (Hostinger-style **KVM 2: 4 GB RAM, 2 vCPU**, Ubuntu 24.04):
+One VPS (Hostinger-style **KVM 2: 4 GB RAM, 2 vCPU**), either managed by CloudPanel or
+plain Ubuntu 24.04 (section 2):
 
 | Process | Port | What | Memory cap |
 |---|---|---|---|
@@ -18,27 +19,78 @@ One VPS (Hostinger-style **KVM 2: 4 GB RAM, 2 vCPU**, Ubuntu 24.04):
 | `pv-worker` (PM2) | — | campaign dialer, webhook deliveries, maintenance | 350 MB |
 | PostgreSQL 16 | 127.0.0.1:5432 | the database (tuned in `deploy/postgres/purplevoice.conf`) | ~1 GB shared buffers |
 
-Only 22, 80 and 443 are open (ufw). Node and Postgres listen on localhost only.
+Only 22, 80 and 443 are open (plus 8443 for the CloudPanel UI). Node and Postgres listen
+on localhost only.
 
-nginx routes (`deploy/nginx/purplevoice.conf`): `/api/*` and `/ws/*` → API,
-`/uploads/*` → `storage/uploads` on disk, everything else → Next.js.
+nginx routes (`deploy/cloudpanel/vhost.conf` or `deploy/nginx/purplevoice.conf`):
+`/api/*` and `/ws/*` → API, `/uploads/*` → uploads on disk, `/internal/*` → 404,
+everything else → Next.js.
 
 ---
 
 ## 2. First-time setup
 
-1. **DNS** — point `A` (and `AAAA`) records for `purplevoice.ai` and `www` at the VPS.
+Two ways to run it: **2A** on a server managed by CloudPanel (production:
+`voice.purplerocket.co`), or **2B** on a bare Ubuntu server where these scripts manage
+nginx and TLS themselves. Both need Node.js 22+.
+
+### 2A. CloudPanel
+
+CloudPanel owns nginx, TLS and the site user; `deploy/cloudpanel/setup.sh` adds
+PostgreSQL 16, the env files, PM2 and backups around it.
+
+| What | Where |
+|---|---|
+| Code | `/home/<site-user>/purple-voice` (outside `htdocs`, so nginx never serves it) |
+| Env files | `/home/<site-user>/.purple-voice/api.env`, `web.env` (mode 600) |
+| Uploaded media | `/home/<site-user>/htdocs/<domain>/uploads` (served by nginx at `/uploads/`) |
+| Backups | `/home/<site-user>/backups/purple-voice` |
+| Processes | PM2 as the site user, started on boot by `pm2-<site-user>.service` |
+
+1. **DNS**: an `A` record for `voice` in the `purplerocket.co` zone → the VPS IP. If the zone is on
+   Cloudflare, keep the record **DNS only** (grey cloud) so Let's Encrypt, carrier
+   WebSockets and per-IP rate limits see the real client.
+2. **CloudPanel → Sites → Add Site → Create a Node.js Site**: domain
+   `voice.purplerocket.co`, Node.js **22**, App Port **3000**, and a site user (e.g.
+   `purplerocket-voice`) with a strong password.
+3. **Put the code on the server** as the site user (SSH or SFTP with the site user):
+   - from GitHub: `git clone git@github.com:Fahad-Makhdoomi/purple-voice.git ~/purple-voice`
+     (add `~/.ssh/id_ed25519.pub` as a read-only *deploy key* on the repo first), or
+   - from the source tarball: upload `purple-voice-source.tar.gz` to the site user's home
+     (CloudPanel File Manager or SFTP), then `cd ~ && tar -xzf purple-voice-source.tar.gz`.
+4. **Run the setup as root** (root SSH, or your VPS provider's browser terminal):
+   ```bash
+   bash /home/purplerocket-voice/purple-voice/deploy/cloudpanel/setup.sh \
+     purplerocket-voice voice.purplerocket.co you@your-domain.com
+   ```
+   It installs PostgreSQL 16 and creates the database, writes the env files with fresh
+   secrets, installs PM2 with a boot service, schedules nightly backups, runs the first
+   deploy, and writes `~/purple-voice-vhost.conf`. Re-running it is safe.
+5. **CloudPanel → Sites → voice.purplerocket.co → Vhost**: paste the two parts of
+   `~/purple-voice-vhost.conf` as its header explains (part 1 above `server {`, part 2 in
+   place of CloudPanel's `location / { … }` block) and save. This routes `/api`, `/ws`
+   and `/uploads`, blocks `/internal`, and adds edge rate limits.
+6. **SSL/TLS → Actions → New Let's Encrypt Certificate.**
+7. **Sign in** with the details in `~/.purple-voice/first-login.txt`, change the password
+   in **Admin → Your account**, then delete that file.
+8. **Back up `APP_ENCRYPTION_KEY`** from `~/.purple-voice/api.env` to a password manager.
+   Without it, stored API keys and carrier tokens can't be decrypted.
+9. **Fill in the providers** you use in `~/.purple-voice/api.env` (section 4), then
+   redeploy: `cd ~/purple-voice && ./deploy/deploy.sh`.
+
+### 2B. Bare Ubuntu 24.04
+
+1. **DNS**: point `A` (and `AAAA`) records for the domain and `www` at the VPS.
 2. **Bootstrap the server** (as root, from a checkout of the repo):
    ```bash
    git clone https://github.com/Fahad-Makhdoomi/purple-voice.git /tmp/pv
    bash /tmp/pv/deploy/server-setup.sh purplevoice.ai you@purplevoice.ai
    ```
-   This installs nginx, Postgres 16, Node 20, PM2 and certbot; adds 2 GB swap; enables
+   This installs nginx, Postgres 16, Node 22, PM2 and certbot; adds 2 GB swap; enables
    the firewall; creates the `purplevoice` user, the database with a random password,
    `/etc/purple-voice/api.env` and `web.env` with freshly generated secrets; installs the
    nginx site and TLS certificate; and schedules nightly backups.
 3. **Back up `APP_ENCRYPTION_KEY`** from `/etc/purple-voice/api.env` somewhere safe.
-   Without it, stored API keys and carrier tokens can't be decrypted.
 4. **Fill in the providers** you use in `/etc/purple-voice/api.env` (section 4 below),
    plus `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD` for the first login.
 5. **Deploy** as the app user:
@@ -47,24 +99,28 @@ nginx routes (`deploy/nginx/purplevoice.conf`): `/api/*` and `/ws/*` → API,
    git clone https://github.com/Fahad-Makhdoomi/purple-voice.git /var/www/purple-voice/app
    cd /var/www/purple-voice/app && ./deploy/deploy.sh main
    ```
-   Then sign in at `https://purplevoice.ai/login` with the super admin, and remove
+   Then sign in at `/login` with the super admin, and remove
    `SEED_SUPER_ADMIN_PASSWORD` from the env file.
 
-> The PM2 file reads `/etc/purple-voice/*.env`, and `STORAGE_LOCAL_PATH` defaults to
-> `/var/www/purple-voice/storage/uploads`, the directory nginx serves at `/uploads`.
+> `deploy.sh`, `backup.sh` and the PM2 file find the env files on their own:
+> `$PV_ENV_DIR`, else `~/.purple-voice` (2A), else `/etc/purple-voice` (2B). Ports come
+> from the env files: `PORT` in `web.env` (default 3000), `API_PORT` in `api.env` (4000).
 
 ---
 
 ## 3. Updating
 
+As the app user (CloudPanel: the site user over SSH; bare Ubuntu: `sudo -iu purplevoice`):
 ```bash
-sudo -iu purplevoice
-cd /var/www/purple-voice/app && ./deploy/deploy.sh main      # or a tag: ./deploy/deploy.sh v1.4.0
+cd ~/purple-voice && ./deploy/deploy.sh main      # or a tag: ./deploy/deploy.sh v1.4.0
 ```
 
-`deploy.sh` pulls, installs, checks static images, builds shared → API → applies
-database migrations → builds the web app, re-runs the idempotent seed (plans and first
-admin only), then `pm2 startOrReload` and a health check.
+`deploy.sh` pulls (skipped when the code came from a tarball: extract the new one over
+the old first), installs, checks static images, builds shared → API, applies database
+migrations, re-runs the idempotent seed (plans and first admin only), reloads the API
+and worker, builds the web app against the running API so static pages carry live
+content, reloads the web app, and runs a health check. The site can return errors for
+the minute or two the web build takes, so deploy at a quiet time.
 
 - **Migrations** are created in development with `npm run db:migrate` and committed
   (`apps/api/prisma/migrations`); production only ever runs `prisma migrate deploy`.
@@ -176,21 +232,24 @@ blocked from private networks.
 - [ ] Captcha on, and each protected form submits
 - [ ] Legal pages (privacy, terms) reviewed by counsel and published
 - [ ] PageSpeed Insights on the live home page ≥ 90 (mobile)
-- [ ] Backups: run `/usr/local/bin/purple-voice-backup` once and test a restore
+- [ ] Admin → SEO & analytics: contact email and site name are yours (defaults are placeholders)
+- [ ] Backups: run `deploy/backup.sh` once as the app user and test a restore
 
 ---
 
 ## 6. Backups and restore
 
-Nightly at 03:15 (`/etc/cron.d/purple-voice-backup`): a `pg_dump` custom-format dump and a
-tarball of `storage/uploads`, kept 14 days in `/var/backups/purple-voice`. **Copy them off
-the server** too (e.g. `rclone` to R2/S3/B2 in the same cron).
+Nightly at 03:15 (`/etc/cron.d/purple-voice-backup`, running `deploy/backup.sh`): a
+`pg_dump` custom-format dump and a tarball of the uploads directory, kept 14 days in
+`~/backups/purple-voice` (CloudPanel) or `/var/backups/purple-voice` (bare Ubuntu).
+**Copy them off the server** too (e.g. `rclone` to R2/S3/B2 in the same cron).
 
-Restore:
+Restore (as the app user; `<backups>` is the directory above):
 ```bash
 pm2 stop all
-pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" /var/backups/purple-voice/db_<stamp>.dump
-tar -xzf /var/backups/purple-voice/uploads_<stamp>.tar.gz -C /var/www/purple-voice/storage
+set -a; . ~/.purple-voice/api.env; set +a     # bare Ubuntu: /etc/purple-voice/api.env
+pg_restore --clean --if-exists --no-owner -d "${DATABASE_URL%%\?*}" <backups>/db_<stamp>.dump
+tar -xzf <backups>/uploads_<stamp>.tar.gz -C "$(dirname "$STORAGE_LOCAL_PATH")"
 pm2 start all
 ```
 
