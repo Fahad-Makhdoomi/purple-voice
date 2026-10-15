@@ -52,7 +52,10 @@ PostgreSQL 16, the env files, PM2 and backups around it.
    WebSockets and per-IP rate limits see the real client.
 2. **CloudPanel → Sites → Add Site → Create a Node.js Site**: domain
    `voice.purplerocket.co`, Node.js **22**, App Port **3000**, and a site user (e.g.
-   `purplerocket-voice`) with a strong password.
+   `purplerocket-voice`) with a strong password. The App Port must be 1024 or above (the
+   app doesn't run as root) and must not be 3306 (MySQL) or 5432 (PostgreSQL). Once the
+   vhost from step 5 is pasted, nginx uses the setup script's port (3000) whatever the
+   App Port says.
 3. **Put the code on the server** as the site user (SSH or SFTP with the site user):
    - from GitHub: `git clone git@github.com:Fahad-Makhdoomi/purple-voice.git ~/purple-voice`
      (add `~/.ssh/id_ed25519.pub` as a read-only *deploy key* on the repo first), or
