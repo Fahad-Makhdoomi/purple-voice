@@ -70,6 +70,9 @@ database (MySQL, port 3306) is not used.
      (add `~/.ssh/id_ed25519.pub` as a read-only *deploy key* on the repo first), or
    - from the source tarball: upload `purple-voice-source.tar.gz` to the site user's home
      (CloudPanel File Manager or SFTP), then `cd ~ && tar -xzf purple-voice-source.tar.gz`.
+
+   Either way, [Automatic deploys from GitHub](#automatic-deploys-from-github) (after
+   step 9) turns it into a checkout that updates itself on every push.
 4. **Run the setup as root** (root SSH, or your VPS provider's browser terminal):
    ```bash
    bash /home/purplerocket-voice/purple-voice/deploy/cloudpanel/setup.sh \
@@ -89,6 +92,123 @@ database (MySQL, port 3306) is not used.
    Without it, stored API keys and carrier tokens can't be decrypted.
 9. **Fill in the providers** you use in `~/.purple-voice/api.env` (section 4), then
    redeploy: `cd ~/purple-voice && ./deploy/deploy.sh`.
+
+### Automatic deploys from GitHub
+
+Once this is set up, every push to `main` that passes CI goes live by itself:
+
+```
+git push ─▶ CI (ci.yml) ─▶ Deploy (deploy.yml) ─ssh─▶ deploy/remote-deploy.sh ─▶ deploy/deploy.sh <sha>
+```
+
+- **Deploy** runs only after a green CI run of a push to `main`, and deploys exactly the
+  commit CI tested. If `main` has moved on by then, that older commit is skipped (a
+  notice says so): the newer one deploys after its own CI run, so production never
+  goes backwards.
+- On the server, `deploy.sh` checks out that commit and then does everything in
+  section 3, **including the database migrations**.
+- One deploy at a time: GitHub queues them, and the server holds a lock as well. A
+  deploy the server has started finishes even if the GitHub job is cancelled or the
+  connection drops.
+
+**One-time setup** (production: `62.72.57.2`, site user `purplerocket-voice`):
+
+1. **Create the repository and push.** On GitHub create the private repository
+   `Fahad-Makhdoomi/purple-voice`, empty (no README or licence). From the project on
+   your computer: `git push -u origin main` (add the remote first if `git remote -v`
+   doesn't show it: `git remote add origin git@github.com:Fahad-Makhdoomi/purple-voice.git`).
+   CI runs; Deploy runs after it and fails with *Deploy secrets missing* until
+   step 4. That is expected.
+2. **Run the setup on the server**, as the site user (SSH in as `purplerocket-voice`;
+   not as root):
+   ```bash
+   bash ~/purple-voice/deploy/cloudpanel/enable-auto-deploy.sh Fahad-Makhdoomi/purple-voice 62.72.57.2
+   ```
+   The code on the server must include this script. If it came from a tarball made
+   before automatic deploys existed, extract the new tarball over it first
+   (`cd ~ && tar -xzf purple-voice-source.tar.gz`).
+
+   The first run creates a read-only deploy key for the repository, prints it, and
+   stops.
+3. **Add the deploy key on GitHub**: repository → Settings → Deploy keys → Add deploy
+   key, paste it, and leave *Allow write access* unticked. Then run the command from
+   step 2 again. This time it:
+   - turns `~/purple-voice` into a git checkout of `main` if it isn't one: a copy of
+     the old files goes to `~/purple-voice-before-git-<time>.tar.gz`, files the
+     repository doesn't have are removed, and `node_modules`, builds and the env files
+     (in `~/.purple-voice`) stay;
+   - creates the key GitHub Actions logs in with, allows it to run the deploy and
+     nothing else, and checks that over SSH;
+   - prints the values for step 4. **The private key is shown once and then deleted
+     from the server**, so paste it into GitHub straight away.
+
+   The site keeps running the build it had until the first deploy.
+4. **Add the secrets**: repository → Settings → Secrets and variables → Actions → New
+   repository secret.
+
+   | Secret | Value |
+   |---|---|
+   | `DEPLOY_HOST` | `62.72.57.2` |
+   | `DEPLOY_USER` | `purplerocket-voice` |
+   | `DEPLOY_SSH_KEY` | the private key the script printed, `BEGIN` and `END` lines included |
+   | `DEPLOY_KNOWN_HOSTS` | the `62.72.57.2 ssh-ed25519 AAAA…` line it printed (the server's host key, so the runner never trusts an unknown one) |
+   | `DEPLOY_PORT` | only if SSH listens on a port other than 22 |
+
+   Optionally, on the **Variables** tab: `DEPLOY_HEALTHCHECK_URL` =
+   `https://voice.purplerocket.co/api/health`. A deploy then fails unless the public
+   site answers 200 through nginx and TLS (deploy.sh already checks the app directly).
+5. **Optional, paid GitHub plans: an approval step.** To make every deploy wait for
+   a click, create an environment (Settings → Environments → `production`, deployment
+   branches `main` only, required reviewers), move the four secrets onto it, and add
+   `environment: production` under `deploy:` in `.github/workflows/deploy.yml`.
+   Environments in private repositories need a paid GitHub plan, so the workflow
+   doesn't use one by default.
+6. **Try it**: Actions → Deploy → Run workflow → `main`. From then on, just push.
+   Until the secrets are added, automatic runs skip with an "Auto-deploy not set up"
+   notice instead of failing.
+
+**Watching a deploy.** GitHub → Actions → Deploy streams the server's output. On the
+server, `tail -f ~/.purple-voice/deploy.log` has every deploy, timestamped (trimmed
+to the newest 2 MB once it passes 5 MB).
+
+**Rolling back.** Actions → Deploy → Run workflow, and enter an earlier tag or commit
+SHA (`v1.4.0`, `3f2c1ab`). Manual runs skip the CI gate. Migrations are not undone
+(section 3, *Rollback*), and the next push to `main` deploys `main` again.
+
+**Security.**
+- The CI key's line in `~/.ssh/authorized_keys` is
+  `restrict,command="… deploy/remote-deploy.sh"`. Whatever its holder asks for, sshd
+  runs that script, which accepts only `deploy <40-character SHA>`: no shell, no file
+  transfer, no port forwarding. A leaked `DEPLOY_SSH_KEY` can only redeploy commits
+  already on GitHub. Replace it with `enable-auto-deploy.sh … --rotate-ci-key` (and
+  update the secret).
+- The server reads the repository with a read-only deploy key that works for this
+  repository only. GitHub's host key is added only after it matches GitHub's
+  published fingerprint.
+- Anyone who can push to `main` can run code on the server: `deploy.sh`, the npm
+  scripts and `remote-deploy.sh` all come from the repository. Protect `main`
+  (Settings → Branches: require pull requests and the *CI* check).
+- Env files live only in `~/.purple-voice` and are never committed (`.gitignore`
+  covers `.env` files). Deploys don't touch them.
+- The server runs the `remote-deploy.sh` from its current checkout, so a change to it
+  applies from the deploy after the one that ships it. CI checks that the deploy
+  scripts parse, because a broken one stops automatic deploys until fixed by hand.
+
+**When a deploy fails**
+
+| Symptom | Fix |
+|---|---|
+| *Deploy secrets missing* | Step 4. |
+| *SSH login failed* (exit 255) | Check the four secrets. If the CI key's line is gone from `~/.ssh/authorized_keys` (for example after editing SSH keys in CloudPanel), re-run the setup with `--rotate-ci-key` and update `DEPLOY_SSH_KEY`. |
+| *Not deployed: main has moved on* | Expected; the newer commit deploys after its own CI run. |
+| `Permission denied (publickey)` while fetching | The deploy key was removed on GitHub: re-run the setup and add it again. |
+| *Deploy failed* (deploy.sh exited non-zero) | The job output and `~/.purple-voice/deploy.log` show the step. Fix and push, or roll back. |
+
+For a manual deploy on the server that waits for any automatic one, use
+`flock ~/.purple-voice/deploy.lock ./deploy/deploy.sh main`. On a bare Ubuntu server
+(2B) the same setup works as the `purplevoice` user with
+`PV_APP_DIR=/var/www/purple-voice/app`, provided that user can log in over SSH with a
+key.
 
 ### 2B. Bare Ubuntu 24.04
 
@@ -122,25 +242,38 @@ database (MySQL, port 3306) is not used.
 
 ## 3. Updating
 
-As the app user (CloudPanel: the site user over SSH; bare Ubuntu: `sudo -iu purplevoice`):
+**With automatic deploys** ([set up in 2A](#automatic-deploys-from-github)): push to
+`main`. When CI passes, the Deploy workflow puts that exact commit live; follow it in
+GitHub → Actions → Deploy. To deploy a branch, tag or commit by hand, or roll back:
+Actions → Deploy → Run workflow.
+
+**By hand**, as the app user (CloudPanel: the site user over SSH; bare Ubuntu:
+`sudo -iu purplevoice`):
 ```bash
-cd ~/purple-voice && ./deploy/deploy.sh main      # or a tag: ./deploy/deploy.sh v1.4.0
+cd ~/purple-voice && ./deploy/deploy.sh main      # or a tag or commit: ./deploy/deploy.sh v1.4.0
 ```
 
-`deploy.sh` pulls (skipped when the code came from a tarball: extract the new one over
-the old first), installs, checks static images, builds shared → API, applies database
-migrations, re-runs the idempotent seed (plans and first admin only), reloads the API
-and worker, builds the web app against the running API so static pages carry live
-content, reloads the web app, and runs a health check. The site can return errors for
-the minute or two the web build takes, so deploy at a quiet time.
+`deploy.sh` first makes the checkout match GitHub exactly: a branch is reset to
+GitHub's copy (so force-pushes deploy too), a tag or commit is checked out detached,
+and edits to tracked files on the server are discarded. It then carries on with that
+commit's own `deploy.sh`. Without a `.git` directory (code from a tarball: extract the
+new one over the old first) that step is skipped. Then it installs, checks static
+images, builds shared → API, applies database migrations, re-runs the idempotent seed
+(plans and first admin only), reloads the API and worker, builds the web app against
+the running API so static pages carry live content, reloads the web app, and runs a
+health check. The site can return errors for the minute or two the web build takes,
+so deploy at a quiet time; with automatic deploys, that means pushing to `main` at a
+quiet time.
 
 - **Migrations** are created in development with `npm run db:migrate` and committed
-  (`apps/api/prisma/migrations`); production only ever runs `prisma migrate deploy`.
-  Write migrations additively (add, backfill, then remove in a later release) so the
-  old code keeps working during the reload.
+  (`apps/api/prisma/migrations`); production only ever runs `prisma migrate deploy`,
+  in every deploy, automatic ones included. Write migrations additively (add,
+  backfill, then remove in a later release) so the old code keeps working during the
+  reload, and run `deploy/backup.sh` before pushing a risky one.
 - **Live calls** — the API waits up to 30 s for calls to end on restart. Deploy
   outside peak calling hours.
-- **Rollback** — `./deploy/deploy.sh <previous-tag>`. If a migration must be undone,
+- **Rollback** — Actions → Deploy → Run workflow with the previous tag or commit SHA,
+  or `./deploy/deploy.sh <previous-tag>` on the server. If a migration must be undone,
   restore the pre-deploy backup (section 6).
 - **Content changes** (pages, blog, FAQs, SEO, plan prices) need no deploy: they are
   edited in the admin panel and go live within seconds.
@@ -180,15 +313,30 @@ Accounts and numbers can be saved, but AI calling through SuperPhone is pending 
 voice-streaming API (see ARCHITECTURE.md § 21). Until then, forward the SuperPhone
 number to a connected Twilio or Plivo number.
 
-### AI providers (customers' keys)
-Subscribers add their own keys under Dashboard → Integrations; each key is verified with
-one request before it's encrypted and saved.
-- **OpenAI** — required for the Realtime engine (speech-to-speech).
-- **Claude (Anthropic)**, **Gemini** — models for the Cascaded engine.
-- **Deepgram** — speech-to-text and voices for the Cascaded engine.
+### AI providers (chosen by staff, never by subscribers)
+Subscribers don't see or choose AI vendors, models or keys. Staff set it up:
 
-The platform's own Claude key, `ANTHROPIC_API_KEY`, powers only the Pro AI support
-assistant and the CMS "Draft with AI" button. `ASSISTANT_MODEL` picks the model.
+1. **Platform keys** — Super admin → **AI providers**. Add the keys Purple Voice pays
+   for; each is verified with one request before it's encrypted and saved:
+   - **Gemini** (Google AI Studio → API key) — the Gemini Live engine, and summaries
+     for Gemini Live calls. This is all the default setup needs.
+   - **OpenAI** — the OpenAI Realtime engine, and summaries for it.
+   - **Claude (Anthropic)** — the Cascaded engine with Claude, plus the Pro AI support
+     assistant and the CMS "Draft with AI" button. Without a saved key these fall back
+     to `ANTHROPIC_API_KEY` in api.env. `ASSISTANT_MODEL` picks the assistant's model.
+   - **Deepgram** — speech-to-text and voices for the Cascaded engine only.
+2. **Default AI for subscribers** — on the same page: engine, vendor and model used by
+   every subscriber without their own settings. It starts as **Gemini Live**
+   (`gemini-3.8-live`), which needs only the Gemini key.
+3. **Per subscriber** (admins and super admins) — Admin → Subscribers → a subscriber →
+   **AI**: switch them to another engine or model, or add a key of their own (for
+   example an Enterprise customer paying their AI vendor directly). Their own key wins
+   over the platform key for that vendor; "Use platform default" undoes it.
+
+The panel shows, for every key the chosen engine needs, where it comes from
+(subscriber's own, platform, server environment) or **Missing**. Until nothing is
+missing, that subscriber's agents can't go live and their dashboard says the team is
+finishing the AI voice setup.
 
 ### Google Calendar (appointment booking)
 1. Google Cloud Console → create a project → enable the **Google Calendar API**.
@@ -239,7 +387,7 @@ blocked from private networks.
 - [ ] SMTP: forgot-password email arrives
 - [ ] Twilio test number: connect, test-call an agent, check transcript, summary and billed minutes
 - [ ] Plivo (if offered): same
-- [ ] Realtime agent with an OpenAI key; Cascaded agent with Claude + Deepgram
+- [ ] Super admin → AI providers: Gemini key saved; a test call on the default Gemini Live engine (and on OpenAI Realtime / Cascaded if you offer them)
 - [ ] Google Calendar: connect, book from a test call, event appears with invite
 - [ ] Captcha on, and each protected form submits
 - [ ] Legal pages (privacy, terms) reviewed by counsel and published

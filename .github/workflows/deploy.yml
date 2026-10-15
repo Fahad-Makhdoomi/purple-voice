@@ -1,0 +1,220 @@
+name: Deploy
+
+# Puts a commit live on the production VPS (DEPLOYMENT.md § Automatic deploys from
+# GitHub). Runs by itself once CI passes on a push to main and deploys exactly the
+# commit CI tested. Actions → Deploy → Run workflow deploys any branch, tag or
+# commit by hand; a rollback is a deploy of an older one.
+#
+# The runner logs in with a key the server pins to deploy/remote-deploy.sh, so the
+# only thing it can do there is "deploy <sha>". Repository secrets: DEPLOY_HOST,
+# DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS and optionally DEPLOY_PORT. Until
+# none of them are set, automatic runs skip with a notice instead of failing. If
+# the variable DEPLOY_HEALTHCHECK_URL is set, it must answer 200 after the deploy.
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch'
+  && format('Deploy {0} (manual)', inputs.ref)
+  || format('Deploy {0}', github.event.workflow_run.display_title) }}
+
+on:
+  workflow_run:
+    workflows: [CI] # the `name:` of ci.yml
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit SHA to deploy
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # Automatic deploys only for green CI runs of pushes to this repository's main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # One deploy at a time, and a running one is never cancelled (it may be migrating).
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Fetch all branches and tags
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pick the commit
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_TITLE: ${{ github.event.workflow_run.display_title }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            ref="${INPUT_REF:-main}"
+            if [[ ! $ref =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+              echo "::error::'$ref' is not a branch, tag or commit SHA"
+              exit 1
+            fi
+            sha=""
+            for candidate in "refs/remotes/origin/$ref" "refs/tags/$ref" "$ref"; do
+              sha="$(git rev-parse -q --verify "$candidate^{commit}")" && break
+            done
+            # A commit no branch or tag points at any more is fetched by its SHA.
+            if [ -z "$sha" ] && [[ $ref =~ ^[0-9a-f]{40}$ ]] && git fetch -q --no-tags origin "$ref"; then
+              sha="$(git rev-parse -q --verify "$ref^{commit}")" || true
+            fi
+            if [ -z "$sha" ]; then
+              echo "::error::No branch, tag or commit called '$ref' in this repository"
+              exit 1
+            fi
+            title="$(git log -1 --format=%s "$sha")"
+          else
+            sha="$RUN_SHA"
+            title="$RUN_TITLE"
+            # A newer push supersedes this one: its own CI run deploys it, and putting
+            # this older commit live after it would roll production back.
+            for attempt in 1 2 3; do
+              tip="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$RUN_BRANCH" --jq .object.sha)" && break
+              if [ "$attempt" = 3 ]; then
+                echo "::error::Could not read the tip of $RUN_BRANCH from the GitHub API"
+                exit 1
+              fi
+              sleep 5
+            done
+            if [ "$tip" != "$sha" ]; then
+              echo "::notice title=Not deployed::$RUN_BRANCH has moved on to ${tip:0:7}, which deploys after its own CI run. ${sha:0:7} is skipped."
+              echo "skip=true" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::'$sha' is not a full commit SHA"
+            exit 1
+          fi
+          title="$(printf '%s\n' "$title" | head -n 1)"
+          echo "Deploying $sha: $title"
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          echo "title=$title" >>"$GITHUB_OUTPUT"
+
+      - name: Prepare the SSH login
+        id: ssh
+        if: steps.target.outputs.skip != 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=""
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ "$missing" = " DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS" ] && [ "$EVENT" != workflow_dispatch ]; then
+            # Auto-deploy hasn't been set up yet: a push shouldn't show a failed deploy.
+            echo "::notice title=Auto-deploy not set up::Nothing deployed. Add the DEPLOY_* secrets (DEPLOYMENT.md § Automatic deploys from GitHub) to turn it on."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error title=Deploy secrets missing::Add$missing in Settings → Secrets and variables → Actions. DEPLOYMENT.md § Automatic deploys from GitHub shows where each value comes from."
+            exit 1
+          fi
+          if [[ ! $DEPLOY_HOST =~ ^[A-Za-z0-9.:]([A-Za-z0-9.:-]*)$ ]]; then
+            echo "::error::DEPLOY_HOST must be the server's IP address or host name"
+            exit 1
+          fi
+          if [[ ! $DEPLOY_USER =~ ^[A-Za-z0-9_]([A-Za-z0-9_.-]*)$ ]]; then
+            echo "::error::DEPLOY_USER must be the site user's login name"
+            exit 1
+          fi
+          if [[ -n $DEPLOY_PORT && ! $DEPLOY_PORT =~ ^[0-9]{1,5}$ ]]; then
+            echo "::error::DEPLOY_PORT must be a port number (or leave it unset for 22)"
+            exit 1
+          fi
+
+          dir="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$dir"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' >"$dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' >"$dir/known_hosts"
+          port="${DEPLOY_PORT:-22}"
+          if [ "$port" != 22 ]; then
+            # ssh looks a host on another port up as "[host]:port"; accept the plain form too.
+            extra="$(awk -v h="$DEPLOY_HOST" -v hp="[$DEPLOY_HOST]:$port" '$1 == h { $1 = hp; print }' "$dir/known_hosts")"
+            [ -z "$extra" ] || printf '%s\n' "$extra" >>"$dir/known_hosts"
+          fi
+          chmod 600 "$dir/key" "$dir/known_hosts"
+
+          if ! ssh-keygen -y -P '' -f "$dir/key" >/dev/null; then
+            echo "::error::DEPLOY_SSH_KEY is not a private key without a passphrase. Paste the whole key enable-auto-deploy.sh printed, BEGIN and END lines included."
+            exit 1
+          fi
+          if ! ssh-keygen -l -f "$dir/known_hosts" >/dev/null; then
+            echo "::error::DEPLOY_KNOWN_HOSTS holds no host key. Paste the line enable-auto-deploy.sh printed (\"<address> ssh-ed25519 AAAA…\")."
+            exit 1
+          fi
+
+      - name: Deploy
+        if: steps.target.outputs.skip != 'true' && steps.ssh.outputs.skip != 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          SHA: ${{ steps.target.outputs.sha }}
+          TITLE: ${{ steps.target.outputs.title }}
+        run: |
+          dir="$RUNNER_TEMP/deploy-ssh"
+          # Cancelling this job doesn't stop a deploy the server has started; it
+          # finishes there and ~/.purple-voice/deploy.log has the outcome.
+          rc=0
+          ssh -i "$dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" \
+            -o ConnectTimeout=30 -o ServerAliveInterval=30 \
+            -p "${DEPLOY_PORT:-22}" -- "$DEPLOY_USER@$DEPLOY_HOST" "deploy $SHA" || rc=$?
+          case "$rc" in
+            0) printf '### Deployed %s\n\n%s\n' "${SHA:0:12}" "$TITLE" >>"$GITHUB_STEP_SUMMARY" ;;
+            255)
+              echo "::error title=SSH login failed::Check DEPLOY_HOST, DEPLOY_USER, DEPLOY_PORT and DEPLOY_KNOWN_HOSTS, and that the CI key is still in the site user's ~/.ssh/authorized_keys (re-run enable-auto-deploy.sh)."
+              ;;
+            64) echo "::error::The server refused the request (remote-deploy.sh accepts only \"deploy <sha>\")." ;;
+            69) echo "::error::Node.js or PM2 isn't on the site user's PATH on the server (nvm in ~/.nvm)." ;;
+            75) echo "::error::Another deploy held the server's deploy lock for an hour. Check ~/.purple-voice/deploy.log." ;;
+            *) echo "::error title=Deploy failed::deploy.sh exited with $rc. The output above, and ~/.purple-voice/deploy.log on the server, show where." ;;
+          esac
+          exit "$rc"
+
+      - name: Health check
+        if: steps.target.outputs.skip != 'true' && steps.ssh.outputs.skip != 'true' && vars.DEPLOY_HEALTHCHECK_URL != ''
+        env:
+          URL: ${{ vars.DEPLOY_HEALTHCHECK_URL }}
+        run: |
+          for attempt in $(seq 1 10); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || true)"
+            if [ "$code" = 200 ]; then
+              echo "$URL answered 200"
+              exit 0
+            fi
+            echo "Attempt $attempt: HTTP $code"
+            sleep 6
+          done
+          echo "::error title=Health check failed::$URL did not answer 200 after the deploy"
+          exit 1
+
+      - name: Remove the SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/deploy-ssh"

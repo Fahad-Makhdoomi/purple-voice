@@ -1,3 +1,4 @@
+# deploy.yml runs after this workflow by its name: keep `name: CI`.
 name: CI
 
 on:
@@ -21,6 +22,9 @@ jobs:
         run: npm test -w @pv/api
       - name: Static images are WebP with no duplicates
         run: npm run images:check -w @pv/web
+      - name: Deploy scripts parse
+        # The server runs remote-deploy.sh from its checkout; a broken one stops auto-deploys.
+        run: for f in deploy/*.sh deploy/cloudpanel/*.sh; do bash -n "$f"; done
       - name: Build the web app
         # No API is running in CI: public pages fall back to built-in content.
         run: npm run build -w @pv/web

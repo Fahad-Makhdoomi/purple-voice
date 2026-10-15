@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build and (re)start Purple Voice from this checkout. Run as the app user:
-#   ./deploy/deploy.sh [git-ref]
+#   ./deploy/deploy.sh [git-ref]      branch, tag or commit SHA; default main
 # Safe to run repeatedly; migrations are applied before the new code starts.
+# Pushes to main run this automatically through deploy/remote-deploy.sh.
 #
 # Env files: $PV_ENV_DIR, else ~/.purple-voice (CloudPanel), else /etc/purple-voice.
 # Without a .git directory (code uploaded as a tarball) the fetch step is skipped.
@@ -28,12 +29,32 @@ wait_for() {
 }
 
 REF="${1:-main}"
-if [ -d .git ]; then
+case "$REF" in -*) echo "!! '$REF' is not a branch, tag or commit" >&2; exit 1 ;; esac
+if [ -d .git ] && [ "${PV_DEPLOY_SYNCED:-}" != "$REF" ]; then
+  # The server always matches origin exactly: a branch is reset to its remote copy
+  # (so force-pushes deploy too), a tag or commit is checked out detached, and edits
+  # to tracked files on the server are discarded. Ignored files (node_modules,
+  # builds) stay.
   echo "==> Fetching $REF"
-  git fetch --prune --tags origin
-  git checkout -q "$REF"
-  git symbolic-ref -q HEAD >/dev/null && git pull --ff-only origin "$REF"
-else
+  git fetch --prune --tags --force origin
+  if git show-ref -q --verify "refs/remotes/origin/$REF"; then
+    git checkout -q -f -B "$REF" "origin/$REF"
+  else
+    # A commit that no branch or tag points at any more is fetched by its SHA.
+    if [[ $REF =~ ^[0-9a-f]{40}$ ]] && ! git cat-file -e "$REF^{commit}" 2>/dev/null; then
+      git fetch -q origin "$REF"
+    fi
+    git rev-parse -q --verify "$REF^{commit}" >/dev/null || {
+      echo "!! No branch, tag or commit called '$REF' in origin" >&2
+      exit 1
+    }
+    git checkout -q -f --detach "$REF"
+  fi
+  echo "==> Deploying $(git log -1 --format='%h %s')"
+  # Carry on with the deploy.sh of the commit just checked out, not this copy of it.
+  export PV_DEPLOY_SYNCED="$REF"
+  exec bash ./deploy/deploy.sh "$REF"
+elif [ ! -d .git ]; then
   echo "==> No .git directory: deploying the files as they are"
 fi
 
