@@ -36,8 +36,17 @@ nginx and TLS themselves. Both need Node.js 22+.
 
 ### 2A. CloudPanel
 
-CloudPanel owns nginx, TLS and the site user; `deploy/cloudpanel/setup.sh` adds
-PostgreSQL 16, the env files, PM2 and backups around it.
+CloudPanel owns nginx, TLS and the site user; `deploy/cloudpanel/setup.sh` adds the
+database, the env files, PM2 and backups around it.
+
+**PostgreSQL.** If the server already runs PostgreSQL for other apps, the script uses
+it as it is: it adds a `purple_voice` role and database and does **not** change that
+server's settings or restart it. Purple Voice holds up to ~20 connections (API and
+worker, 10 each), so the server's `max_connections` needs that much headroom. Only on
+a server without PostgreSQL does it install PostgreSQL 16 and tune it. A PostgreSQL
+running in Docker or elsewhere: create a role and database yourself and pass
+`PV_DATABASE_URL='postgresql://…/purple_voice'` to the script. CloudPanel's own
+database (MySQL, port 3306) is not used.
 
 | What | Where |
 |---|---|
@@ -66,7 +75,7 @@ PostgreSQL 16, the env files, PM2 and backups around it.
    bash /home/purplerocket-voice/purple-voice/deploy/cloudpanel/setup.sh \
      purplerocket-voice voice.purplerocket.co you@your-domain.com
    ```
-   It installs PostgreSQL 16 and creates the database, writes the env files with fresh
+   It creates the database (see **PostgreSQL** above), writes the env files with fresh
    secrets, installs PM2 with a boot service, schedules nightly backups, runs the first
    deploy, and writes `~/purple-voice-vhost.conf`. Re-running it is safe.
 5. **CloudPanel → Sites → voice.purplerocket.co → Vhost**: paste the two parts of

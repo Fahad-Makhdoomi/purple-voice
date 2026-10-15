@@ -10,16 +10,18 @@
 # Then, as root:
 #   bash /home/<site-user>/purple-voice/deploy/cloudpanel/setup.sh <site-user> <domain> <admin-email>
 #
-# What it does: installs PostgreSQL 16 next to CloudPanel's MySQL and creates the
-# database; writes ~/.purple-voice/api.env and web.env (site user, mode 600) with
+# What it does: creates a role and database in the server's PostgreSQL (installing
+# PostgreSQL 16 only if there is none; an existing one is not reconfigured or
+# restarted); writes ~/.purple-voice/api.env and web.env (site user, mode 600) with
 # fresh secrets; installs PM2 for the site user with a boot service; schedules
 # nightly backups; runs the first deploy; and writes the nginx additions to paste
 # into CloudPanel's Vhost editor. Safe to re-run: existing env files, database
 # passwords and the first-login password are kept.
 #
 # Optional overrides: WEB_PORT (default 3000), API_PORT (4000), DB_NAME / DB_USER
-# (purple_voice). Ports must be 1024 or above and free. CloudPanel's App Port only
-# matters until the vhost from this script is pasted: from then on nginx uses WEB_PORT.
+# (purple_voice), PV_DATABASE_URL (use this database instead of creating one).
+# Ports must be 1024 or above and free. CloudPanel's App Port only matters until
+# the vhost from this script is pasted: from then on nginx uses WEB_PORT.
 set -euo pipefail
 
 usage="usage: setup.sh <site-user> <domain> <admin-email>"
@@ -87,8 +89,26 @@ if ! swapon --show --noheadings | grep -q .; then
   sysctl -q -w vm.swappiness=10 && echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf
 fi
 
-# ── PostgreSQL 16 (CloudPanel only ships MySQL/MariaDB) ─────────────────────
-if [ ! -d /etc/postgresql/16/main ]; then
+# ── PostgreSQL ───────────────────────────────────────────────────────────────
+# A PostgreSQL already on the server is shared as it is: Purple Voice gets its own
+# role and database, and the server's settings are neither changed nor restarted,
+# so the other apps on it keep running. Only when there is none is PostgreSQL 16
+# installed and tuned. For a PostgreSQL that isn't an apt package (Docker, a
+# managed database), create the role and database yourself and pass PV_DATABASE_URL.
+if [ -n "${PV_DATABASE_URL:-}" ]; then
+  PG_MODE=url
+  echo "   using the database in PV_DATABASE_URL"
+elif command -v pg_lsclusters >/dev/null 2>&1 && pg_lsclusters --no-header 2>/dev/null | grep -q .; then
+  PG_MODE=existing
+elif ss -Hltn "sport = :5432" | grep -q .; then
+  die "Something listens on port 5432 but it isn't an apt-installed PostgreSQL (Docker?).
+   Create a role and database for Purple Voice there, then re-run with
+   PV_DATABASE_URL='postgresql://purple_voice:PASSWORD@127.0.0.1:5432/purple_voice' bash $0 $SITE_USER $DOMAIN $ADMIN_EMAIL"
+else
+  PG_MODE=install
+fi
+
+if [ "$PG_MODE" = install ]; then
   say "Installing PostgreSQL 16"
   apt-get update -q
   if ! apt-cache show postgresql-16 >/dev/null 2>&1; then
@@ -96,18 +116,31 @@ if [ ! -d /etc/postgresql/16/main ]; then
     /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
   fi
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q postgresql-16 postgresql-client-16
-fi
-say "Tuning PostgreSQL for a shared 4 GB server"
-install -m 644 "$APP_DIR/deploy/postgres/purplevoice.conf" /etc/postgresql/16/main/conf.d/purplevoice.conf
-cat > /etc/postgresql/16/main/conf.d/zz-purplevoice-cloudpanel.conf <<'CONF'
+  say "Tuning PostgreSQL 16 for a shared 4 GB server (only Purple Voice uses it)"
+  install -m 644 "$APP_DIR/deploy/postgres/purplevoice.conf" /etc/postgresql/16/main/conf.d/purplevoice.conf
+  cat > /etc/postgresql/16/main/conf.d/zz-purplevoice-cloudpanel.conf <<'CONF'
 # CloudPanel also runs MySQL and PHP-FPM on this server: leave them room.
 shared_buffers = 768MB
 effective_cache_size = 2GB
 CONF
-systemctl restart postgresql@16-main
-PG_PORT="$(pg_lsclusters --no-header | awk '$1 == "16" && $2 == "main" { print $3 }')"
-PG_PORT="${PG_PORT:-5432}"
-psql_admin() { runuser -u postgres -- psql -p "$PG_PORT" -v ON_ERROR_STOP=1 -qtA "$@"; }
+  systemctl restart postgresql@16-main
+fi
+
+if [ "$PG_MODE" != url ]; then
+  # The cluster on the default port, else the first one running.
+  PG_LINE="$(pg_lsclusters --no-header | awk '$4 ~ /^online/ && $3 == 5432' | head -n 1)"
+  [ -n "$PG_LINE" ] || PG_LINE="$(pg_lsclusters --no-header | awk '$4 ~ /^online/' | head -n 1)"
+  [ -n "$PG_LINE" ] || die "PostgreSQL is installed but no cluster is running (check: pg_lsclusters). Start it and re-run."
+  PG_VERSION="$(awk '{ print $1 }' <<<"$PG_LINE")"
+  PG_PORT="$(awk '{ print $3 }' <<<"$PG_LINE")"
+  if [ "$PG_MODE" = existing ]; then
+    echo "   using the existing PostgreSQL $PG_VERSION on port $PG_PORT; its settings are left as they are"
+  fi
+  if [ "${PG_VERSION%%.*}" -lt 13 ]; then
+    echo "   (PostgreSQL $PG_VERSION is past end of life; Purple Voice is tested on 16)"
+  fi
+fi
+psql_admin() { runuser -u postgres -- psql -w -p "$PG_PORT" -v ON_ERROR_STOP=1 -qtA "$@"; }
 
 # ── Database and env files ───────────────────────────────────────────────────
 install -d -m 700 -o "$SITE_USER" -g "$SITE_USER" "$ENV_DIR"
@@ -116,22 +149,30 @@ install -d -m 700 -o "$SITE_USER" -g "$SITE_USER" "$HOME_DIR/backups" "$BACKUPS"
 secret() { openssl rand -base64 "$1" | tr -d '\n'; }
 
 if [ ! -f "$ENV_DIR/api.env" ]; then
-  say "Creating database $DB_NAME and env files"
-  DB_PASS="$(openssl rand -hex 24)"
-  if [ "$(psql_admin -c "SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER'")" = 1 ]; then
-    psql_admin -c "ALTER ROLE \"$DB_USER\" WITH LOGIN PASSWORD '$DB_PASS'"
+  if [ "$PG_MODE" = url ]; then
+    say "Writing env files"
+    DB_URL="$PV_DATABASE_URL"
   else
-    psql_admin -c "CREATE ROLE \"$DB_USER\" WITH LOGIN PASSWORD '$DB_PASS'"
+    say "Creating role $DB_USER and database $DB_NAME, then the env files"
+    psql_admin -c 'SELECT 1' >/dev/null 2>&1 ||
+      die "Couldn't connect to PostgreSQL on port $PG_PORT as the postgres system user. Create a role and database yourself and re-run with PV_DATABASE_URL (see the top of this script)."
+    DB_PASS="$(openssl rand -hex 24)"
+    if [ "$(psql_admin -c "SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER'")" = 1 ]; then
+      psql_admin -c "ALTER ROLE \"$DB_USER\" WITH LOGIN PASSWORD '$DB_PASS'"
+    else
+      psql_admin -c "CREATE ROLE \"$DB_USER\" WITH LOGIN PASSWORD '$DB_PASS'"
+    fi
+    [ "$(psql_admin -c "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'")" = 1 ] ||
+      psql_admin -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\""
+    DB_URL="postgresql://$DB_USER:$DB_PASS@127.0.0.1:$PG_PORT/$DB_NAME?schema=public&connection_limit=10"
   fi
-  [ "$(psql_admin -c "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'")" = 1 ] ||
-    psql_admin -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\""
 
   REVALIDATE="$(secret 36)"
   cat > "$ENV_DIR/api.env" <<ENV
 # Purple Voice API, worker and seed. Generated by deploy/cloudpanel/setup.sh.
 # Every setting is explained in .env.example. Run ./deploy/deploy.sh after editing.
 NODE_ENV=production
-DATABASE_URL="postgresql://$DB_USER:$DB_PASS@127.0.0.1:$PG_PORT/$DB_NAME?schema=public&connection_limit=10"
+DATABASE_URL="$DB_URL"
 API_HOST=127.0.0.1
 API_PORT=$API_PORT
 APP_URL=https://$DOMAIN
@@ -197,7 +238,7 @@ ADMIN_PASS="$(sed -n 's/^password: //p' "$FIRST_LOGIN")"
 
 # ── PM2 with a boot service ──────────────────────────────────────────────────
 say "Installing PM2 for $SITE_USER"
-as_site 'npm install -g pm2@latest --no-audit --no-fund --silent'
+as_site 'npm install -g pm2@latest --no-audit --no-fund --loglevel=error'
 NODE_BIN="$(as_site 'dirname "$(command -v node)"' | tail -n 1)"
 env PATH="$NODE_BIN:$PATH" "$NODE_BIN/pm2" startup systemd -u "$SITE_USER" --hp "$HOME_DIR" >/dev/null
 systemctl enable "pm2-$SITE_USER" >/dev/null 2>&1 || true
