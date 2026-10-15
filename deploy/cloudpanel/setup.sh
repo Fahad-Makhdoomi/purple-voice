@@ -38,6 +38,8 @@ SITE_ROOT="$HOME_DIR/htdocs/$DOMAIN"
 UPLOADS="$SITE_ROOT/uploads"
 BACKUPS="$HOME_DIR/backups/purple-voice"
 
+cd / # commands below run as other users (postgres, the site user) that can't read root's cwd
+
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\n!! %s\n' "$*" >&2; exit 1; }
 # Run a command as the site user with CloudPanel's per-user Node.js (nvm) loaded.
