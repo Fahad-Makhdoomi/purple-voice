@@ -1,0 +1,31 @@
+# Local development only. Production runs Postgres natively on the VPS
+# (see docs/DEPLOYMENT.md) so it can be tuned for the 4 GB box.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pv
+      POSTGRES_PASSWORD: pv_dev_password
+      POSTGRES_DB: purple_voice
+    ports:
+      - '5434:5432'
+    volumes:
+      - pv_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pv -d purple_voice']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: pv-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  pv_pgdata:

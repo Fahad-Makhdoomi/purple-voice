@@ -1,0 +1,34 @@
+{
+  "name": "purple-voice",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Purple Voice — AI voice agents for sales calls. Public website, subscriber dashboard, admin panel and real-time voice infrastructure.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "dev": "npm run build -w @pv/shared && npm-run-all --parallel dev:shared dev:api dev:worker dev:web",
+    "dev:shared": "npm run dev -w @pv/shared",
+    "dev:api": "npm run dev -w @pv/api",
+    "dev:worker": "npm run dev:worker -w @pv/api",
+    "dev:web": "npm run dev -w @pv/web",
+    "build": "npm run build -w @pv/shared && npm run build -w @pv/api && npm run build -w @pv/web",
+    "typecheck": "npm run build -w @pv/shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "db:generate": "npm run db:generate -w @pv/api",
+    "db:migrate": "npm run db:migrate -w @pv/api",
+    "db:deploy": "npm run db:deploy -w @pv/api",
+    "db:seed": "npm run db:seed -w @pv/api",
+    "db:studio": "npm run db:studio -w @pv/api"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "prettier": "^3.3.3",
+    "typescript": "~5.9.3"
+  }
+}

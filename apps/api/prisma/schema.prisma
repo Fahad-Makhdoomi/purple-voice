@@ -1,0 +1,845 @@
+// Purple Voice — the whole data model.
+//
+// Tenancy: every customer-owned row carries `workspaceId`. A subscriber user
+// belongs to exactly one workspace; staff (ADMIN / SUPER_ADMIN) belong to
+// none and reach a workspace explicitly (see middleware/workspace.ts).
+//
+// Secrets (AI keys, telephony tokens, OAuth tokens, webhook secrets) are
+// stored AES-256-GCM encrypted in `*Enc` columns. Nothing in this schema
+// holds a plaintext credential.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums (mirrored in packages/shared/src/enums.ts) ─────────────────────────
+
+enum Role {
+  SUBSCRIBER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum PlanCode {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+enum BillingProvider {
+  STRIPE
+  MANUAL
+}
+
+enum SubscriptionEventType {
+  CREATED
+  UPGRADED
+  DOWNGRADED
+  RENEWED
+  CANCELED
+  REACTIVATED
+  PAYMENT_FAILED
+  ADMIN_CHANGE
+}
+
+enum CredentialProvider {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+  DEEPGRAM
+}
+
+enum TelephonyProvider {
+  TWILIO
+  PLIVO
+  SUPERPHONE
+}
+
+enum VoiceEngine {
+  REALTIME
+  CASCADED
+}
+
+enum AiProvider {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+}
+
+enum AgentStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+}
+
+enum CampaignStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELED
+}
+
+enum ContactStatus {
+  PENDING
+  CALLING
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  DO_NOT_CALL
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  QUEUED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  TRANSFERRED
+  NO_ANSWER
+  BUSY
+  FAILED
+  CANCELED
+}
+
+enum CallOutcome {
+  INTERESTED
+  NOT_INTERESTED
+  APPOINTMENT_BOOKED
+  CALLBACK_REQUESTED
+  TRANSFERRED
+  VOICEMAIL
+  WRONG_NUMBER
+  DO_NOT_CALL
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CANCELED
+  COMPLETED
+  NO_SHOW
+}
+
+enum IntegrationType {
+  GOOGLE_CALENDAR
+  SLACK
+  HUBSPOT
+  ZAPIER
+  CALENDLY
+}
+
+enum DeliveryStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  name          String
+  passwordHash  String
+  role          Role       @default(SUBSCRIBER)
+  workspaceId   String?
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timezone      String     @default("UTC")
+  suspended     Boolean    @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  sessions        Session[]
+  passwordResets  PasswordReset[]
+  ticketMessages  TicketMessage[]
+  assignedTickets Ticket[]        @relation("TicketAssignee")
+  auditLogs       AuditLog[]
+  posts           Post[]
+  leads           Lead[]          @relation("LeadOwner")
+  media           MediaAsset[]
+
+  @@index([workspaceId])
+  @@index([role])
+}
+
+/// One row per refresh token. Rotated on every refresh; reuse of a rotated
+/// token revokes the whole family (stolen-token detection).
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  familyId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// ─── Tenancy & billing ───────────────────────────────────────────────────────
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  timezone  String   @default("UTC")
+  suspended Boolean  @default(false)
+  /// Staff-only notes about the customer.
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  subscription       Subscription?
+  subscriptionEvents SubscriptionEvent[]
+  payments           Payment[]
+  usagePeriods       UsagePeriod[]
+  credentials        AiCredential[]
+  telephonyAccounts  TelephonyAccount[]
+  phoneNumbers       PhoneNumber[]
+  agents             Agent[]
+  campaigns          Campaign[]
+  contacts           CampaignContact[]
+  calls              Call[]
+  appointments       Appointment[]
+  integrations       Integration[]
+  webhookEndpoints   WebhookEndpoint[]
+  apiKeys            ApiKey[]
+  automations        Automation[]
+  tickets            Ticket[]
+  auditLogs          AuditLog[]
+}
+
+model Plan {
+  id                String   @id @default(cuid())
+  code              PlanCode @unique
+  name              String
+  tagline           String   @default("")
+  /// null = custom pricing (Enterprise).
+  priceMonthlyCents Int?
+  /// null = custom.
+  includedMinutes   Int?
+  /// PlanLimits from @pv/shared. null values mean unlimited.
+  limits            Json
+  /// PlanFeatures from @pv/shared.
+  features          Json
+  highlights        String[]
+  featured          Boolean  @default(false)
+  selfServe         Boolean  @default(true)
+  stripePriceId     String?
+  active            Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  workspaceId          String             @unique
+  workspace            Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 Plan               @relation(fields: [planId], references: [id])
+  status               SubscriptionStatus @default(INCOMPLETE)
+  provider             BillingProvider    @default(STRIPE)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  /// Enterprise: negotiated monthly price, counted in MRR.
+  customPriceCents     Int?
+  /// Enterprise: minutes per period, overrides the plan.
+  customMinutes        Int?
+  /// Partial PlanLimits overriding the plan for this workspace.
+  customLimits         Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status])
+  @@index([planId])
+}
+
+/// Append-only history used for churn, upgrade and MRR movement analytics.
+model SubscriptionEvent {
+  id            String                @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type          SubscriptionEventType
+  fromPlan      PlanCode?
+  toPlan        PlanCode?
+  /// Change in monthly recurring revenue caused by this event, in cents.
+  mrrDeltaCents Int                   @default(0)
+  note          String?
+  occurredAt    DateTime              @default(now())
+
+  @@index([type, occurredAt])
+  @@index([workspaceId])
+}
+
+model Payment {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  amountCents       Int
+  currency          String    @default("usd")
+  status            String
+  provider          BillingProvider @default(STRIPE)
+  providerInvoiceId String?   @unique
+  description       String?
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([paidAt])
+  @@index([workspaceId])
+}
+
+/// Call seconds consumed in one billing period. Incremented atomically when a
+/// call ends; read on every call start to enforce the plan's minutes.
+model UsagePeriod {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  /// Billed minutes (each call rounded up to the minute).
+  minutesUsed Int       @default(0)
+  callCount   Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, periodStart])
+}
+
+// ─── Credentials & telephony ────────────────────────────────────────────────
+
+/// A workspace's own API key for an AI or speech vendor (bring-your-own-key).
+model AiCredential {
+  id          String             @id @default(cuid())
+  workspaceId String
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider    CredentialProvider
+  label       String?
+  apiKeyEnc   String
+  last4       String
+  verifiedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([workspaceId, provider])
+}
+
+model TelephonyAccount {
+  id             String            @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider       TelephonyProvider
+  label          String?
+  /// Encrypted JSON: { accountSid, authToken } | { authId, authToken } | { apiKey, sipDomain }
+  credentialsEnc String
+  /// Non-secret identifier shown in the UI (Account SID / Auth ID).
+  publicId       String
+  verifiedAt     DateTime?
+  createdAt      DateTime          @default(now())
+
+  phoneNumbers PhoneNumber[]
+
+  @@index([workspaceId])
+}
+
+model PhoneNumber {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  telephonyAccountId String
+  telephonyAccount   TelephonyAccount @relation(fields: [telephonyAccountId], references: [id], onDelete: Cascade)
+  e164               String
+  friendlyName       String?
+  /// Provider's id for the number (Twilio PN sid, Plivo number).
+  providerNumberId   String?
+  /// Provider-side application routing this number (Plivo).
+  providerAppId      String?
+  inboundAgentId     String?
+  inboundAgent       Agent?           @relation("InboundAgent", fields: [inboundAgentId], references: [id], onDelete: SetNull)
+  /// Whether our voice URL is currently configured on the provider.
+  routingConfigured  Boolean          @default(false)
+  routingError       String?
+  createdAt          DateTime         @default(now())
+
+  campaigns Campaign[]
+  calls     Call[]
+
+  @@unique([workspaceId, e164])
+  @@index([e164])
+}
+
+// ─── Agents, campaigns, calls ───────────────────────────────────────────────
+
+model Agent {
+  id                        String      @id @default(cuid())
+  workspaceId               String
+  workspace                 Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                      String
+  status                    AgentStatus @default(DRAFT)
+  voiceEngine               VoiceEngine @default(REALTIME)
+  llmProvider               AiProvider  @default(OPENAI)
+  llmModel                  String
+  voice                     String
+  language                  String      @default("en-US")
+  systemPrompt              String
+  greeting                  String      @default("")
+  goal                      String      @default("")
+  knowledge                 String      @default("")
+  transferEnabled           Boolean     @default(false)
+  transferNumber            String?
+  appointmentBookingEnabled Boolean     @default(false)
+  calendarIntegrationId     String?
+  appointmentDurationMin    Int         @default(30)
+  timezone                  String      @default("UTC")
+  maxCallDurationSec        Int         @default(900)
+  recordCalls               Boolean     @default(false)
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
+
+  inboundNumbers PhoneNumber[] @relation("InboundAgent")
+  campaigns      Campaign[]
+  calls          Call[]
+
+  @@index([workspaceId])
+}
+
+model Campaign {
+  id                String         @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name              String
+  agentId           String
+  agent             Agent          @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  phoneNumberId     String
+  phoneNumber       PhoneNumber    @relation(fields: [phoneNumberId], references: [id], onDelete: Restrict)
+  goal              String         @default("")
+  status            CampaignStatus @default(DRAFT)
+  timezone          String         @default("UTC")
+  callWindowStart   String         @default("09:00")
+  callWindowEnd     String         @default("18:00")
+  /// 0 = Sunday … 6 = Saturday.
+  callDays          Int[]          @default([1, 2, 3, 4, 5])
+  maxAttempts       Int            @default(2)
+  retryDelayMinutes Int            @default(240)
+  concurrency       Int            @default(1)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  contacts CampaignContact[]
+  calls    Call[]
+
+  @@index([workspaceId])
+  @@index([status])
+}
+
+model CampaignContact {
+  id            String        @id @default(cuid())
+  campaignId    String
+  campaign      Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  workspaceId   String
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  phone         String
+  name          String?
+  email         String?
+  company       String?
+  notes         String?
+  /// Extra CSV columns, available to the agent as {{variables}}.
+  fields        Json?
+  status        ContactStatus @default(PENDING)
+  attempts      Int           @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  lastOutcome   CallOutcome?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  calls Call[]
+
+  @@unique([campaignId, phone])
+  @@index([status, nextAttemptAt])
+  @@index([workspaceId])
+}
+
+model Call {
+  id             String        @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentId        String?
+  agent          Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contactId      String?
+  contact        CampaignContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  phoneNumberId  String?
+  phoneNumber    PhoneNumber?  @relation(fields: [phoneNumberId], references: [id], onDelete: SetNull)
+  provider       TelephonyProvider
+  providerCallId String?
+  direction      CallDirection
+  fromNumber     String
+  toNumber       String
+  status         CallStatus    @default(QUEUED)
+  startedAt      DateTime?
+  answeredAt     DateTime?
+  endedAt        DateTime?
+  durationSec    Int           @default(0)
+  billedMinutes  Int           @default(0)
+  /// [{ role: "agent" | "caller" | "system", text, at }]
+  transcript     Json          @default("[]")
+  summary        String?
+  outcome        CallOutcome?
+  /// -1 … 1
+  sentiment      Float?
+  recordingUrl   String?
+  transferredTo  String?
+  endReason      String?
+  errorMessage   String?
+  /// Set when post-call processing (summary, webhooks, usage) has run.
+  finalizedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  appointments Appointment[]
+
+  @@unique([provider, providerCallId])
+  @@index([workspaceId, createdAt])
+  @@index([campaignId])
+  @@index([status])
+}
+
+model Appointment {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  callId           String?
+  call             Call?             @relation(fields: [callId], references: [id], onDelete: SetNull)
+  integrationId    String?
+  contactName      String
+  contactPhone     String
+  contactEmail     String?
+  startsAt         DateTime
+  endsAt           DateTime
+  timezone         String            @default("UTC")
+  notes            String?
+  status           AppointmentStatus @default(SCHEDULED)
+  externalEventId  String?
+  externalEventUrl String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([workspaceId, startsAt])
+}
+
+// ─── Integrations & developer tools ─────────────────────────────────────────
+
+model Integration {
+  id           String          @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type         IntegrationType
+  /// Encrypted JSON: OAuth tokens or the app's API token / incoming webhook URL.
+  secretsEnc   String?
+  config       Json?
+  accountLabel String?
+  connectedAt  DateTime        @default(now())
+  lastError    String?
+
+  @@unique([workspaceId, type])
+}
+
+model WebhookEndpoint {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  url         String
+  description String?
+  events      String[]
+  secretEnc   String
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([workspaceId])
+}
+
+model WebhookDelivery {
+  id             String          @id @default(cuid())
+  endpointId     String
+  endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event          String
+  payload        Json
+  status         DeliveryStatus  @default(PENDING)
+  attempts       Int             @default(0)
+  responseStatus Int?
+  lastError      String?
+  nextAttemptAt  DateTime        @default(now())
+  deliveredAt    DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, createdAt])
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  /// First characters, shown in the UI to tell keys apart.
+  prefix      String
+  keyHash     String    @unique
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+}
+
+model Automation {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  trigger     String
+  conditions  Json      @default("[]")
+  actions     Json
+  active      Boolean   @default(true)
+  runCount    Int       @default(0)
+  lastRunAt   DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, trigger])
+}
+
+// ─── Support ────────────────────────────────────────────────────────────────
+
+model Ticket {
+  id          String         @id @default(cuid())
+  workspaceId String
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subject     String
+  status      TicketStatus   @default(OPEN)
+  /// Pro and Enterprise tickets open as HIGH (priority support).
+  priority    TicketPriority @default(NORMAL)
+  assigneeId  String?
+  assignee    User?          @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  messages TicketMessage[]
+
+  @@index([status, priority])
+  @@index([workspaceId])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  fromStaff Boolean  @default(false)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+}
+
+// ─── Website CMS ────────────────────────────────────────────────────────────
+
+model Page {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  body           String        @default("")
+  status         ContentStatus @default(DRAFT)
+  showInFooter   Boolean       @default(false)
+  seoTitle       String?
+  seoDescription String?
+  ogImageUrl     String?
+  noindex        Boolean       @default(false)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Post {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  excerpt        String        @default("")
+  body           String        @default("")
+  coverImageUrl  String?
+  tags           String[]
+  status         ContentStatus @default(DRAFT)
+  authorId       String?
+  author         User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  seoTitle       String?
+  seoDescription String?
+  ogImageUrl     String?
+  noindex        Boolean       @default(false)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  category  String   @default("General")
+  sortOrder Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Key/value site settings: "seo", "security" (captcha toggles), "analytics".
+/// Values are JSON validated by @pv/shared schemas.
+model SiteSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  WON
+  LOST
+}
+
+/// CRM: enquiries from the public site (contact sales, enterprise). Staff work
+/// them through the statuses above from the admin panel.
+model Lead {
+  id        String     @id @default(cuid())
+  name      String
+  email     String
+  company   String?
+  phone     String?
+  message   String
+  plan      PlanCode?
+  source    String     @default("contact_form")
+  status    LeadStatus @default(NEW)
+  notes     String     @default("")
+  ownerId   String?
+  owner     User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status, createdAt])
+}
+
+/// Uploaded images. Every upload is converted to WebP at its original
+/// resolution and stored once: `sourceHash` (the uploaded bytes) and
+/// `contentHash` (the WebP output) are both unique, so uploading the same
+/// image again returns the existing asset instead of a copy.
+model MediaAsset {
+  id           String   @id @default(cuid())
+  /// Logical folder, one per page or post: "pages/home", "blog/my-post", "brand".
+  folder       String
+  filename     String
+  storageKey   String   @unique
+  url          String
+  mimeType     String   @default("image/webp")
+  width        Int
+  height       Int
+  sizeBytes    Int
+  originalName String
+  originalSize Int
+  sourceHash   String   @unique
+  contentHash  String   @unique
+  alt          String   @default("")
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([folder, createdAt])
+}
+
+// ─── Audit ──────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String     @id @default(cuid())
+  actorId     String?
+  actor       User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  action      String
+  entity      String?
+  entityId    String?
+  meta        Json?
+  ip          String?
+  createdAt   DateTime   @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([actorId, createdAt])
+}

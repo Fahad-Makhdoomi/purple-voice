@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.log
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env.local
+deploy/env/*.env
+!deploy/env/*.env.example
+.DS_Store
+*.tsbuildinfo
+.vscode/
+.idea/
+
+# Uploaded media (served by nginx in production)
+storage/uploads/

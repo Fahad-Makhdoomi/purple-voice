@@ -1,0 +1,281 @@
+import { Router, type CookieOptions, type Request, type Response } from 'express';
+import {
+  changePasswordSchema,
+  forgotPasswordSchema,
+  isStaff,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+  updateProfileSchema,
+} from '@pv/shared';
+import type { User } from '@prisma/client';
+import { env } from '../config/env';
+import { prisma } from '../lib/prisma';
+import { hashPassword, verifyPassword } from '../lib/password';
+import { randomToken, sha256 } from '../lib/crypto';
+import { signAccessToken } from '../lib/jwt';
+import { badRequest, conflict, forbidden, unauthorized } from '../lib/http-error';
+import { sendMail } from '../lib/mailer';
+import { audit } from '../lib/audit';
+import { ACCESS_COOKIE, REFRESH_COOKIE, authenticate } from '../middleware/auth';
+import { authLimiter } from '../middleware/rate-limit';
+import { getEntitlements, getUsage } from '../services/entitlements';
+import { assertCaptcha } from '../services/captcha';
+
+export const authRouter = Router();
+
+/** Readable by the web app's middleware for routing only; never trusted for access. */
+const ROLE_COOKIE = 'pv_role';
+const REFRESH_PATH = '/api/auth';
+
+function baseCookie(): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: env.isProd,
+    sameSite: 'lax',
+    domain: env.COOKIE_DOMAIN,
+  };
+}
+
+async function issueSession(req: Request, res: Response, user: User, familyId?: string) {
+  const refreshToken = randomToken(48);
+  const refreshMs = env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+  const session = await prisma.session.create({
+    data: {
+      userId: user.id,
+      tokenHash: sha256(refreshToken),
+      familyId: familyId ?? randomToken(12),
+      expiresAt: new Date(Date.now() + refreshMs),
+      userAgent: req.header('user-agent')?.slice(0, 300),
+      ip: req.ip,
+    },
+  });
+
+  const access = signAccessToken({ sub: user.id, role: user.role, wid: user.workspaceId });
+  res.cookie(ACCESS_COOKIE, access, {
+    ...baseCookie(),
+    path: '/',
+    maxAge: env.ACCESS_TOKEN_TTL_MIN * 60 * 1000,
+  });
+  res.cookie(REFRESH_COOKIE, refreshToken, { ...baseCookie(), path: REFRESH_PATH, maxAge: refreshMs });
+  res.cookie(ROLE_COOKIE, user.role, { ...baseCookie(), httpOnly: false, path: '/', maxAge: refreshMs });
+  return session;
+}
+
+function clearSession(res: Response) {
+  res.clearCookie(ACCESS_COOKIE, { ...baseCookie(), path: '/' });
+  res.clearCookie(REFRESH_COOKIE, { ...baseCookie(), path: REFRESH_PATH });
+  res.clearCookie(ROLE_COOKIE, { ...baseCookie(), httpOnly: false, path: '/' });
+}
+
+function publicUser(user: Pick<User, 'id' | 'email' | 'name' | 'role' | 'workspaceId' | 'timezone'>) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    workspaceId: user.workspaceId,
+    timezone: user.timezone,
+  };
+}
+
+authRouter.post('/register', authLimiter, async (req, res) => {
+  const input = registerSchema.parse(req.body);
+  await assertCaptcha(req, 'signup', input.captchaToken);
+  const existing = await prisma.user.findUnique({ where: { email: input.email } });
+  if (existing) throw conflict('An account with this email already exists. Try signing in.');
+
+  const passwordHash = await hashPassword(input.password);
+  const user = await prisma.$transaction(async (tx) => {
+    const workspace = await tx.workspace.create({
+      data: { name: input.company?.trim() || `${input.name.split(' ')[0]}'s workspace` },
+    });
+    return tx.user.create({
+      data: {
+        email: input.email,
+        name: input.name,
+        passwordHash,
+        role: 'SUBSCRIBER',
+        workspaceId: workspace.id,
+      },
+    });
+  });
+
+  await issueSession(req, res, user);
+  await audit(req, 'auth.register', { actorId: user.id, workspaceId: user.workspaceId });
+  res.status(201).json({ user: publicUser(user) });
+});
+
+authRouter.post('/login', authLimiter, async (req, res) => {
+  const input = loginSchema.parse(req.body);
+  await assertCaptcha(req, 'login', input.captchaToken);
+  const user = await prisma.user.findUnique({ where: { email: input.email } });
+  // Verify against a dummy hash when the user doesn't exist so response time
+  // doesn't reveal which emails have accounts.
+  const ok = user
+    ? await verifyPassword(input.password, user.passwordHash)
+    : await verifyPassword(input.password, DUMMY_HASH).then(() => false);
+  if (!user || !ok) throw unauthorized('Email or password is incorrect');
+  if (user.suspended) throw forbidden('This account is suspended. Please contact support.');
+
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  await issueSession(req, res, user);
+  res.json({ user: publicUser(user) });
+});
+
+authRouter.post('/refresh', async (req, res) => {
+  const token = req.cookies?.[REFRESH_COOKIE];
+  if (typeof token !== 'string' || !token) throw unauthorized();
+
+  const session = await prisma.session.findUnique({
+    where: { tokenHash: sha256(token) },
+    include: { user: true },
+  });
+  if (!session || session.expiresAt < new Date()) {
+    clearSession(res);
+    throw unauthorized();
+  }
+  if (session.revokedAt) {
+    // A rotated token came back: someone else holds a copy. Kill the family.
+    await prisma.session.updateMany({
+      where: { familyId: session.familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    clearSession(res);
+    throw unauthorized('Session expired, please sign in again');
+  }
+  if (session.user.suspended) {
+    clearSession(res);
+    throw forbidden('This account is suspended');
+  }
+
+  const next = await issueSession(req, res, session.user, session.familyId);
+  await prisma.session.update({
+    where: { id: session.id },
+    data: { revokedAt: new Date(), replacedBy: next.id },
+  });
+  res.json({ user: publicUser(session.user) });
+});
+
+authRouter.post('/logout', async (req, res) => {
+  const token = req.cookies?.[REFRESH_COOKIE];
+  if (typeof token === 'string' && token) {
+    await prisma.session.updateMany({
+      where: { tokenHash: sha256(token), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+  clearSession(res);
+  res.json({ ok: true });
+});
+
+authRouter.get('/me', authenticate, async (req, res) => {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: req.user!.id },
+    include: { workspace: true },
+  });
+  let entitlements = null;
+  let usage = null;
+  if (user.workspaceId) {
+    entitlements = await getEntitlements(user.workspaceId);
+    usage = await getUsage(user.workspaceId, entitlements);
+  }
+  res.json({
+    user: publicUser(user),
+    workspace: user.workspace
+      ? { id: user.workspace.id, name: user.workspace.name, timezone: user.workspace.timezone }
+      : null,
+    entitlements,
+    usage,
+    staff: isStaff(user.role),
+  });
+});
+
+authRouter.patch('/me', authenticate, async (req, res) => {
+  const input = updateProfileSchema.parse(req.body);
+  const user = await prisma.user.update({
+    where: { id: req.user!.id },
+    data: { name: input.name, timezone: input.timezone },
+  });
+  if (input.company && user.workspaceId && user.role === 'SUBSCRIBER') {
+    await prisma.workspace.update({
+      where: { id: user.workspaceId },
+      data: { name: input.company, timezone: input.timezone },
+    });
+  }
+  res.json({ user: publicUser(user) });
+});
+
+authRouter.post('/change-password', authenticate, async (req, res) => {
+  const input = changePasswordSchema.parse(req.body);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    throw badRequest('Current password is incorrect');
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hashPassword(input.newPassword) },
+  });
+  // Sign out every other device.
+  const current = req.cookies?.[REFRESH_COOKIE];
+  await prisma.session.updateMany({
+    where: {
+      userId: user.id,
+      revokedAt: null,
+      ...(typeof current === 'string' ? { NOT: { tokenHash: sha256(current) } } : {}),
+    },
+    data: { revokedAt: new Date() },
+  });
+  await audit(req, 'auth.password_changed');
+  res.json({ ok: true });
+});
+
+authRouter.post('/forgot-password', authLimiter, async (req, res) => {
+  const { email, captchaToken } = forgotPasswordSchema.parse(req.body);
+  await assertCaptcha(req, 'forgotPassword', captchaToken);
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user && !user.suspended) {
+    const token = randomToken(32);
+    await prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        tokenHash: sha256(token),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const link = `${env.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    await sendMail({
+      to: user.email,
+      subject: 'Reset your Purple Voice password',
+      text: `Hi ${user.name},\n\nUse this link within the next hour to choose a new password:\n${link}\n\nIf you didn't ask for this, you can ignore this email.`,
+    });
+  }
+  // Same response either way, so the endpoint can't be used to find accounts.
+  res.json({ ok: true });
+});
+
+authRouter.post('/reset-password', authLimiter, async (req, res) => {
+  const input = resetPasswordSchema.parse(req.body);
+  const reset = await prisma.passwordReset.findUnique({ where: { tokenHash: sha256(input.token) } });
+  if (!reset || reset.usedAt || reset.expiresAt < new Date()) {
+    throw badRequest('This reset link has expired. Request a new one.');
+  }
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: reset.userId },
+      data: { passwordHash: await hashPassword(input.password) },
+    }),
+    prisma.passwordReset.update({ where: { id: reset.id }, data: { usedAt: new Date() } }),
+    prisma.session.updateMany({
+      where: { userId: reset.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+  res.json({ ok: true });
+});
+
+// A well-formed scrypt record matching no password. Verifying against it costs the
+// same as a real check, which keeps unknown-email logins from returning faster.
+const DUMMY_HASH =
+  'scrypt$32768$8$1$c2FsdHNhbHRzYWx0c2FsdA==$' +
+  'WkY0kq0Q4m8j2y2m7oYcV6m0sQqk3s8fQb7m2n1x9p0Yk4l3r2t1u0v9w8x7y6z5a4b3c2d1e0f9g8h7i6j5k4==';
