@@ -1,0 +1,299 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: calc(var(--pv-header-h) + 16px);
+  }
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold text-ink;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-950;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Components ───────────────────────────────────────────────────────────── */
+
+@layer components {
+  .container {
+    width: 100%;
+    max-width: calc(var(--pv-container) + 2 * var(--pv-gutter));
+    margin-inline: auto;
+    padding-inline: var(--pv-gutter);
+  }
+
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-pill focus:bg-ink focus:px-4 focus:py-2 focus:text-white;
+  }
+
+  /* Buttons: one base, a few looks, three sizes. */
+  .btn {
+    @apply inline-flex h-11 select-none items-center justify-center gap-2 whitespace-nowrap rounded-pill px-5 text-sm font-semibold transition duration-200 ease-brand disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply h-9 px-4 text-[13px];
+  }
+  .btn-lg {
+    @apply h-12 px-7 text-[15px];
+  }
+  .btn-icon {
+    @apply h-10 w-10 px-0;
+  }
+  /* The black pill from the dashboard reference: the default action. */
+  .btn-primary {
+    @apply bg-ink text-white hover:bg-brand-800;
+  }
+  .btn-brand {
+    @apply bg-gradient-brand text-white shadow-glow hover:brightness-110;
+  }
+  .btn-secondary {
+    @apply border border-line bg-surface text-ink hover:border-brand-300 hover:bg-brand-50;
+  }
+  .btn-soft {
+    @apply bg-brand-100 text-brand-800 hover:bg-brand-200;
+  }
+  .btn-ghost {
+    @apply text-ink-soft hover:bg-brand-50 hover:text-ink;
+  }
+  .btn-danger {
+    @apply bg-danger text-white hover:brightness-110;
+  }
+  .btn-glass {
+    @apply border border-white/15 bg-white/[0.06] text-white backdrop-blur hover:bg-white/[0.12];
+  }
+
+  /* The neon-edged CTA ("magic button"). Border is a rotating conic gradient. */
+  .btn-magic {
+    @apply relative isolate overflow-hidden bg-night-2 text-white;
+    box-shadow:
+      0 0 32px -4px rgb(var(--pv-violet-500) / 0.7),
+      0 0 60px -12px rgb(var(--pv-cyan-300) / 0.45);
+  }
+  .btn-magic::before {
+    content: '';
+    @apply absolute -z-20 animate-spin-slow;
+    inset: -150%;
+    background: var(--pv-gradient-neon);
+  }
+  .btn-magic::after {
+    content: '';
+    @apply absolute -z-10 rounded-pill;
+    inset: 1.5px;
+    background: radial-gradient(
+      120% 140% at 50% 0%,
+      rgb(var(--pv-violet-900)) 0%,
+      rgb(var(--pv-night-2)) 70%
+    );
+  }
+  .btn-magic:hover {
+    box-shadow:
+      0 0 44px -2px rgb(var(--pv-violet-500) / 0.85),
+      0 0 80px -10px rgb(var(--pv-cyan-300) / 0.6);
+  }
+
+  /* Surfaces. */
+  .card {
+    @apply rounded-lg border border-line bg-surface shadow;
+  }
+  .card-pad {
+    @apply p-5 sm:p-6;
+  }
+  .panel {
+    @apply rounded-xl bg-app-panel;
+  }
+  .glass {
+    @apply rounded-lg border border-white/10 bg-white/[0.04] backdrop-blur-md;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
+  .stat-tile {
+    @apply relative overflow-hidden rounded-lg bg-gradient-stat p-5 text-brand-950;
+  }
+
+  /* Forms. */
+  .label {
+    @apply mb-1.5 block text-[13px] font-semibold text-ink-soft;
+  }
+  .help {
+    @apply mt-1.5 text-xs text-muted;
+  }
+  .field-error {
+    @apply mt-1.5 text-xs font-medium text-danger;
+  }
+  .input,
+  .select,
+  .textarea {
+    @apply w-full rounded-sm border border-line bg-surface px-3.5 text-sm text-ink shadow-sm transition placeholder:text-subtle hover:border-brand-200 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:bg-canvas disabled:text-muted;
+  }
+  .input,
+  .select {
+    @apply h-11;
+  }
+  .textarea {
+    @apply min-h-[120px] py-3 leading-relaxed;
+  }
+  .checkbox {
+    @apply h-4 w-4 rounded border-line text-brand accent-brand;
+  }
+
+  /* Badges and chips. */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-pill px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .badge-neutral {
+    @apply bg-canvas text-ink-soft ring-1 ring-inset ring-line;
+  }
+  .badge-brand {
+    @apply bg-brand-100 text-brand-800;
+  }
+  .badge-success {
+    @apply bg-success/10 text-success;
+  }
+  .badge-warning {
+    @apply bg-warning/10 text-warning;
+  }
+  .badge-danger {
+    @apply bg-danger/10 text-danger;
+  }
+  .chip {
+    @apply inline-flex h-8 items-center rounded-pill border border-line bg-surface px-3.5 text-xs font-semibold text-ink-soft transition hover:border-brand-300;
+  }
+  .chip[aria-pressed='true'],
+  .chip[aria-current='page'] {
+    @apply border-ink bg-ink text-white;
+  }
+
+  /* Tables. */
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table thead th {
+    @apply border-b border-line px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+  .table tbody td,
+  .table tbody th {
+    @apply border-b border-line/70 px-4 py-3.5 align-middle;
+  }
+  .table tbody tr:last-child td,
+  .table tbody tr:last-child th {
+    @apply border-b-0;
+  }
+  .table tbody tr {
+    @apply transition-colors hover:bg-brand-50/50;
+  }
+
+  /* Decorative backgrounds, all pure CSS — no image requests. */
+  .grid-pattern {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.35) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.35) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .starfield {
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, rgb(255 255 255 / 0.5), transparent),
+      radial-gradient(1px 1px at 120px 80px, rgb(255 255 255 / 0.35), transparent),
+      radial-gradient(1.5px 1.5px at 200px 150px, rgb(255 255 255 / 0.45), transparent),
+      radial-gradient(1px 1px at 280px 40px, rgb(255 255 255 / 0.3), transparent),
+      radial-gradient(1px 1px at 340px 190px, rgb(255 255 255 / 0.4), transparent);
+    background-size: 380px 220px;
+  }
+  .light-beam {
+    background: conic-gradient(
+      from 200deg at 10% 0%,
+      transparent 0deg,
+      rgb(var(--pv-violet-500) / 0.28) 25deg,
+      transparent 60deg
+    );
+  }
+  .text-gradient {
+    @apply bg-gradient-brand bg-clip-text text-transparent;
+  }
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.16em] text-brand-600;
+  }
+
+  /* Long-form content (blog posts, CMS pages) rendered from Markdown. */
+  .prose-pv {
+    @apply max-w-none text-[17px] leading-[1.75] text-ink-soft;
+  }
+  .prose-pv > * + * {
+    @apply mt-5;
+  }
+  .prose-pv h2 {
+    @apply mt-12 text-2xl text-ink;
+  }
+  .prose-pv h3 {
+    @apply mt-8 text-xl text-ink;
+  }
+  .prose-pv a {
+    @apply font-semibold text-brand-700 underline decoration-brand-300 underline-offset-4 hover:decoration-brand-600;
+  }
+  .prose-pv ul {
+    @apply list-disc pl-6;
+  }
+  .prose-pv ol {
+    @apply list-decimal pl-6;
+  }
+  .prose-pv li + li {
+    @apply mt-2;
+  }
+  .prose-pv blockquote {
+    @apply rounded-sm border-l-4 border-brand-300 bg-brand-50 px-5 py-3 text-ink-soft;
+  }
+  .prose-pv code {
+    @apply rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[0.9em] text-brand-900;
+  }
+  .prose-pv pre {
+    @apply overflow-x-auto rounded-sm bg-night-2 p-4 text-sm text-white;
+  }
+  .prose-pv pre code {
+    @apply bg-transparent p-0 text-inherit;
+  }
+  .prose-pv img {
+    @apply rounded-lg;
+  }
+  .prose-pv table {
+    @apply w-full text-sm;
+  }
+  .prose-pv th,
+  .prose-pv td {
+    @apply border-b border-line px-3 py-2 text-left;
+  }
+  .prose-pv hr {
+    @apply my-10 border-line;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

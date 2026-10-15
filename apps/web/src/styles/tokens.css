@@ -1,0 +1,136 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Purple Voice design tokens — the single source of truth for the look.
+
+   Change a value here and it changes everywhere: the public website, the
+   subscriber dashboard and the admin panel. Tailwind reads these through
+   tailwind.config.ts (bg-brand, rounded-card, shadow-glow, …), so
+   components never hard-code a colour, radius, font or spacing value.
+
+   Colours are stored as space-separated RGB channels ("98 54 240") so that
+   Tailwind's opacity modifiers keep working: bg-brand/10, ring-ink/20.
+
+   See BRAND.md for when to use each token.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Brand violet scale. 600 is the primary brand colour. */
+  --pv-violet-50: 247 244 255;
+  --pv-violet-100: 238 233 255;
+  --pv-violet-200: 221 211 254;
+  --pv-violet-300: 190 172 252;
+  --pv-violet-400: 156 128 250;
+  --pv-violet-500: 124 88 248;
+  --pv-violet-600: 98 54 240;
+  --pv-violet-700: 76 29 216;
+  --pv-violet-800: 53 18 168;
+  --pv-violet-900: 38 14 120;
+  --pv-violet-950: 21 8 64;
+
+  /* Pastel accents from the gradient washes (pink → lilac → periwinkle). */
+  --pv-pink-100: 253 230 248;
+  --pv-pink-300: 246 182 236;
+  --pv-periwinkle-200: 199 210 254;
+  --pv-periwinkle-300: 165 180 252;
+  /* Neon edge of the "magic" CTA glow. */
+  --pv-cyan-300: 103 232 249;
+
+  /* Neutrals: ink is near-black with a violet cast, never pure black. */
+  --pv-ink: 14 11 26;
+  --pv-ink-soft: 52 46 74;
+  --pv-muted: 110 104 135;
+  --pv-subtle: 120 114 143;
+  --pv-line: 232 228 243;
+  --pv-surface: 255 255 255;
+  --pv-canvas: 247 246 251;
+
+  /* Night: the dark hero and CTA bands. */
+  --pv-night: 7 6 12;
+  --pv-night-2: 16 13 28;
+  --pv-night-3: 27 22 46;
+
+  /* Dashboard: the lavender app shell. */
+  --pv-app-bg: 233 228 250;
+  --pv-app-panel: 244 241 254;
+  --pv-app-card: 255 255 255;
+
+  /* Status. Dark enough to pass WCAG AA as text on white and on their own 10% tint. */
+  --pv-success: 4 120 87;
+  --pv-warning: 161 92 7;
+  --pv-danger: 200 30 75;
+  --pv-info: 29 86 208;
+
+  /* Typography. Manrope is loaded by next/font and exposed as --font-manrope. */
+  --pv-font-sans:
+    var(--font-manrope), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pv-font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --pv-text-display: clamp(2.5rem, 5.2vw + 1rem, 4.5rem);
+  --pv-text-h1: clamp(2rem, 3vw + 1rem, 3.25rem);
+  --pv-text-h2: clamp(1.75rem, 2vw + 1rem, 2.5rem);
+  --pv-text-h3: 1.25rem;
+  --pv-text-lead: clamp(1.0625rem, 0.4vw + 1rem, 1.25rem);
+  --pv-leading-tight: 1.08;
+  --pv-tracking-tight: -0.035em;
+
+  /* Spacing and layout. */
+  --pv-gutter: clamp(1rem, 4vw, 2rem);
+  --pv-section: clamp(4.5rem, 9vw, 8.5rem);
+  --pv-container: 1200px;
+  --pv-container-narrow: 760px;
+  --pv-header-h: 72px;
+
+  /* Shape. */
+  --pv-radius-sm: 10px;
+  --pv-radius: 16px;
+  --pv-radius-lg: 24px;
+  --pv-radius-xl: 32px;
+  --pv-radius-pill: 999px;
+
+  /* Depth. */
+  --pv-shadow-sm: 0 1px 2px rgb(var(--pv-ink) / 0.05);
+  --pv-shadow:
+    0 1px 2px rgb(var(--pv-ink) / 0.04), 0 12px 32px -16px rgb(var(--pv-violet-900) / 0.18);
+  --pv-shadow-lg: 0 30px 80px -30px rgb(var(--pv-violet-900) / 0.35);
+  --pv-glow:
+    0 0 0 1px rgb(var(--pv-violet-400) / 0.4), 0 8px 40px -6px rgb(var(--pv-violet-500) / 0.65);
+
+  /* Gradients. */
+  --pv-gradient-brand: linear-gradient(
+    135deg,
+    rgb(var(--pv-violet-500)) 0%,
+    rgb(var(--pv-violet-700)) 100%
+  );
+  --pv-gradient-pastel: linear-gradient(
+    120deg,
+    rgb(var(--pv-pink-300)) 0%,
+    rgb(var(--pv-violet-200)) 45%,
+    rgb(var(--pv-periwinkle-300)) 100%
+  );
+  --pv-gradient-wash:
+    radial-gradient(60% 70% at 15% 20%, rgb(var(--pv-pink-300) / 0.75), transparent 70%),
+    radial-gradient(55% 60% at 85% 15%, rgb(var(--pv-violet-200) / 0.9), transparent 70%),
+    radial-gradient(70% 80% at 30% 100%, rgb(var(--pv-periwinkle-300) / 0.85), transparent 70%),
+    linear-gradient(rgb(var(--pv-violet-50)), rgb(var(--pv-violet-50)));
+  --pv-gradient-stat: linear-gradient(
+    160deg,
+    rgb(var(--pv-violet-200)) 0%,
+    rgb(var(--pv-violet-300)) 100%
+  );
+  --pv-gradient-neon: conic-gradient(
+    from 200deg,
+    rgb(var(--pv-violet-500)),
+    rgb(var(--pv-periwinkle-300)),
+    rgb(var(--pv-cyan-300)),
+    rgb(var(--pv-violet-500))
+  );
+
+  /* Motion. */
+  --pv-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --pv-duration: 220ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pv-duration: 0ms;
+  }
+}
