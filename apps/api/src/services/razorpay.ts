@@ -87,14 +87,55 @@ export function razorpayPeriod(sub: RazorpaySubscription) {
   };
 }
 
-export async function createRazorpaySubscription(input: { planId: string; workspaceId: string }) {
+/** A monthly plan billed in rupees. */
+export async function createRazorpayPlan(input: {
+  name: string;
+  amountPaise: number;
+  description: string;
+}) {
+  return razorpay<{ id: string }>('POST', '/plans', {
+    period: 'monthly',
+    interval: 1,
+    item: {
+      name: input.name,
+      amount: input.amountPaise,
+      currency: 'INR',
+      description: input.description,
+    },
+  });
+}
+
+/**
+ * The customer the subscription bills, carrying the GSTIN so Razorpay's
+ * invoices show it. Razorpay returns the existing customer for a known email.
+ */
+export async function upsertRazorpayCustomer(input: {
+  name: string;
+  email: string;
+  gstin?: string | null;
+}) {
+  return razorpay<{ id: string }>('POST', '/customers', {
+    name: input.name.slice(0, 50),
+    email: input.email,
+    ...(input.gstin ? { gstin: input.gstin } : {}),
+    fail_existing: '0',
+  });
+}
+
+export async function createRazorpaySubscription(input: {
+  planId: string;
+  workspaceId: string;
+  customerId?: string;
+  notes?: Record<string, string>;
+}) {
   return razorpay<RazorpaySubscription>('POST', '/subscriptions', {
     plan_id: input.planId,
     // Razorpay requires an end; 120 monthly cycles is ten years.
     total_count: 120,
     quantity: 1,
     customer_notify: 1,
-    notes: { workspaceId: input.workspaceId },
+    ...(input.customerId ? { customer_id: input.customerId } : {}),
+    notes: { ...input.notes, workspaceId: input.workspaceId },
   });
 }
 

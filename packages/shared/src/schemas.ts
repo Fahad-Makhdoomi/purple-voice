@@ -326,10 +326,21 @@ export const updateAutomationSchema = automationSchema.partial();
 
 // ── Billing ─────────────────────────────────────────────────────────────────
 
+/** GSTIN: 2-digit state, PAN (5 letters, 4 digits, letter), entity, Z, check character. */
+export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const gstin = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(GSTIN_PATTERN, 'Enter a valid 15-character GST number, e.g. 29ABCDE1234F1Z5');
+
 export const checkoutSchema = z.object({
   planCode: z.enum(['BASIC', 'PRO']),
   /** Which gateway to pay through; defaults to the first one offered. */
   gateway: z.enum(PAYMENT_GATEWAYS).optional(),
+  /** India: GST registration, printed on Razorpay invoices. Empty clears it. */
+  gstin: gstin.optional().or(z.literal('')),
+  billingName: z.string().trim().max(120).optional(),
 });
 
 /** Sync a just-approved Razorpay or PayPal subscription without waiting for its webhook. */
@@ -485,6 +496,8 @@ export const planUpdateSchema = z.object({
   includedMinutes: z.number().int().min(0).max(10_000_000).nullable().optional(),
   stripePriceId: z.string().trim().max(120).nullable().optional(),
   razorpayPlanId: z.string().trim().max(120).nullable().optional(),
+  /** Fixed INR price for Razorpay, in paise; null = today's rate. */
+  priceMonthlyInrPaise: z.number().int().min(100).max(1_000_000_000).nullable().optional(),
   paypalPlanId: z.string().trim().max(120).nullable().optional(),
   limits: z.record(z.string(), z.number().int().min(0).nullable()).optional(),
   highlights: z.array(z.string().trim().min(1).max(120)).max(20).optional(),

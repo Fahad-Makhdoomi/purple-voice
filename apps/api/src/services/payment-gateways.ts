@@ -13,6 +13,7 @@ import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { decrypt, encrypt, last4 } from '../lib/crypto';
 import { badRequest } from '../lib/http-error';
+import { razorpayCanSell } from './razorpay-plans';
 
 /**
  * Payment gateway credentials. A super admin saves them in the admin panel
@@ -96,6 +97,14 @@ function planIdFor(
   );
 }
 
+/** Razorpay plans are created in INR when first needed (razorpay-plans.ts). */
+function canSell(
+  gateway: PaymentGateway,
+  plan: Parameters<typeof planIdFor>[1] & Parameters<typeof razorpayCanSell>[0],
+) {
+  return gateway === 'RAZORPAY' ? razorpayCanSell(plan) : !!planIdFor(gateway, plan);
+}
+
 export async function gatewayPlanId(
   gateway: PaymentGateway,
   planCode: string,
@@ -128,7 +137,7 @@ export async function checkoutOptions(): Promise<CheckoutOption[]> {
       gateway,
       label: PAYMENT_GATEWAY_LABELS[gateway],
       methods: PAYMENT_GATEWAY_METHODS[gateway],
-      planCodes: plans.filter((p) => planIdFor(gateway, p)).map((p) => p.code),
+      planCodes: plans.filter((p) => canSell(gateway, p)).map((p) => p.code),
     }))
     .filter((o) => o.planCodes.length > 0);
 }
@@ -208,7 +217,7 @@ export async function paymentGatewayViews(): Promise<PaymentGatewayView[]> {
       fromEnv,
       webhookUrl: `${env.publicApiUrl}${WEBHOOK_PATHS[gateway]}`,
       webhookEvents: WEBHOOK_EVENTS[gateway],
-      plansReady: plans.filter((p) => planIdFor(gateway, p)).map((p) => p.code),
+      plansReady: plans.filter((p) => canSell(gateway, p)).map((p) => p.code),
     };
   });
 }

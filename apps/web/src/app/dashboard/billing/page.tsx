@@ -12,6 +12,7 @@ import {
   type LimitKey,
   type PaymentGateway,
   type UsageSnapshot,
+  GSTIN_PATTERN,
 } from '@pv/shared';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import { Field } from '@/components/forms/Field';
 
 interface BillingData {
   entitlements: Entitlements;
@@ -44,6 +46,8 @@ interface BillingData {
     name: string;
     tagline: string;
     priceMonthlyCents: number | null;
+    /** What Razorpay charges, in paise; set when Razorpay is offered. */
+    priceMonthlyInrPaise: number | null;
     includedMinutes: number | null;
     highlights: string[];
     featured: boolean;
@@ -58,6 +62,7 @@ interface BillingData {
     description: string | null;
   }>;
   checkoutOptions: CheckoutOption[];
+  billingDetails: { gstin: string | null; billingName: string | null };
   billingMode: 'live' | 'dev' | 'unavailable';
 }
 
@@ -78,6 +83,14 @@ interface Pending {
 
 const POLL_MS = 5000;
 const POLL_FOR_MS = 15 * 60 * 1000;
+
+function formatInr(paise: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(paise / 100);
+}
 
 /** Invoices can be in USD (Stripe, PayPal) or INR (Razorpay). */
 function formatPaid(minor: number, currency: string) {
@@ -106,6 +119,9 @@ function BillingInner() {
   const { busy, run } = useAction();
   const suggested = params.get('plan');
   const [picked, setPicked] = useState<PaymentGateway | null>(null);
+  const [gstin, setGstin] = useState('');
+  const [billingName, setBillingName] = useState('');
+  const savedDetails = useRef(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const pollStarted = useRef(0);
 
@@ -159,6 +175,14 @@ function BillingInner() {
     return () => window.clearInterval(timer);
   }, [pending, confirm]);
 
+  // Prefill the GST details saved with the last checkout, once.
+  useEffect(() => {
+    if (!data || savedDetails.current) return;
+    savedDetails.current = true;
+    setGstin(data.billingDetails.gstin ?? '');
+    setBillingName(data.billingDetails.billingName ?? '');
+  }, [data]);
+
   if (!data) return <Loading />;
   const { entitlements, usage, subscription } = data;
   const options = data.checkoutOptions;
@@ -168,7 +192,14 @@ function BillingInner() {
     options.find((o) => o.gateway === current) ??
     options[0];
 
+  const rupees = gateway?.gateway === 'RAZORPAY';
+  const gstinOk = !gstin.trim() || GSTIN_PATTERN.test(gstin.trim().toUpperCase());
+
   const choose = (planCode: string) => {
+    if (rupees && !gstinOk) {
+      toast('Check the GST number: 15 characters, e.g. 29ABCDE1234F1Z5', 'error');
+      return;
+    }
     // Razorpay's page opens in a new tab; open it now, while the click still
     // counts as the user's, or the browser blocks it.
     const tab = gateway?.gateway === 'RAZORPAY' ? window.open('', '_blank') : null;
@@ -176,7 +207,13 @@ function BillingInner() {
     return run(async () => {
       try {
         const r = await api<CheckoutResult>('/billing/checkout', {
-          body: { planCode, gateway: gateway?.gateway },
+          body: {
+            planCode,
+            gateway: gateway?.gateway,
+            ...(gateway?.gateway === 'RAZORPAY'
+              ? { gstin: gstin.trim(), billingName: billingName.trim() }
+              : {}),
+          },
         });
         if (r.url && r.newTab && r.subscriptionId) {
           if (tab) tab.location.href = r.url;
@@ -345,7 +382,8 @@ function BillingInner() {
       {gateway && (
         <p className="-mt-2 mb-4 text-sm text-muted">
           {gateway.label}: {gateway.methods}
-          {gateway.gateway === 'RAZORPAY' && '. Charged in rupees at the rate on the payment page.'}
+          {gateway.gateway === 'RAZORPAY' &&
+            '. Prices are shown and charged in Indian rupees (incl. any GST).'}
           {entitlements.active &&
             current &&
             current !== 'MANUAL' &&
@@ -353,6 +391,44 @@ function BillingInner() {
             `. Switching moves you from ${PAYMENT_GATEWAY_LABELS[current]}; that subscription is cancelled once the new one is paid.`}
         </p>
       )}
+      {rupees && (
+        <div className="card card-pad mb-5 grid gap-4 sm:grid-cols-2">
+          <Field
+            id="billingName"
+            label="Business name for the invoice"
+            help="Leave empty to use your workspace name."
+            optional
+          >
+            <input
+              id="billingName"
+              className="input"
+              maxLength={120}
+              value={billingName}
+              onChange={(e) => setBillingName(e.target.value)}
+              placeholder="Northwind Solar Pvt Ltd"
+            />
+          </Field>
+          <Field
+            id="gstin"
+            label="GST number (GSTIN)"
+            help="Add it to claim input tax credit; it appears on your Razorpay invoices."
+            error={gstinOk ? null : 'A GSTIN has 15 characters, e.g. 29ABCDE1234F1Z5'}
+            optional
+          >
+            <input
+              id="gstin"
+              className="input font-mono uppercase"
+              maxLength={15}
+              value={gstin}
+              onChange={(e) => setGstin(e.target.value.toUpperCase())}
+              placeholder="29ABCDE1234F1Z5"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+        </div>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-3">
         {data.plans.map((plan) => {
           const onPlan = entitlements.active && entitlements.planCode === plan.code;
@@ -376,11 +452,18 @@ function BillingInner() {
                 {onPlan && <span className="badge badge-success">Current</span>}
               </div>
               <p className="num mt-3 text-4xl font-light">
-                {formatMoney(plan.priceMonthlyCents)}
+                {rupees && plan.priceMonthlyInrPaise != null
+                  ? formatInr(plan.priceMonthlyInrPaise)
+                  : formatMoney(plan.priceMonthlyCents)}
                 {plan.priceMonthlyCents !== null && (
                   <span className="text-base text-muted"> / mo</span>
                 )}
               </p>
+              {rupees && plan.priceMonthlyInrPaise != null && (
+                <p className="text-xs text-muted">
+                  {formatMoney(plan.priceMonthlyCents)} in US dollars
+                </p>
+              )}
               <p className="mt-1 text-sm text-brand-700">
                 {plan.includedMinutes !== null
                   ? `${formatNumber(plan.includedMinutes)} minutes included`

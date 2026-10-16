@@ -193,6 +193,10 @@ superRouter.patch('/plans/:code', async (req, res) => {
     where: { code },
     data: {
       ...input,
+      // A Razorpay plan id typed in by staff is theirs: used as it is, never replaced.
+      ...(input.razorpayPlanId !== undefined && input.razorpayPlanId !== current.razorpayPlanId
+        ? { razorpayPlanAmountPaise: null }
+        : {}),
       limits: input.limits
         ? ({ ...(current.limits as object), ...input.limits } as Prisma.InputJsonValue)
         : undefined,

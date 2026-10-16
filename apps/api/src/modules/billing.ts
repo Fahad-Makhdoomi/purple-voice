@@ -14,6 +14,7 @@ import { HttpError, badRequest, notFound } from '../lib/http-error';
 import { authenticate } from '../middleware/auth';
 import { resolveWorkspace, wsId } from '../middleware/workspace';
 import { applySubscriptionChange } from '../services/subscriptions';
+import { ensureRazorpayPlan, inrPrices } from '../services/razorpay-plans';
 import { getEntitlements, getUsage } from '../services/entitlements';
 import {
   anyGatewayEnabled,
@@ -43,6 +44,7 @@ import {
   RAZORPAY_STATUS,
   cancelRazorpaySubscription,
   createRazorpaySubscription,
+  upsertRazorpayCustomer,
   fetchRazorpaySubscription,
   razorpayPeriod,
   razorpayWorkspaceId,
@@ -290,14 +292,19 @@ async function devBypass(): Promise<boolean> {
 
 billingRouter.get('/', async (req, res) => {
   const workspaceId = wsId(req);
-  const [entitlements, subscription, plans, payments, options, bypass] = await Promise.all([
+  const [entitlements, subscription, plans, payments, options, bypass, ws] = await Promise.all([
     getEntitlements(workspaceId),
     prisma.subscription.findUnique({ where: { workspaceId }, include: { plan: true } }),
     prisma.plan.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
     prisma.payment.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 24 }),
     checkoutOptions(),
     devBypass(),
+    prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { gstin: true, billingName: true },
+    }),
   ]);
+  const inr = options.some((o) => o.gateway === 'RAZORPAY') ? await inrPrices(plans) : {};
   const usage = await getUsage(workspaceId, entitlements);
   res.json({
     entitlements,
@@ -315,6 +322,8 @@ billingRouter.get('/', async (req, res) => {
       name: p.name,
       tagline: p.tagline,
       priceMonthlyCents: p.priceMonthlyCents,
+      /** What Razorpay charges, in paise (rupees × 100). */
+      priceMonthlyInrPaise: inr[p.code] ?? null,
       includedMinutes: p.includedMinutes,
       highlights: p.highlights,
       featured: p.featured,
@@ -330,12 +339,13 @@ billingRouter.get('/', async (req, res) => {
       description: p.description,
     })),
     checkoutOptions: options,
+    billingDetails: { gstin: ws?.gstin ?? null, billingName: ws?.billingName ?? null },
     billingMode: options.length ? 'live' : bypass ? 'dev' : 'unavailable',
   });
 });
 
 billingRouter.post('/checkout', async (req, res) => {
-  const { planCode, gateway: requested } = checkoutSchema.parse(req.body);
+  const { planCode, gateway: requested, gstin, billingName } = checkoutSchema.parse(req.body);
   const workspaceId = wsId(req);
   const user = req.user!;
   const current = await prisma.subscription.findUnique({ where: { workspaceId } });
@@ -374,7 +384,16 @@ billingRouter.post('/checkout', async (req, res) => {
   if (!option) throw badRequest(`${PAYMENT_GATEWAY_LABELS[gateway]} isn't available`);
   if (!option.planCodes.includes(planCode))
     throw badRequest(`The ${planCode} plan can't be bought through ${option.label} yet`);
-  const planId = (await gatewayPlanId(gateway, planCode))!;
+  const planId =
+    gateway === 'RAZORPAY'
+      ? await ensureRazorpayPlan(await prisma.plan.findUniqueOrThrow({ where: { code: planCode } }))
+      : (await gatewayPlanId(gateway, planCode))!;
+  if (gstin !== undefined || billingName !== undefined) {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { gstin: gstin || null, billingName: billingName || null },
+    });
+  }
 
   // Already on Stripe: switch the price in place (prorated).
   if (gateway === 'STRIPE' && paying?.gateway === 'STRIPE') {
@@ -402,7 +421,21 @@ billingRouter.post('/checkout', async (req, res) => {
     return res.json({ url: session.url });
   }
   if (gateway === 'RAZORPAY') {
-    const sub = await createRazorpaySubscription({ planId, workspaceId });
+    const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+    const customer = await upsertRazorpayCustomer({
+      name: ws.billingName || ws.name,
+      email: user.email,
+      gstin: ws.gstin,
+    });
+    const sub = await createRazorpaySubscription({
+      planId,
+      workspaceId,
+      customerId: customer.id,
+      notes: {
+        ...(ws.gstin ? { gstin: ws.gstin } : {}),
+        ...(ws.billingName ? { business: ws.billingName } : {}),
+      },
+    });
     if (!sub.short_url) throw new HttpError(502, 'Razorpay did not return a payment link');
     // Razorpay's hosted page doesn't redirect back: the billing page opens it
     // in a new tab and confirms the subscription when the customer returns.

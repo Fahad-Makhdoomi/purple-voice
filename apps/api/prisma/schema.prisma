@@ -254,17 +254,21 @@ model PasswordReset {
 // ─── Tenancy & billing ───────────────────────────────────────────────────────
 
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  timezone  String   @default("UTC")
-  suspended Boolean  @default(false)
+  id          String   @id @default(cuid())
+  name        String
+  timezone    String   @default("UTC")
+  suspended   Boolean  @default(false)
   /// The platform's own workspace, where super admins run agents, campaigns
   /// and calls. Never billed; left out of subscriber analytics.
-  internal  Boolean  @default(false)
+  internal    Boolean  @default(false)
+  /// GST registration (India), given at checkout; on Razorpay invoices.
+  gstin       String?
+  /// Legal business name for invoices.
+  billingName String?
   /// Staff-only notes about the customer.
-  notes     String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   users              User[]
   subscription       Subscription?
@@ -289,30 +293,35 @@ model Workspace {
 }
 
 model Plan {
-  id                String   @id @default(cuid())
-  code              PlanCode @unique
-  name              String
-  tagline           String   @default("")
+  id                      String   @id @default(cuid())
+  code                    PlanCode @unique
+  name                    String
+  tagline                 String   @default("")
   /// null = custom pricing (Enterprise).
-  priceMonthlyCents Int?
+  priceMonthlyCents       Int?
   /// null = custom.
-  includedMinutes   Int?
+  includedMinutes         Int?
   /// PlanLimits from @pv/shared. null values mean unlimited.
-  limits            Json
+  limits                  Json
   /// PlanFeatures from @pv/shared.
-  features          Json
-  highlights        String[]
-  featured          Boolean  @default(false)
-  selfServe         Boolean  @default(true)
-  stripePriceId     String?
+  features                Json
+  highlights              String[]
+  featured                Boolean  @default(false)
+  selfServe               Boolean  @default(true)
+  stripePriceId           String?
   /// Razorpay plan (plan_…), billed in INR: UPI Autopay, RuPay and other cards.
-  razorpayPlanId    String?
+  razorpayPlanId          String?
+  /// Amount of the Razorpay plan Purple Voice created itself (paise); null
+  /// when staff pasted the plan id, which is then used as it is.
+  razorpayPlanAmountPaise Int?
+  /// Fixed INR price for Razorpay. Empty = the USD price at today's rate.
+  priceMonthlyInrPaise    Int?
   /// PayPal billing plan (P-…).
-  paypalPlanId      String?
-  active            Boolean  @default(true)
-  sortOrder         Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  paypalPlanId            String?
+  active                  Boolean  @default(true)
+  sortOrder               Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   subscriptions Subscription[]
 }

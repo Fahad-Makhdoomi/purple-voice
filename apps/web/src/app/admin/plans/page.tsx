@@ -15,6 +15,7 @@ interface Plan {
   includedMinutes: number | null;
   stripePriceId: string | null;
   razorpayPlanId: string | null;
+  priceMonthlyInrPaise: number | null;
   paypalPlanId: string | null;
   limits: Record<LimitKey, number | null>;
   highlights: string[];
@@ -67,6 +68,10 @@ export default function PlansAdmin() {
                       includedMinutes: n('minutes'),
                       stripePriceId: String(f.get('stripePriceId') ?? '').trim() || null,
                       razorpayPlanId: String(f.get('razorpayPlanId') ?? '').trim() || null,
+                      priceMonthlyInrPaise:
+                        String(f.get('inrPrice') ?? '').trim() === ''
+                          ? null
+                          : Math.round(Number(f.get('inrPrice')) * 100),
                       paypalPlanId: String(f.get('paypalPlanId') ?? '').trim() || null,
                       highlights: String(f.get('highlights') ?? '')
                         .split('\n')
@@ -123,7 +128,7 @@ export default function PlansAdmin() {
                 <Field
                   id={`${p.code}-razorpay`}
                   label="Razorpay plan id"
-                  help="plan_… · billed in INR"
+                  help="Leave empty: created automatically in INR. Paste a plan_… id only to use your own."
                   optional
                 >
                   <input
@@ -131,6 +136,24 @@ export default function PlansAdmin() {
                     name="razorpayPlanId"
                     className="input font-mono text-xs"
                     defaultValue={p.razorpayPlanId ?? ''}
+                  />
+                </Field>
+                <Field
+                  id={`${p.code}-inr`}
+                  label="Price in India (₹/month)"
+                  help="For Razorpay. Empty = the dollar price at today's rate, rounded to ₹10."
+                  optional
+                >
+                  <input
+                    id={`${p.code}-inr`}
+                    name="inrPrice"
+                    type="number"
+                    min={1}
+                    step="1"
+                    className="input"
+                    defaultValue={
+                      p.priceMonthlyInrPaise == null ? '' : p.priceMonthlyInrPaise / 100
+                    }
                   />
                 </Field>
                 <Field id={`${p.code}-paypal`} label="PayPal plan id" help="P-…" optional>
@@ -141,7 +164,7 @@ export default function PlansAdmin() {
                     defaultValue={p.paypalPlanId ?? ''}
                   />
                 </Field>
-                <Field id={`${p.code}-tagline`} label="Tagline" className="sm:col-span-2">
+                <Field id={`${p.code}-tagline`} label="Tagline" className="sm:col-span-4">
                   <input
                     id={`${p.code}-tagline`}
                     name="tagline"
