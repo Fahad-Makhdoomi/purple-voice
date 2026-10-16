@@ -38,17 +38,30 @@ if [ -d .git ] && [ "${PV_DEPLOY_SYNCED:-}" != "$REF" ]; then
   echo "==> Fetching $REF"
   git fetch --prune --tags --force origin
   if git show-ref -q --verify "refs/remotes/origin/$REF"; then
-    git checkout -q -f -B "$REF" "origin/$REF"
+    TARGET="origin/$REF"
   else
-    # A commit that no branch or tag points at any more is fetched by its SHA.
-    if [[ $REF =~ ^[0-9a-f]{40}$ ]] && ! git cat-file -e "$REF^{commit}" 2>/dev/null; then
-      git fetch -q origin "$REF"
-    fi
+    TARGET="$REF"
     git rev-parse -q --verify "$REF^{commit}" >/dev/null || {
       echo "!! No branch, tag or commit called '$REF' in origin" >&2
       exit 1
     }
+    # Only code on one of this repository's branches or tags: GitHub also serves
+    # unmerged pull requests (forks included) by SHA, and those were never reviewed.
+    if [ -z "$(git for-each-ref --count=1 --contains "$REF" refs/remotes/origin refs/tags)" ]; then
+      echo "!! $REF is not on any branch or tag of origin. Only merged or tagged code is deployed." >&2
+      exit 1
+    fi
+  fi
+  # A rollback to before auto-deploy existed would delete the script the CI key runs.
+  if grep -qs 'deploy/remote-deploy.sh' "$HOME/.ssh/authorized_keys" &&
+    ! git cat-file -e "$TARGET:deploy/remote-deploy.sh" 2>/dev/null; then
+    echo "!! $REF predates automatic deploys (no deploy/remote-deploy.sh); deploying it would break them." >&2
+    exit 1
+  fi
+  if [ "$TARGET" = "$REF" ]; then
     git checkout -q -f --detach "$REF"
+  else
+    git checkout -q -f -B "$REF" "$TARGET"
   fi
   echo "==> Deploying $(git log -1 --format='%h %s')"
   # Carry on with the deploy.sh of the commit just checked out, not this copy of it.

@@ -95,9 +95,14 @@ export class CallSession {
       logger.error({ err, callId: this.callId }, 'Could not start voice engine');
       this.engine?.close();
       this.engine = undefined;
+      // Subscribers see this on the call page, and never AI vendors or models
+      // (staff choose those): the detail stays in the log above.
       await prisma.call.update({
         where: { id: this.callId },
-        data: { errorMessage: (err as Error).message },
+        data: {
+          errorMessage:
+            "The AI voice couldn't start, so the call was ended. Our team can see why in the server logs.",
+        },
       });
       await this.hangup();
       return;

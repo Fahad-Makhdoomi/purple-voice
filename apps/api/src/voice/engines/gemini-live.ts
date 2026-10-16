@@ -280,6 +280,18 @@ export class GeminiLiveEngine implements VoiceEngine {
         this.retire(from);
         this.active = next;
         this.resuming = false;
+        if (!this.handle) {
+          // Dropped before Gemini issued a resumption handle: this is a fresh
+          // session with no history, so tell it a call is already under way.
+          const text =
+            'The line dropped for a moment during this phone call and you are back. Briefly apologise, then carry on with the person.';
+          this.send(next, (s) =>
+            s.sendClientContent({
+              turns: [{ role: 'user', parts: [{ text }] }],
+              turnComplete: true,
+            }),
+          );
+        }
         this.releaseHeld(next);
         logger.info({ reason, attempt, resumed: !!this.handle }, 'Gemini Live connection replaced');
         return;
@@ -377,10 +389,32 @@ export class GeminiLiveEngine implements VoiceEngine {
     // unanswered blocking call keeps the model quiet while the line closes.
     if (finished || this.closed) return;
     if (conn.retired) {
-      logger.warn(
-        { tools: calls.map((c) => c.name) },
-        'Gemini Live connection changed while a tool ran; result not delivered',
-      );
+      // The resumed session never saw this tool call, but its side effect (a
+      // booking, say) happened: tell the model, so it doesn't repeat it or
+      // tell the caller otherwise.
+      const next = this.active;
+      if (next && !next.retired) {
+        const text = calls
+          .map(
+            (c, i) => `(${c.name} already ran: ${String(functionResponses[i]?.response?.result)})`,
+          )
+          .join('\n');
+        this.send(next, (s) =>
+          s.sendClientContent({
+            turns: [{ role: 'user', parts: [{ text }] }],
+            turnComplete: false,
+          }),
+        );
+        logger.info(
+          { tools: calls.map((c) => c.name) },
+          'Gemini Live connection changed while a tool ran; result passed to the new session',
+        );
+      } else {
+        logger.warn(
+          { tools: calls.map((c) => c.name) },
+          'Gemini Live connection changed while a tool ran; result not delivered',
+        );
+      }
       return;
     }
     this.send(conn, (s) => s.sendToolResponse({ functionResponses }));

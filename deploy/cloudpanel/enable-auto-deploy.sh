@@ -256,7 +256,6 @@ APP_URL="$(sed -n 's/^APP_URL=//p' "$HOME/.purple-voice/api.env" 2>/dev/null | t
 echo
 echo "$RULE"
 echo "Add these in GitHub: https://github.com/$REPO/settings/secrets/actions"
-echo "(or as secrets of the \"production\" environment: .../settings/environments)"
 echo
 if [ -n "$NEW_PRIVATE" ]; then
   echo "DEPLOY_SSH_KEY — everything between the rules, BEGIN and END lines included."

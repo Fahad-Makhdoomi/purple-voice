@@ -4,10 +4,13 @@
 #   restrict,command="/bin/bash /home/<user>/purple-voice/deploy/remote-deploy.sh" ssh-ed25519 … purple-voice-ci
 # so sshd runs this script whatever the client asked for, and hands the request
 # over in $SSH_ORIGINAL_COMMAND. The one request accepted is
-#   deploy <40-character commit SHA>
+#   deploy <40-character commit SHA> [manual]
 # which runs deploy/deploy.sh for that commit, one deploy at a time, streams the
 # output back to the SSH session and appends it, timestamped, to
 # ~/.purple-voice/deploy.log. The request is matched, never evaluated.
+# Automatic deploys skip a commit older than the one already live (a queued
+# deploy must never roll production back); "manual" (Run workflow) is how a
+# deliberate rollback is asked for.
 #
 # A deploy that has started finishes even if the SSH connection drops (a cancelled
 # GitHub job, a network blip): the outcome is in the log.
@@ -18,7 +21,7 @@ umask 077
 STATE_DIR="$HOME/.purple-voice"
 LOG="$STATE_DIR/deploy.log"
 LOCK="$STATE_DIR/deploy.lock"
-LOCK_WAIT=3600                       # seconds to queue behind another deploy
+LOCK_WAIT=2400                       # seconds to queue behind another deploy (< the CI job's 45 min)
 LOG_MAX_BYTES=$((5 * 1024 * 1024))   # past this the log is cut to its newest ~2 MB
 LOG_KEEP_BYTES=$((2 * 1024 * 1024))
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,8 +30,8 @@ mkdir -p "$STATE_DIR"
 cd "$APP_DIR"
 
 request="${SSH_ORIGINAL_COMMAND-}"
-if [[ ! $request =~ ^deploy\ ([0-9a-f]{40})$ ]]; then
-  echo "remote-deploy: refused. This key only runs: deploy <40-character commit SHA>" >&2
+if [[ ! $request =~ ^deploy\ ([0-9a-f]{40})(\ manual)?$ ]]; then
+  echo "remote-deploy: refused. This key only runs: deploy <40-character commit SHA> [manual]" >&2
   # Logged while the log has room (only a deploy, holding the lock, trims it).
   if [ ! -f "$LOG" ] || [ "$(wc -c <"$LOG")" -le "$LOG_MAX_BYTES" ]; then
     printf '%(%F %T)T refused %q\n' -1 "${request:0:200}" >>"$LOG" 2>/dev/null || true
@@ -36,6 +39,7 @@ if [[ ! $request =~ ^deploy\ ([0-9a-f]{40})$ ]]; then
   exit 64
 fi
 SHA="${BASH_REMATCH[1]}"
+MANUAL="${BASH_REMATCH[2]:+yes}"
 
 # Forced commands run non-interactively, so nothing has put the site user's
 # Node.js (nvm) or PM2 on PATH yet. nvm.sh is not written for set -eu.
@@ -68,6 +72,16 @@ if ! flock -n 9; then
     echo "!! Still locked after $((LOCK_WAIT / 60)) min. Is a deploy stuck? Check $LOG" >&2
     exit 75
   }
+fi
+
+# Checked only now, holding the lock: while this request queued, a newer commit
+# may have gone live (flock doesn't serve waiters in order).
+live="$(git rev-parse -q --verify HEAD 2>/dev/null || true)"
+if [ -z "$MANUAL" ] && [ -n "$live" ] && [ "$live" != "$SHA" ] &&
+  git merge-base --is-ancestor "$SHA" "$live" 2>/dev/null; then
+  echo "==> $SHA is older than the live ${live:0:12}; not deploying it (superseded)."
+  printf '%(%F %T)T superseded %s (live %s)\n' -1 "$SHA" "$live" >>"$LOG" 2>/dev/null || true
+  exit 0
 fi
 
 if [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt "$LOG_MAX_BYTES" ]; then

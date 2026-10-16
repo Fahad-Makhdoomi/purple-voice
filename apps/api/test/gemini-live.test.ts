@@ -333,6 +333,43 @@ describe('Gemini Live engine', () => {
     expect(cb.onFatal).not.toHaveBeenCalled();
   });
 
+  it('tells the new session about a tool that finished during a reconnect', async () => {
+    const { engine, cb, conns, server, drop } = setup();
+    await engine.start();
+    server(0, { sessionResumptionUpdate: { newHandle: 'h1', resumable: true } });
+    let finish!: (v: string) => void;
+    cb.onToolCall.mockReturnValueOnce(new Promise<string>((r) => (finish = r)));
+    server(0, {
+      toolCall: { functionCalls: [{ id: 'fc-9', name: 'book_appointment', args: {} }] },
+    });
+    drop(0);
+    await tick();
+    expect(conns).toHaveLength(2);
+    finish('Booked for 10:00');
+    await tick();
+    expect(conns[0].session.toolResponses).toEqual([]);
+    expect(conns[1].session.toolResponses).toEqual([]);
+    expect(conns[1].session.content).toEqual([
+      {
+        turns: [
+          { role: 'user', parts: [{ text: '(book_appointment already ran: Booked for 10:00)' }] },
+        ],
+        turnComplete: false,
+      },
+    ]);
+  });
+
+  it('tells a fresh session the call is under way when there was no handle yet', async () => {
+    const { engine, conns, drop } = setup();
+    await engine.start();
+    drop(0);
+    await tick();
+    expect(conns).toHaveLength(2);
+    expect(conns[1].config.sessionResumption).not.toHaveProperty('handle', expect.anything());
+    expect(conns[1].session.content).toHaveLength(1);
+    expect(conns[1].session.content[0].turnComplete).toBe(true);
+  });
+
   it('resumes when the socket drops unexpectedly', async () => {
     const { engine, cb, conns, server, drop } = setup();
     await engine.start();

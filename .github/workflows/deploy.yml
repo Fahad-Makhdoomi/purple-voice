@@ -6,7 +6,7 @@ name: Deploy
 # commit by hand; a rollback is a deploy of an older one.
 #
 # The runner logs in with a key the server pins to deploy/remote-deploy.sh, so the
-# only thing it can do there is "deploy <sha>". Repository secrets: DEPLOY_HOST,
+# only thing it can do there is "deploy <sha>" (plus "manual" for Run workflow). Repository secrets: DEPLOY_HOST,
 # DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS and optionally DEPLOY_PORT. Until
 # none of them are set, automatic runs skip with a notice instead of failing. If
 # the variable DEPLOY_HEALTHCHECK_URL is set, it must answer 200 after the deploy.
@@ -176,6 +176,8 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           SHA: ${{ steps.target.outputs.sha }}
+          # "manual" lets Run workflow roll back; automatic deploys never go backwards.
+          MODE: ${{ github.event_name == 'workflow_dispatch' && ' manual' || '' }}
           TITLE: ${{ steps.target.outputs.title }}
         run: |
           dir="$RUNNER_TEMP/deploy-ssh"
@@ -185,15 +187,15 @@ jobs:
           ssh -i "$dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" \
             -o ConnectTimeout=30 -o ServerAliveInterval=30 \
-            -p "${DEPLOY_PORT:-22}" -- "$DEPLOY_USER@$DEPLOY_HOST" "deploy $SHA" || rc=$?
+            -p "${DEPLOY_PORT:-22}" -- "$DEPLOY_USER@$DEPLOY_HOST" "deploy $SHA$MODE" || rc=$?
           case "$rc" in
             0) printf '### Deployed %s\n\n%s\n' "${SHA:0:12}" "$TITLE" >>"$GITHUB_STEP_SUMMARY" ;;
             255)
               echo "::error title=SSH login failed::Check DEPLOY_HOST, DEPLOY_USER, DEPLOY_PORT and DEPLOY_KNOWN_HOSTS, and that the CI key is still in the site user's ~/.ssh/authorized_keys (re-run enable-auto-deploy.sh)."
               ;;
-            64) echo "::error::The server refused the request (remote-deploy.sh accepts only \"deploy <sha>\")." ;;
+            64) echo "::error::The server refused the request (remote-deploy.sh accepts only \"deploy <sha> [manual]\")." ;;
             69) echo "::error::Node.js or PM2 isn't on the site user's PATH on the server (nvm in ~/.nvm)." ;;
-            75) echo "::error::Another deploy held the server's deploy lock for an hour. Check ~/.purple-voice/deploy.log." ;;
+            75) echo "::error::Another deploy held the server's deploy lock for 40 minutes. Check ~/.purple-voice/deploy.log." ;;
             *) echo "::error title=Deploy failed::deploy.sh exited with $rc. The output above, and ~/.purple-voice/deploy.log on the server, show where." ;;
           esac
           exit "$rc"
