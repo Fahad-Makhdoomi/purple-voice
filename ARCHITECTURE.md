@@ -34,7 +34,7 @@ One product, five faces:
 |---|:-:|:-:|:-:|:-:|
 | Website, pricing, blog, contact | ✓ | ✓ | ✓ | ✓ |
 | Sign up, own workspace & billing | ✓ (sign-up) | ✓ | | |
-| Connect numbers, create agents, run campaigns | | ✓ *paid plan only, within plan limits* | ✓ *inside a customer's workspace* | ✓ |
+| Connect numbers, create agents, run campaigns | | ✓ *paid plan only, within plan limits* | ✓ *inside a customer's workspace* | ✓ *also in the platform's own workspace* |
 | All subscriber workspaces, help set up ("Open their dashboard") | | | ✓ | ✓ |
 | Manage subscriptions (plan, status, dates, overrides) | | | ✓ | ✓ |
 | Website pages, blog, FAQs, media, SEO & analytics settings | | | ✓ | ✓ |
@@ -55,6 +55,12 @@ Enforcement lives in the API, never the UI:
   and placing calls do.
 - The Next.js middleware (`apps/web/src/middleware.ts`) only redirects for comfort; it
   is not a security boundary.
+
+**Our workspace.** Super admin → *Our workspace* opens the platform's own workspace
+(`Workspace.internal`, created on first use by `services/internal-workspace.ts`) in
+the regular dashboard, the same way staff open a customer's. It is on the Enterprise
+plan with a manual subscription that never lapses, uses the platform's AI keys, and is
+left out of the subscriber list and revenue insights.
 
 ---
 
@@ -229,12 +235,18 @@ Errors are always `{ error: { code, message, details? } }`. Codes the UI relies 
 2. They pick a number; `configureInbound` points its voice webhook at
    `/api/telephony/<carrier>/inbound?numberId=…&sig=…` (Twilio: `VoiceUrl`; Plivo: one
    Application per number). Rental stays on their carrier bill.
+3. A number answers through one agent (`PhoneNumber.inboundAgentId`). Giving it to
+   another agent while an **active** agent answers there is refused, and a number
+   already connected in another workspace can't be connected again (the carrier has
+   one webhook per number, so the second would silently take the first's calls).
 
 ### Call lifecycle
 ```
 Outbound: dialer/test call ─▶ Call row (QUEUED) ─▶ carrier REST "place call"
           carrier ─POST /voice─▶ answer document: stream audio to wss://…/ws/<carrier>/<callId>/<sig>
-Inbound:  carrier ─POST /inbound─▶ plan & concurrency check ─▶ Call row ─▶ same stream document
+Inbound:  carrier ─POST /inbound─▶ call-back? (an agent called this caller from this number
+          in the last 30 days and is active → that agent) else the number's agent
+          ─▶ plan & concurrency check ─▶ Call row ─▶ same stream document
 Media:    WebSocket ─▶ CallSession ─▶ voice engine ─▶ audio back to the carrier
 Status:   carrier ─POST /status─▶ applyCallStatus ─▶ (terminal) finalizeCall after 5 s
 Finalize: duration → billed minutes → UsagePeriod, AI summary/outcome/sentiment,
@@ -247,6 +259,17 @@ Every URL handed to a carrier carries an HMAC signature over its purpose and
 subject (`lib/signed-url.ts`), so callbacks are authenticated without depending on
 each carrier's signature scheme. Twilio drops query strings on stream URLs, so the
 media URL carries its signature in the path.
+
+### Background noise (`voice/noise-gate.ts` + engine settings)
+Each agent has a noise filter: Off, Standard (default) or Strong. Before any engine
+hears the caller, a gate on the line learns the background level and the caller's own
+speaking level and replaces everything that is only background with silence; it needs
+40–60 ms of real speech to open (with that much look-ahead, so word starts aren't
+clipped), holds open through short pauses, and wants louder speech while the agent is
+talking (echo, murmurs). The engines' own detection is tuned to match: Gemini Live
+uses low start-of-speech sensitivity and 200–400 ms of required speech (its default is
+the most sensitive setting); OpenAI Realtime adds near-field noise reduction and a
+0.6–0.75 VAD threshold; Cascaded needs two or three words before it stops talking.
 
 ### Voice engines (`voice/engines`)
 - **Realtime** — OpenAI Realtime speech-to-speech. Carrier μ-law goes in and out
@@ -262,7 +285,8 @@ media URL carries its signature in the path.
   and sliding-window context compression lifts the 15-minute session cap.
 - **Cascaded** — Deepgram streaming STT → Claude, OpenAI or Gemini (streamed) →
   Deepgram TTS in μ-law. Replies are spoken sentence by sentence as they stream, so
-  the agent starts talking after the first sentence. Two words over the agent's voice
+  the agent starts talking after the first sentence. Two words (one or three, by noise
+  filter) over the agent's voice
   aborts the LLM turn and clears playback.
 
 LLM adapters (`voice/llm`) each keep their vendor's native history. For Claude this
@@ -279,6 +303,11 @@ agent's transfer number), `end_call`. Inputs are validated with zod whatever the
 vendor sent. Hangups and transfers wait for the last sentence to finish playing.
 
 ### Prompt assembly (`voice/prompt.ts`)
+Three kinds of call: **outbound** (the opening line and goal), **inbound** (the agent's
+inbound opening line and instructions, e.g. customer care) and **call-back** (its
+call-back line and instructions, falling back to the inbound ones, plus when it called
+and that call's summary). Incoming calls never use the outbound pitch or the voicemail
+rule; with no opening line the engine is told how to answer instead.
 Subscriber prompt first (persona and pitch), then goal, knowledge, the call context
 (who, time in the business time zone, contact CSV columns as `{{variables}}`), then
 platform rules for speaking on the phone: short spoken sentences, one question at a
@@ -289,8 +318,11 @@ time, honest AI disclosure when asked, honour do-not-call, no voicemail messages
 ## 11. Campaign dialer (`jobs/dialer.ts`)
 
 Every `DIALER_INTERVAL_MS` the worker, for each running campaign inside its call
-window (days + hours in the campaign's time zone), fills free concurrency slots with
-due contacts. Contacts are claimed with `UPDATE … WHERE id IN (SELECT … FOR UPDATE
+window (days + hours in the campaign's time zone) whose pause has passed, starts the
+next due contact if a concurrency slot is free. The pause (`callDelaySeconds`, at
+least 20 s, set per campaign) runs from the later of the last call's start and the
+last call's end, and only one call starts per pause, so calls stay spaced out even
+with several lines. Contacts are claimed with `UPDATE … WHERE id IN (SELECT … FOR UPDATE
 SKIP LOCKED)`, so nobody is dialled twice. No-answers retry after
 `retryDelayMinutes` up to `maxAttempts`. When minutes run out the campaign pauses.
 Do-not-call outcomes are never retried. A campaign completes when nothing is pending.
