@@ -37,14 +37,17 @@ const CASES = [
 /** Who it is for: six common situations, each a hoverable glass-on-light card. */
 export function UseCases() {
   return (
-    <section className="bg-surface py-section" aria-labelledby="cases-title">
+    <section id="use-cases" className="scroll-mt-24 py-section" aria-labelledby="cases-title">
       <div className="container">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="eyebrow">Who it is for</p>
-          <h2 id="cases-title" className="mt-3 text-h1">
+          <p className="eyebrow text-brand-300">Use cases</p>
+          <h2
+            id="cases-title"
+            className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+          >
             Any team that lives on the phone
           </h2>
-          <p className="mt-4 text-lead text-muted">
+          <p className="mt-4 text-lead text-white/65">
             If leads come in faster than your team can call them back, Purple Voice is built for
             you.
           </p>
@@ -54,12 +57,14 @@ export function UseCases() {
             <li key={title}>
               <Reveal delay={(i % 3) * 90} className="h-full">
                 <Spotlight className="group h-full rounded-lg">
-                  <div className="h-full rounded-lg border border-line bg-canvas p-6 transition duration-300 group-hover:border-brand-300 group-hover:bg-white group-hover:shadow-lg">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110 group-hover:bg-ink group-hover:text-white">
+                  <div className="glass-dark h-full p-6 transition duration-300 group-hover:bg-white/[0.07]">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-ink transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110">
                       <Icon size={20} aria-hidden="true" />
                     </span>
-                    <h3 className="mt-5 text-h3">{title}</h3>
-                    <p className="mt-2 text-[15px] leading-relaxed text-muted">{body}</p>
+                    <h3 className="mt-5 text-[22px] font-medium tracking-[-0.02em] text-white">
+                      {title}
+                    </h3>
+                    <p className="mt-2 text-[15px] leading-relaxed text-white/55">{body}</p>
                   </div>
                 </Spotlight>
               </Reveal>

@@ -10,16 +10,12 @@ const STATS = [
 /** A glass band of facts about what a subscription includes. */
 export function Numbers() {
   return (
-    <section className="relative isolate overflow-hidden bg-night py-16 text-white sm:py-20">
-      <div
-        className="absolute inset-0 -z-10 bg-[radial-gradient(60%_120%_at_50%_0%,rgb(var(--pv-violet-700)/0.35),transparent)]"
-        aria-hidden="true"
-      />
+    <section className="relative py-16 text-white sm:py-20">
       <div className="container">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STATS.map((s, i) => (
             <Reveal key={s.label} delay={i * 80} variant="zoom">
-              <div className="glass h-full p-6 text-center">
+              <div className="glass-dark h-full p-7 text-center">
                 <dt className="sr-only">{s.label}</dt>
                 <dd>
                   <CountUp

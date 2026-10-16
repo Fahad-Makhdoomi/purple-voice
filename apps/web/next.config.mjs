@@ -7,7 +7,7 @@ const API = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000';
 const captchaHosts =
   'https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com https://js.hcaptcha.com https://*.hcaptcha.com';
 /** Razorpay Standard Checkout: the script, its payment iframe and its beacons. */
-const razorpayScript = 'https://checkout.razorpay.com';
+const razorpayScript = 'https://checkout.razorpay.com https://cdn.razorpay.com';
 const razorpayFrames = 'https://api.razorpay.com https://checkout.razorpay.com';
 const razorpayConnect = 'https://*.razorpay.com';
 const analyticsHosts =

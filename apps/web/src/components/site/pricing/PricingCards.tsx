@@ -1,21 +1,26 @@
 import Link from 'next/link';
-import { Check, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, Check, Lock, ShieldCheck } from 'lucide-react';
 import { Reveal, Spotlight } from '@/components/site/motion';
 import { formatMoney, formatNumber } from '@/lib/format';
 import type { PublicPlan } from '@/lib/server-api';
 import { cn } from '@/lib/cn';
 
+type Tone = 'light' | 'dark';
+
 /**
- * Plan cards, shared by the home page and /pricing. Prices come from the
- * admin-editable plan table. `headingLevel` keeps the document outline in
- * order: h3 under a section's h2 on the home page, h2 straight under /pricing's h1.
+ * Plan cards, shared by the home page (`tone="dark"`, on black) and /pricing
+ * (light). Prices come from the admin-editable plan table. `headingLevel`
+ * keeps the document outline in order: h3 under a section's h2 on the home
+ * page, h2 straight under /pricing's h1.
  */
 export function PricingCards({
   plans,
   headingLevel = 'h3',
+  tone = 'light',
 }: {
   plans: PublicPlan[];
   headingLevel?: 'h2' | 'h3';
+  tone?: Tone;
 }) {
   const Heading = headingLevel;
   return (
@@ -23,36 +28,47 @@ export function PricingCards({
       {plans.map((plan, idx) => {
         const featured = plan.featured;
         const href = plan.selfServe ? `/signup?plan=${plan.code}` : `/contact?plan=${plan.code}`;
+        // True when the card's own background is dark, so its text must be light.
+        const onDark = tone === 'dark' ? !featured : featured;
         return (
           <Reveal key={plan.code} delay={idx * 110} variant="zoom" className="h-full">
             <Spotlight className="h-full rounded-xl hover:shadow-lg">
               <article
                 className={cn(
                   'relative flex h-full flex-col rounded-xl p-8',
-                  featured
-                    ? 'bg-night text-white shadow-lg ring-1 ring-brand-500/40'
-                    : 'border border-line bg-surface shadow',
+                  tone === 'dark'
+                    ? featured
+                      ? 'bg-white text-ink shadow-[0_0_80px_-10px_rgb(var(--pv-violet-500)/0.6)]'
+                      : 'glass-dark rounded-xl'
+                    : featured
+                      ? 'bg-night text-white shadow-lg ring-1 ring-brand-500/40'
+                      : 'border border-line bg-surface shadow',
                 )}
               >
+                {featured && tone === 'light' && (
+                  <div
+                    className="light-beam pointer-events-none absolute inset-0 rounded-xl opacity-70"
+                    aria-hidden="true"
+                  />
+                )}
                 {featured && (
-                  <>
-                    <div
-                      className="light-beam pointer-events-none absolute inset-0 rounded-xl opacity-70"
-                      aria-hidden="true"
-                    />
-                    <span className="absolute right-6 top-6 animate-tick rounded-pill bg-brand-500/20 px-3 py-1 text-xs font-semibold text-brand-200">
-                      Most popular
-                    </span>
-                  </>
+                  <span
+                    className={cn(
+                      'absolute right-6 top-6 animate-tick rounded-pill px-3 py-1 text-xs font-semibold',
+                      tone === 'dark' ? 'bg-ink text-white' : 'bg-brand-500/20 text-brand-200',
+                    )}
+                  >
+                    Most popular
+                  </span>
                 )}
                 <div className="relative">
-                  <Heading className={cn('text-lg font-bold', featured && 'text-white')}>
+                  <Heading className={cn('text-lg font-bold', onDark && 'text-white')}>
                     {plan.name}
                   </Heading>
                   <p
                     className={cn(
                       'mt-1 min-h-[44px] text-sm',
-                      featured ? 'text-white/60' : 'text-muted',
+                      onDark ? 'text-white/60' : 'text-muted',
                     )}
                   >
                     {plan.tagline}
@@ -61,19 +77,19 @@ export function PricingCards({
                     <span
                       className={cn(
                         'num text-5xl font-light tracking-tight',
-                        featured ? 'text-white' : 'text-ink',
+                        onDark ? 'text-white' : 'text-ink',
                       )}
                     >
                       {formatMoney(plan.priceMonthlyCents)}
                     </span>
                     {plan.priceMonthlyCents !== null && (
-                      <span className={featured ? 'text-white/55' : 'text-muted'}>/ month</span>
+                      <span className={onDark ? 'text-white/55' : 'text-muted'}>/ month</span>
                     )}
                   </p>
                   <p
                     className={cn(
                       'mt-2 text-sm font-medium',
-                      featured ? 'text-brand-200' : 'text-brand-700',
+                      onDark ? 'text-brand-200' : 'text-brand-700',
                     )}
                   >
                     {plan.includedMinutes !== null
@@ -83,11 +99,20 @@ export function PricingCards({
                   <Link
                     href={href}
                     className={cn(
-                      'btn btn-lg mt-7 w-full',
-                      featured ? 'btn-magic' : plan.selfServe ? 'btn-primary' : 'btn-secondary',
+                      'btn btn-lg mt-7 w-full gap-2',
+                      tone === 'dark'
+                        ? featured
+                          ? 'btn-primary'
+                          : 'btn-white'
+                        : featured
+                          ? 'btn-magic'
+                          : plan.selfServe
+                            ? 'btn-primary'
+                            : 'btn-secondary',
                     )}
                   >
                     {plan.selfServe ? `Choose ${plan.name}` : 'Talk to sales'}
+                    {tone === 'dark' && <ArrowUpRight size={16} aria-hidden="true" />}
                   </Link>
                   <ul className="mt-8 space-y-3">
                     {plan.highlights.map((h) => (
@@ -95,14 +120,14 @@ export function PricingCards({
                         key={h}
                         className={cn(
                           'flex gap-3 text-sm',
-                          featured ? 'text-white/80' : 'text-ink-soft',
+                          onDark ? 'text-white/80' : 'text-ink-soft',
                         )}
                       >
                         <Check
                           size={16}
                           className={cn(
                             'mt-0.5 shrink-0',
-                            featured ? 'text-brand-300' : 'text-brand-600',
+                            onDark ? 'text-brand-300' : 'text-brand-600',
                           )}
                           aria-hidden="true"
                         />
@@ -120,9 +145,9 @@ export function PricingCards({
   );
 }
 
-export function PhoneBillingNote() {
+export function PhoneBillingNote({ tone = 'light' }: { tone?: Tone }) {
   return (
-    <p className="mt-8 text-center text-sm text-muted">
+    <p className={cn('mt-8 text-center text-sm', tone === 'dark' ? 'text-white/45' : 'text-muted')}>
       Phone number rental is billed separately by your carrier (Twilio, Plivo or SuperPhone) and is
       not included in any plan. AI model usage is billed by your AI provider on your own key.
     </p>
@@ -132,30 +157,57 @@ export function PhoneBillingNote() {
 const METHODS = ['UPI', 'RuPay', 'Visa', 'Mastercard', 'Net banking', 'Cards'];
 
 /** Tells the buyer how they pay and that it is safe, right under the plans. */
-export function PaymentTrust() {
+export function PaymentTrust({ tone = 'light' }: { tone?: Tone }) {
+  const dark = tone === 'dark';
   return (
     <Reveal className="mx-auto mt-10 max-w-3xl">
-      <div className="rounded-lg border border-line bg-surface p-6 text-center shadow">
-        <p className="flex items-center justify-center gap-2 text-sm font-semibold text-ink">
-          <Lock size={15} className="text-brand-600" aria-hidden="true" />
+      <div
+        className={cn(
+          'p-6 text-center',
+          dark ? 'glass-dark' : 'rounded-lg border border-line bg-surface shadow',
+        )}
+      >
+        <p
+          className={cn(
+            'flex items-center justify-center gap-2 text-sm font-semibold',
+            dark ? 'text-white' : 'text-ink',
+          )}
+        >
+          <Lock
+            size={15}
+            className={dark ? 'text-brand-300' : 'text-brand-600'}
+            aria-hidden="true"
+          />
           Secure checkout by Razorpay
         </p>
         <ul className="mt-4 flex flex-wrap justify-center gap-2">
           {METHODS.map((m) => (
             <li
               key={m}
-              className="rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800"
+              className={cn(
+                'rounded-pill px-3.5 py-1.5 text-xs font-semibold',
+                dark ? 'bg-white/10 text-white/80' : 'bg-brand-50 text-brand-800',
+              )}
             >
               {m}
             </li>
           ))}
         </ul>
-        <p className="mt-4 flex items-start justify-center gap-2 text-sm leading-relaxed text-muted">
-          <ShieldCheck size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+        <p
+          className={cn(
+            'mt-4 flex items-start justify-center gap-2 text-sm leading-relaxed',
+            dark ? 'text-white/55' : 'text-muted',
+          )}
+        >
+          <ShieldCheck
+            size={16}
+            className={cn('mt-0.5 shrink-0', dark ? 'text-emerald-400' : 'text-success')}
+            aria-hidden="true"
+          />
           <span>
             Billed monthly, cancel any time from your dashboard. Plans are priced in US dollars; in
-            India you pay the rupee equivalent (GST included, invoice with your GSTIN on request).
-            Your card or UPI details go to Razorpay, never to us.
+            India you are charged the rupee equivalent, and you can add your GSTIN at checkout for a
+            GST invoice. Your card or UPI details go to Razorpay, never to us.
           </span>
         </p>
       </div>

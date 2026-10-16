@@ -34,18 +34,16 @@ export function GetStarted() {
   return (
     <section
       id="get-started"
-      className="relative isolate scroll-mt-20 overflow-hidden bg-night py-section text-white"
+      className="relative scroll-mt-24 py-section text-white"
       aria-labelledby="start-title"
     >
-      <div className="dot-grid absolute inset-0 -z-10" aria-hidden="true" />
-      <div
-        className="absolute bottom-0 left-1/2 -z-10 h-[360px] w-[760px] -translate-x-1/2 translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgb(var(--pv-violet-500)/0.5),transparent)]"
-        aria-hidden="true"
-      />
       <div className="container">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="eyebrow text-brand-300">Getting started</p>
-          <h2 id="start-title" className="mt-3 text-h1 text-white">
+          <h2
+            id="start-title"
+            className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+          >
             From checkout to your first call, today
           </h2>
           <p className="mt-4 text-lead text-white/65">
@@ -64,7 +62,7 @@ export function GetStarted() {
           {STEPS.map(({ icon: Icon, title, body, time }, i) => (
             <li key={title}>
               <Reveal delay={i * 120}>
-                <div className="glass relative h-full p-6 pt-14 text-center">
+                <div className="glass-dark relative h-full p-6 pt-14 text-center">
                   <span className="absolute left-1/2 top-0 flex h-[68px] w-[68px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-night ring-1 ring-brand-400/50">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-brand shadow-glow">
                       <Icon size={20} aria-hidden="true" />
@@ -88,10 +86,10 @@ export function GetStarted() {
           className="mt-12 flex flex-col items-center justify-center gap-3 sm:flex-row"
           delay={200}
         >
-          <Link href="/signup?plan=BASIC" className="btn btn-magic btn-lg min-w-[230px]">
+          <Link href="/signup?plan=BASIC" className="btn btn-white btn-lg min-w-[230px]">
             Start with Basic — $19 / month
           </Link>
-          <Link href="/signup?plan=PRO" className="btn btn-glass btn-lg min-w-[200px]">
+          <Link href="/signup?plan=PRO" className="btn btn-dark btn-lg min-w-[200px]">
             Go straight to Pro
           </Link>
         </Reveal>

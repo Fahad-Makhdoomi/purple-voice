@@ -1,17 +1,21 @@
 import Link from 'next/link';
+import { ArrowUpRight } from 'lucide-react';
 import { Hero } from '@/components/site/home/Hero';
-import { Statement } from '@/components/site/home/Statement';
-import { Features } from '@/components/site/home/Features';
-import { HowItWorks } from '@/components/site/home/HowItWorks';
 import { Explainer } from '@/components/site/home/Explainer';
+import { Pillars, FeatureRows } from '@/components/site/home/Showcase';
+import { Trust } from '@/components/site/home/Trust';
+import { UseCases } from '@/components/site/home/UseCases';
 import { Numbers } from '@/components/site/home/Numbers';
 import { GetStarted } from '@/components/site/home/GetStarted';
-import { UseCases } from '@/components/site/home/UseCases';
-import { ScrollProgress } from '@/components/site/motion';
-import { PricingCards, PhoneBillingNote, PaymentTrust } from '@/components/site/pricing/PricingCards';
+import {
+  PricingCards,
+  PhoneBillingNote,
+  PaymentTrust,
+} from '@/components/site/pricing/PricingCards';
 import { FaqList } from '@/components/site/shared/FaqList';
-import { CtaBand } from '@/components/site/shared/CtaBand';
 import { JsonLd } from '@/components/site/JsonLd';
+import { ParticleField } from '@/components/site/motion/ParticleField';
+import { Reveal, ScrollProgress } from '@/components/site/motion';
 import { getFaqs, getPlans, getSettings } from '@/lib/server-api';
 import { siteUrl } from '@/lib/config';
 
@@ -30,7 +34,7 @@ const PROVIDERS = [
 export default async function HomePage() {
   const [plans, faqs, { seo }] = await Promise.all([getPlans(), getFaqs(), getSettings()]);
   return (
-    <>
+    <div className="relative isolate overflow-x-clip bg-black">
       <JsonLd
         data={{
           '@context': 'https://schema.org',
@@ -50,25 +54,21 @@ export default async function HomePage() {
             })),
         }}
       />
+      <ParticleField />
       <ScrollProgress />
       <Hero />
 
-      <section
-        aria-label="Supported providers"
-        className="border-y border-white/10 bg-night py-7 text-white"
-      >
-        <div className="container mb-4 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
-            Your numbers, leading AI
-          </p>
-        </div>
+      <section aria-label="Supported providers" className="py-8 text-white">
+        <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+          Your numbers, leading AI
+        </p>
         <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
           <ul className="flex w-max animate-marquee gap-14 pr-14 hover:[animation-play-state:paused]">
             {[...PROVIDERS, ...PROVIDERS].map((p, i) => (
               <li
                 key={i}
                 aria-hidden={i >= PROVIDERS.length}
-                className="whitespace-nowrap text-xl font-bold tracking-tight text-white/45 transition hover:text-white"
+                className="whitespace-nowrap text-xl font-semibold tracking-tight text-white/45 transition hover:text-white"
               >
                 {p}
               </li>
@@ -77,49 +77,80 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <Pillars />
       <Explainer />
-      <Statement />
-      <Features />
+      <FeatureRows />
+      <Trust />
       <UseCases />
       <Numbers />
-      <HowItWorks />
       <GetStarted />
 
-      <section id="pricing" className="scroll-mt-20 bg-canvas py-section" aria-labelledby="pricing-title">
+      <section id="pricing" className="scroll-mt-24 py-section" aria-labelledby="pricing-title">
         <div className="container">
-          <div className="mx-auto mb-12 max-w-2xl text-center">
-            <p className="eyebrow">Pricing</p>
-            <h2 id="pricing-title" className="mt-3 text-h1">
-              Simple plans, generous minutes
+          <Reveal className="mx-auto mb-14 max-w-2xl text-center">
+            <h2
+              id="pricing-title"
+              className="text-[length:clamp(34px,5vw,64px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+            >
+              Plans that grow with you.
             </h2>
-            <p className="mt-4 text-lead text-muted">
-              Pick a plan, create your account and pay in the next screen. Upgrade, downgrade or
+            <p className="mt-5 text-lead text-white/65">
+              Pick a plan, create your account and pay on the next screen. Upgrade, downgrade or
               cancel whenever you like.
             </p>
-          </div>
-          <PricingCards plans={plans} />
-          <PaymentTrust />
-          <PhoneBillingNote />
+          </Reveal>
+          <PricingCards plans={plans} tone="dark" />
+          <PaymentTrust tone="dark" />
+          <PhoneBillingNote tone="dark" />
         </div>
       </section>
 
-      <section className="bg-surface py-section" aria-labelledby="faq-title">
+      <section id="faq" className="scroll-mt-24 py-section" aria-labelledby="faq-title">
         <div className="container max-w-3xl">
-          <h2 id="faq-title" className="text-center text-h1">
-            Questions, answered
-          </h2>
+          <Reveal>
+            <h2
+              id="faq-title"
+              className="text-center text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+            >
+              Questions, answered.
+            </h2>
+          </Reveal>
           <div className="mt-10">
-            <FaqList faqs={faqs.slice(0, 6)} />
+            <FaqList faqs={faqs.slice(0, 6)} tone="dark" />
           </div>
           <p className="mt-6 text-center">
-            <Link href="/faq" className="btn btn-secondary">
+            <Link href="/faq" className="btn btn-dark">
               All questions
             </Link>
           </p>
         </div>
       </section>
 
-      <CtaBand />
-    </>
+      <section
+        className="px-gutter pb-section pt-10 text-center text-white"
+        aria-label="Get started"
+      >
+        <Reveal>
+          <h2 className="mx-auto max-w-4xl text-white text-[length:clamp(44px,8vw,104px)] font-medium leading-[0.98] tracking-[-0.045em]">
+            Launch with Purple Voice.
+          </h2>
+          <p className="mx-auto mt-6 max-w-xl text-lead text-white/65">
+            Start on Basic for $19 a month. Upgrade to Pro when you need more agents, numbers and
+            campaigns.
+          </p>
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link href="/signup?plan=BASIC" className="btn btn-white btn-lg gap-2">
+              Get started
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white">
+                <ArrowUpRight size={14} />
+              </span>
+            </Link>
+            <Link href="/contact" className="btn btn-dark btn-lg">
+              Talk to us
+            </Link>
+          </div>
+        </Reveal>
+      </section>
+    </div>
   );
 }

@@ -50,20 +50,17 @@ export function Explainer() {
   return (
     <section
       id="demo"
-      className="relative isolate scroll-mt-20 overflow-hidden bg-night py-section text-white"
+      className="relative scroll-mt-24 py-section text-white"
       aria-labelledby="what-title"
     >
-      <div className="starfield absolute inset-0 -z-10 opacity-40" aria-hidden="true" />
-      <div
-        className="absolute left-1/2 top-0 -z-10 h-[420px] w-[820px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgb(var(--pv-violet-600)/0.45),transparent)]"
-        aria-hidden="true"
-      />
-
       <div className="container grid items-center gap-14 lg:grid-cols-[1fr_minmax(0,480px)]">
         <div>
           <Reveal>
             <p className="eyebrow text-brand-300">What is Purple Voice?</p>
-            <h2 id="what-title" className="mt-3 text-h1 text-white">
+            <h2
+              id="what-title"
+              className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+            >
               A sales rep that never misses a call
             </h2>
             <p className="mt-4 max-w-xl text-lead text-white/70">
@@ -77,8 +74,8 @@ export function Explainer() {
             {POINTS.map(({ icon: Icon, title, body }, i) => (
               <li key={title}>
                 <Reveal delay={i * 90}>
-                  <Spotlight className="glass h-full p-5">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-500/25 text-brand-200 ring-1 ring-brand-300/30">
+                  <Spotlight className="glass-dark h-full p-5">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink">
                       <Icon size={18} aria-hidden="true" />
                     </span>
                     <h3 className="mt-4 text-[15px] font-semibold text-white">{title}</h3>
