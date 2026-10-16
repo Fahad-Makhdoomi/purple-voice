@@ -205,6 +205,14 @@ and refresh tokens are stored as SHA-256 hashes.
 - `pv_role` (readable by JS) only drives Next.js redirects.
 - Password reset: single-use, hashed, one-hour tokens; resetting signs out everywhere.
 - Login timing is equalised for unknown emails; responses never reveal which emails exist.
+- "Continue with Google" (`services/google-auth.ts`): OpenID Connect with the Calendar
+  OAuth client, scopes `openid email profile`. The signed state carries the intent, a
+  same-site `next` path and a nonce that is also kept in a 10-minute HTTP-only cookie,
+  so the callback only completes in the browser that started it. The id_token comes
+  straight from Google's token endpoint; its audience, issuer, expiry and
+  `email_verified` are checked. The account is found by `googleId`, else by email
+  (linked), else created with its own workspace and an unusable password (`google$…`)
+  until the user sets one; an email already linked to another Google account is refused.
 
 ---
 

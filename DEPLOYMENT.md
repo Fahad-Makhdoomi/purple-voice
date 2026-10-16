@@ -395,14 +395,30 @@ The panel shows, for every key the chosen engine needs, where it comes from
 missing, that subscriber's agents can't go live and their dashboard says the team is
 finishing the AI voice setup.
 
-### Google Calendar (appointment booking)
-1. Google Cloud Console → create a project → enable the **Google Calendar API**.
-2. OAuth consent screen: External, add scopes `calendar.events` and `calendar.freebusy`.
-   Publishing the app for all users requires Google's verification of those scopes.
-3. Credentials → OAuth client (Web application). Authorised redirect URI:
-   `https://purplevoice.ai/api/integrations/google/callback`.
-4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Subscribers then click
-   **Connect** under Integrations and link the calendar to an agent.
+### Google: "Continue with Google" sign-in and Google Calendar
+One OAuth client serves both. Below, `<site>` is your `APP_URL` exactly (for example
+`https://voice.purplerocket.co`).
+1. Google Cloud Console → create a project → enable the **Google Calendar API** (sign-in
+   needs no extra API).
+2. Google Auth Platform → **Branding**: app name, support email, home page `<site>`,
+   privacy `<site>/privacy`, terms `<site>/terms`, and your domain under *Authorised
+   domains*. **Audience**: External, and **Publish app** (in *Testing* only listed test
+   users can sign in). **Data access**: `openid`, `userinfo.email`, `userinfo.profile`
+   (sign-in; no review needed) and `calendar.events`, `calendar.freebusy` (Calendar;
+   Google must verify these before every customer can connect a calendar).
+3. **Clients** → Create client → *Web application*:
+   - Authorised JavaScript origin: `<site>`
+   - Authorised redirect URIs: `<site>/api/auth/google/callback` (sign-in) and
+     `<site>/api/integrations/google/callback` (Calendar; it uses `PUBLIC_API_URL` if
+     you set one). Add `http://localhost:3000/...` versions for local testing.
+4. In `api.env` set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then `pm2 reload
+   pv-api`. Within about five minutes the login and sign-up pages show **Continue with
+   Google**, and subscribers can click **Connect** under Integrations to link a calendar
+   to an agent.
+
+Signing in with Google finds the account by Google id, else by its verified email (and
+links it), else creates a subscriber with their own workspace. Accounts created this
+way have no password until the user sets one under Settings.
 
 ### Email (SMTP)
 Any SMTP provider (Postmark, Amazon SES, Mailgun, Zoho, Google Workspace relay):
