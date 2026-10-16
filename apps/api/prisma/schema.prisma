@@ -576,6 +576,15 @@ model Campaign {
   callDelaySeconds  Int            @default(20)
   startedAt         DateTime?
   completedAt       DateTime?
+  /// The campaign this one follows up on (re-calls, appointment confirmations).
+  parentCampaignId  String?
+  parentCampaign    Campaign?      @relation("FollowUps", fields: [parentCampaignId], references: [id], onDelete: SetNull)
+  followUps         Campaign[]     @relation("FollowUps")
+  /// Which groups of the parent's contacts this follow-up was built from.
+  followUpSegments  String[]       @default([])
+  /// AI analysis of the finished campaign (services/ai/campaign-report.ts).
+  aiReport          Json?
+  aiReportAt        DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
@@ -584,6 +593,7 @@ model Campaign {
 
   @@index([workspaceId])
   @@index([status])
+  @@index([parentCampaignId])
 }
 
 model CampaignContact {
@@ -604,6 +614,8 @@ model CampaignContact {
   lastAttemptAt DateTime?
   nextAttemptAt DateTime?
   lastOutcome   CallOutcome?
+  /// Labels added by hand or in the CSV ("vip", "webinar"); follow-up campaigns can target them.
+  tags          String[]      @default([])
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 

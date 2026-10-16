@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { Pause, Play, Trash2, Upload, XCircle } from 'lucide-react';
+import { Pause, Pencil, Play, Plus, Trash2, Upload, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
@@ -20,7 +20,9 @@ import {
 } from '@/components/ui';
 import { formatNumber, formatRelative, humanize } from '@/lib/format';
 import { Field } from '@/components/forms/Field';
-import { MIN_CALL_DELAY_SECONDS } from '@pv/shared';
+import { MIN_CALL_DELAY_SECONDS, type FollowUpSegment } from '@pv/shared';
+import { ContactModal, type EditableContact } from './contact-modal';
+import { AiPanel, AnalyticsPanel, ExportButton, FollowUpPanel, type Report } from './insights';
 
 interface CampaignDetail {
   campaign: {
@@ -37,6 +39,10 @@ interface CampaignDetail {
     maxAttempts: number;
     agent: { id: string; name: string; status: string };
     phoneNumber: { e164: string; routingConfigured: boolean };
+    aiReport: Report | null;
+    aiReportAt: string | null;
+    parentCampaign: { id: string; name: string } | null;
+    followUps: Array<{ id: string; name: string; status: string; followUpSegments: string[] }>;
   };
   stats: {
     contacts: Record<string, number>;
@@ -45,7 +51,7 @@ interface CampaignDetail {
     minutes: number;
   };
 }
-interface Contact {
+interface Contact extends EditableContact {
   id: string;
   phone: string;
   name: string | null;
@@ -55,6 +61,8 @@ interface Contact {
   lastOutcome: string | null;
   lastAttemptAt: string | null;
 }
+
+type View = 'contacts' | 'analytics' | 'follow-up';
 
 const FILTERS = ['ALL', 'PENDING', 'COMPLETED', 'NO_ANSWER', 'FAILED', 'DO_NOT_CALL'] as const;
 
@@ -136,18 +144,27 @@ export default function CampaignPage() {
   const { data, reload } = useApi<CampaignDetail>(`/app/campaigns/${id}`);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('ALL');
   const [page, setPage] = useState(1);
+  const [tag, setTag] = useState('');
   const contacts = useApi<{ contacts: Contact[]; total: number; page: number; pageSize: number }>(
-    `/app/campaigns/${id}/contacts?page=${page}&pageSize=25${filter === 'ALL' ? '' : `&status=${filter}`}`,
+    `/app/campaigns/${id}/contacts?page=${page}&pageSize=25${filter === 'ALL' ? '' : `&status=${filter}`}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`,
   );
+  const tags = useApi<{ tags: Array<{ tag: string; count: number }> }>(`/app/campaigns/${id}/tags`);
+  const tagList = tags.data?.tags ?? [];
   const file = useRef<HTMLInputElement>(null);
   const { busy, run } = useAction();
+  const [view, setView] = useState<View | null>(null);
+  const [uploadTags, setUploadTags] = useState('');
+  const [editing, setEditing] = useState<Contact | 'new' | null>(null);
+  const [followUpSegment, setFollowUpSegment] = useState<FollowUpSegment | undefined>();
 
   if (!data) return <Loading />;
   const { campaign, stats } = data;
+  const finished = ['COMPLETED', 'CANCELED'].includes(campaign.status);
+  const activeView: View = view ?? (finished && stats.calls > 0 ? 'analytics' : 'contacts');
   const total = Object.values(stats.contacts).reduce((a, b) => a + b, 0);
   const done = total - (stats.contacts.PENDING ?? 0) - (stats.contacts.CALLING ?? 0);
   const refresh = async () => {
-    await Promise.all([reload(), contacts.reload()]);
+    await Promise.all([reload(), contacts.reload(), tags.reload()]);
   };
   const lifecycle = (action: 'start' | 'pause' | 'cancel', msg: string) =>
     run(async () => {
@@ -167,7 +184,15 @@ export default function CampaignPage() {
         duplicates: number;
         invalidCount: number;
         invalid: Array<{ row: number; reason: string }>;
-      }>(`/app/campaigns/${id}/contacts`, { body: { csv } });
+      }>(`/app/campaigns/${id}/contacts`, {
+        body: {
+          csv,
+          tags: uploadTags
+            .split(/[;,]/)
+            .map((t) => t.trim())
+            .filter(Boolean),
+        },
+      });
       await refresh();
       toast(
         `Added ${r.added} contacts${r.duplicates ? `, ${r.duplicates} already in the list` : ''}${r.invalidCount ? `, ${r.invalidCount} skipped (e.g. row ${r.invalid[0]?.row}: ${r.invalid[0]?.reason})` : ''}`,
@@ -280,113 +305,224 @@ export default function CampaignPage() {
         />
       </div>
 
-      <Section
-        className="mt-6"
-        title="Contacts"
-        description="CSV with a header row and a phone column. Other columns (name, email, company, anything else) become {{variables}} for the agent."
-        actions={
-          !['COMPLETED', 'CANCELED'].includes(campaign.status) && (
-            <>
-              <input
-                ref={file}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={onFile}
-                aria-label="Upload CSV"
-              />
-              <button
-                className="btn btn-primary btn-sm"
-                disabled={busy}
-                onClick={() => file.current?.click()}
-              >
-                <Upload size={14} aria-hidden="true" /> Upload CSV
-              </button>
-            </>
-          )
-        }
-      >
-        <div className="mb-4">
-          <Tabs
-            value={filter}
-            onChange={(v) => {
-              setFilter(v);
-              setPage(1);
+      <div className="mt-6">
+        <Tabs
+          value={activeView}
+          onChange={setView}
+          options={[
+            { value: 'contacts', label: `Contacts (${total})` },
+            { value: 'analytics', label: 'Analytics' },
+            { value: 'follow-up', label: 'Follow-up' },
+          ]}
+        />
+      </div>
+
+      {activeView === 'analytics' && (
+        <div className="mt-6 space-y-6">
+          <AiPanel
+            campaignId={campaign.id}
+            status={campaign.status}
+            report={campaign.aiReport}
+            reportAt={campaign.aiReportAt}
+            onChanged={reload}
+            onFollowUp={(s) => {
+              setFollowUpSegment(s);
+              setView('follow-up');
             }}
-            options={FILTERS.map((f) => ({
-              value: f,
-              label: f === 'ALL' ? `All (${total})` : `${humanize(f)} (${stats.contacts[f] ?? 0})`,
-            }))}
           />
+          <AnalyticsPanel campaignId={campaign.id} />
         </div>
-        {!contacts.data ? (
-          <Loading />
-        ) : contacts.data.contacts.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">No contacts here yet.</p>
-        ) : (
-          <>
-            <div className="-mx-5 overflow-x-auto sm:-mx-6">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th scope="col">Contact</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Attempts</th>
-                    <th scope="col">Last outcome</th>
-                    <th scope="col">Last call</th>
-                    <th scope="col">
-                      <span className="sr-only">Remove</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contacts.data.contacts.map((c) => (
-                    <tr key={c.id}>
-                      <td>
-                        <p className="font-semibold">{c.name ?? c.phone}</p>
-                        <p className="num text-xs text-muted">
-                          {c.name ? c.phone : ''}
-                          {c.company ? ` · ${c.company}` : ''}
-                        </p>
-                      </td>
-                      <td>
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td className="num">{c.attempts}</td>
-                      <td>{c.lastOutcome ? humanize(c.lastOutcome) : '—'}</td>
-                      <td className="text-muted">{formatRelative(c.lastAttemptAt)}</td>
-                      <td className="text-right">
-                        {c.status !== 'CALLING' && (
-                          <button
-                            className="btn btn-ghost btn-icon h-8 w-8 text-danger"
-                            aria-label={`Remove ${c.phone}`}
-                            onClick={() =>
-                              run(async () => {
-                                await api(`/app/campaigns/${id}/contacts/${c.id}`, {
-                                  method: 'DELETE',
-                                });
-                                await refresh();
-                              })
-                            }
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      )}
+
+      {activeView === 'follow-up' && (
+        <div className="mt-6">
+          <FollowUpPanel campaign={campaign} initialSegment={followUpSegment} />
+        </div>
+      )}
+
+      {activeView === 'contacts' && (
+        <Section
+          className="mt-6"
+          title="Contacts"
+          description="Add people one at a time or upload a CSV with a header row and a phone column. A tags column (e.g. vip; webinar) labels contacts, and any other column becomes a {{variable}} for the agent."
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportButton campaignId={campaign.id} />
+              {!finished && (
+                <>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => setEditing('new')}
+                  >
+                    <Plus size={14} aria-hidden="true" /> Add contact
+                  </button>
+                  <input
+                    className="input h-9 w-36 text-sm"
+                    value={uploadTags}
+                    onChange={(e) => setUploadTags(e.target.value)}
+                    placeholder="Tag this upload"
+                    aria-label="Tags to put on every contact in the upload (optional)"
+                  />
+                  <input
+                    ref={file}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={onFile}
+                    aria-label="Upload CSV"
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={busy}
+                    onClick={() => file.current?.click()}
+                  >
+                    <Upload size={14} aria-hidden="true" /> Upload CSV
+                  </button>
+                </>
+              )}
             </div>
-            <Pagination
-              page={page}
-              pageSize={contacts.data.pageSize}
-              total={contacts.data.total}
-              onPage={setPage}
+          }
+        >
+          <div className="mb-4">
+            <Tabs
+              value={filter}
+              onChange={(v) => {
+                setFilter(v);
+                setPage(1);
+              }}
+              options={FILTERS.map((f) => ({
+                value: f,
+                label:
+                  f === 'ALL' ? `All (${total})` : `${humanize(f)} (${stats.contacts[f] ?? 0})`,
+              }))}
             />
-          </>
-        )}
-      </Section>
+          </div>
+          {tagList.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted">Tag:</span>
+              <button
+                className="chip"
+                aria-pressed={!tag}
+                onClick={() => {
+                  setTag('');
+                  setPage(1);
+                }}
+              >
+                Any
+              </button>
+              {tagList.map((t) => (
+                <button
+                  key={t.tag}
+                  className="chip"
+                  aria-pressed={tag === t.tag}
+                  onClick={() => {
+                    setTag(t.tag);
+                    setPage(1);
+                  }}
+                >
+                  {t.tag} ({t.count})
+                </button>
+              ))}
+            </div>
+          )}
+          {!contacts.data ? (
+            <Loading />
+          ) : contacts.data.contacts.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted">No contacts here yet.</p>
+          ) : (
+            <>
+              <div className="-mx-5 overflow-x-auto sm:-mx-6">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Contact</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Attempts</th>
+                      <th scope="col">Last outcome</th>
+                      <th scope="col">Last call</th>
+                      <th scope="col">
+                        <span className="sr-only">Remove</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contacts.data.contacts.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <p className="font-semibold">{c.name ?? c.phone}</p>
+                          <p className="num text-xs text-muted">
+                            {c.name ? c.phone : ''}
+                            {c.company ? ` · ${c.company}` : ''}
+                          </p>
+                          {c.tags.length > 0 && (
+                            <p className="mt-1 flex flex-wrap gap-1">
+                              {c.tags.map((t) => (
+                                <span key={t} className="badge badge-neutral">
+                                  {t}
+                                </span>
+                              ))}
+                            </p>
+                          )}
+                        </td>
+                        <td>
+                          <StatusBadge status={c.status} />
+                        </td>
+                        <td className="num">{c.attempts}</td>
+                        <td>{c.lastOutcome ? humanize(c.lastOutcome) : '—'}</td>
+                        <td className="text-muted">{formatRelative(c.lastAttemptAt)}</td>
+                        <td className="whitespace-nowrap text-right">
+                          {c.status !== 'CALLING' && (
+                            <button
+                              className="btn btn-ghost btn-icon h-8 w-8"
+                              aria-label={`Edit ${c.name ?? c.phone}`}
+                              onClick={() => setEditing(c)}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          )}
+                          {c.status !== 'CALLING' && (
+                            <button
+                              className="btn btn-ghost btn-icon h-8 w-8 text-danger"
+                              aria-label={`Remove ${c.phone}`}
+                              onClick={() =>
+                                run(async () => {
+                                  await api(`/app/campaigns/${id}/contacts/${c.id}`, {
+                                    method: 'DELETE',
+                                  });
+                                  await refresh();
+                                })
+                              }
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                page={page}
+                pageSize={contacts.data.pageSize}
+                total={contacts.data.total}
+                onPage={setPage}
+              />
+            </>
+          )}
+        </Section>
+      )}
+
+      {editing && (
+        <ContactModal
+          campaignId={campaign.id}
+          contact={editing === 'new' ? undefined : editing}
+          finished={finished}
+          onClose={() => setEditing(null)}
+          onSaved={refresh}
+        />
+      )}
     </>
   );
 }

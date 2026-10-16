@@ -7,3 +7,4 @@ export * from './ai-views';
 export * from './payments';
 export * from './dialer';
 export * from './schemas';
+export * from './follow-up';

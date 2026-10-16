@@ -257,6 +257,8 @@ export const addContactsSchema = z.object({
   contacts: z.array(z.record(z.string(), z.unknown())).max(50000).optional(),
   /** Raw CSV with a header row containing at least `phone`. */
   csv: z.string().max(5_000_000).optional(),
+  /** Labels put on every contact of this upload, on top of any `tags` column. */
+  tags: z.array(z.string().trim().max(40)).max(20).optional(),
 });
 
 // ── Calls & appointments ───────────────────────────────────────────────────
