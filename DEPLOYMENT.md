@@ -263,6 +263,40 @@ key.
 
 ## 3. Updating
 
+### Deploying by hand from a workstation (current setup; for people and Claude sessions)
+
+The live server (`voice.purplerocket.co`, VPS `62.72.57.2`, CloudPanel site user
+`purplerocket-voice`, API on port 4010) is **not yet connected to GitHub**:
+`~/purple-voice` there is an unpacked copy, not a git checkout, so pushes to `main`
+do not deploy by themselves (the Deploy workflow skips with "Auto-deploy not set up").
+Until the GitHub connection below is done, put changes live like this:
+
+1. Commit and **push to `main`** on GitHub. Only pushed commits are deployed; check
+   `git log origin/main` first so you don't skip another session's commits (the
+   script always deploys the whole of `origin/main`, so nothing is lost).
+2. Run, from any checkout of the repo on a machine whose SSH key logs in as
+   `root@62.72.57.2`:
+   ```bash
+   bash deploy/push-live.sh            # deploys origin/main
+   bash deploy/push-live.sh <sha>      # a specific pushed commit, e.g. to roll back
+   ```
+   It backs up the database (`~/backups/purple-voice/db_<stamp>.dump`), ships a
+   `git archive` of the commit, unpacks it over `~/purple-voice` (env files in
+   `~/.purple-voice`, uploads and backups live elsewhere and are untouched), runs
+   `deploy/deploy.sh` as the site user (install, build, **migrations**, PM2 reload,
+   health checks) and finally checks `https://voice.purplerocket.co/api/health`.
+   Takes 5–8 minutes. Deploys take a lock, so two sessions can't deploy at once.
+   The deployed commit is written to `~/purple-voice/.deployed-commit`.
+3. Verify what you changed on the live site. Logs: `ssh root@62.72.57.2`, then
+   `sudo -iu purplerocket-voice pm2 logs --lines 50`.
+
+Rules for Claude sessions: only deploy when the user asked for it; never edit files
+on the server by hand (the next deploy overwrites them) except the env files in
+`~/.purple-voice/` (then `pm2 reload pv-api` or `pv-web` as the site user, and rebuild
+the web app for `NEXT_PUBLIC_*` changes by redeploying); never print secrets from those
+files; database changes go through a Prisma migration in the commit.
+
+
 **With automatic deploys** ([set up in 2A](#automatic-deploys-from-github)): push to
 `main`. When CI passes, the Deploy workflow puts that exact commit live; follow it in
 GitHub → Actions → Deploy. To deploy a branch, tag or commit by hand, or roll back:
