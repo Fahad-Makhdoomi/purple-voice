@@ -1,5 +1,5 @@
 import type { Call, CallOutcome, CallStatus, ContactStatus, Prisma } from '@prisma/client';
-import { billableMinutes } from '@pv/shared';
+import { billableMinutes, TELEPHONY_PROVIDER_LABELS } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { badRequest, notFound, planLimit } from '../lib/http-error';
@@ -24,7 +24,10 @@ const FINALIZE_DELAY_MS = 5000;
 
 export interface OutboundCallInput {
   workspaceId: string;
-  agentId: string;
+  /** The AI agent that talks. Absent for a person calling from the browser dialer. */
+  agentId?: string;
+  /** The person calling from the browser dialer (voice/dialer-bridge.ts). */
+  placedById?: string;
   phoneNumberId: string;
   to: string;
   campaignId?: string;
@@ -37,19 +40,25 @@ export interface OutboundCallInput {
  * signed URL it was given.
  */
 export async function startOutboundCall(input: OutboundCallInput): Promise<Call> {
+  if (!input.agentId && !input.placedById) throw badRequest('Choose who makes the call');
   const gate = await canStartCall(input.workspaceId);
   if (!gate.ok) throw planLimit(gate.reason);
 
   const { number, adapter } = await adapterForNumber(input.phoneNumberId);
   if (number.workspaceId !== input.workspaceId) throw notFound('Phone number');
   if (adapter.mediaProtocol === 'none') {
-    throw badRequest(`${number.telephonyAccount.provider} numbers can't place AI calls yet`);
+    throw badRequest(
+      input.agentId
+        ? `${number.telephonyAccount.provider} numbers can't place AI calls yet`
+        : `${TELEPHONY_PROVIDER_LABELS[number.telephonyAccount.provider]} numbers can't place browser calls. Use a Twilio or Plivo number.`,
+    );
   }
 
   const call = await prisma.call.create({
     data: {
       workspaceId: input.workspaceId,
       agentId: input.agentId,
+      placedById: input.placedById,
       campaignId: input.campaignId,
       contactId: input.contactId,
       phoneNumberId: number.id,

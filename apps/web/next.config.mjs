@@ -1,6 +1,6 @@
 /**
- * The browser only ever talks to this origin. /api/* and /uploads/* are
- * forwarded to the Express API (in production nginx does this before the
+ * The browser only ever talks to this origin. /api/*, /uploads/* and /ws/*
+ * are forwarded to the Express API (in production nginx does this before the
  * request reaches Next, so these rewrites matter for development).
  */
 const API = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000';
@@ -8,6 +8,12 @@ const captchaHosts =
   'https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com https://js.hcaptcha.com https://*.hcaptcha.com';
 const analyticsHosts =
   'https://plausible.io https://www.googletagmanager.com https://www.google-analytics.com';
+/**
+ * The browser dialer's audio socket (/ws/dialer/…) is same-origin. CSP3
+ * browsers let 'self' cover ws:/wss: on this host; older Safari needs it named.
+ */
+const site = new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000');
+const siteSocket = `${site.protocol === 'https:' ? 'wss:' : 'ws:'}//${site.host}`;
 
 /**
  * Content-Security-Policy. Scripts are limited to this origin plus the
@@ -23,7 +29,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self' ${captchaHosts} ${analyticsHosts}`,
+  `connect-src 'self' ${siteSocket} ${captchaHosts} ${analyticsHosts}`,
   `frame-src ${captchaHosts}`,
   "media-src 'self'",
   "object-src 'none'",
@@ -58,6 +64,8 @@ const nextConfig = {
     return [
       { source: '/api/:path*', destination: `${API}/api/:path*` },
       { source: '/uploads/:path*', destination: `${API}/uploads/:path*` },
+      // Next proxies WebSocket upgrades on external rewrites: the dialer's call audio.
+      { source: '/ws/:path*', destination: `${API}/ws/:path*` },
     ];
   },
   async headers() {
@@ -66,7 +74,11 @@ const nextConfig = {
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+      // The dashboard's dialer uses the microphone; no third-party frame may.
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(self), geolocation=(), payment=()',
+      },
       { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
     ];
     return [
