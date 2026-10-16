@@ -22,6 +22,9 @@ import { PLIVO_STATUS } from './plivo';
  */
 export const telephonyWebhooksRouter = Router();
 
+/** How far back an outbound call makes an incoming one a call-back. */
+const CALLBACK_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 const UNAVAILABLE =
   'Sorry, no one is available to take your call right now. Please try again later. Goodbye.';
 
@@ -62,8 +65,24 @@ telephonyWebhooksRouter.post('/:provider/inbound', async (req, res) => {
   if (!number) throw notFound('Number');
   const adapter = adapterForAccount(number.telephonyAccount);
   const body = req.body as Record<string, string>;
+  const from = e164(body.From);
 
-  const agent = number.inboundAgent;
+  // Someone an agent called from this number is calling back: that agent
+  // answers, with its call-back instructions and what happened last time.
+  // Anyone else gets the agent the number is assigned to.
+  const prior = await prisma.call.findFirst({
+    where: {
+      phoneNumberId: number.id,
+      direction: 'OUTBOUND',
+      toNumber: from,
+      agentId: { not: null },
+      createdAt: { gte: new Date(Date.now() - CALLBACK_WINDOW_MS) },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { contactId: true, agent: true },
+  });
+  const callbackAgent = prior?.agent?.status === 'ACTIVE' ? prior.agent : null;
+  const agent = callbackAgent ?? number.inboundAgent;
   if (!agent || agent.status !== 'ACTIVE')
     return send(res, adapter.sayAndHangupDocument(UNAVAILABLE));
   const gate = await canStartCall(number.workspaceId);
@@ -81,8 +100,12 @@ telephonyWebhooksRouter.post('/:provider/inbound', async (req, res) => {
       provider: p,
       providerCallId: body.CallSid ?? body.CallUUID ?? null,
       direction: 'INBOUND',
-      fromNumber: e164(body.From),
+      fromNumber: from,
       toNumber: number.e164,
+      isCallback: !!callbackAgent,
+      // Gives the agent the contact's name and CSV fields; with no campaign
+      // set, the call-back doesn't change that campaign's progress.
+      contactId: callbackAgent ? prior!.contactId : null,
       status: 'IN_PROGRESS',
       startedAt: now,
       answeredAt: now,

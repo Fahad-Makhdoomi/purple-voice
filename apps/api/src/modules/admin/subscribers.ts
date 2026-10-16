@@ -37,7 +37,9 @@ subscribersRouter.get('/', async (req, res) => {
     })
     .parse({ plan: req.query.plan || undefined, status: req.query.status || undefined });
 
+  // The platform's own workspace is not a customer (Super admin → Our workspace).
   const where: Prisma.WorkspaceWhereInput = {
+    internal: false,
     ...(q
       ? {
           OR: [

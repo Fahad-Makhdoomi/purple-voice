@@ -116,31 +116,47 @@ export function DashboardFrame({ children }: { children: React.ReactNode }) {
     </>
   );
 
-  const banner = ctx.actingAsStaff ? (
-    <div className="flex flex-wrap items-center justify-between gap-3 bg-warning/15 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
-      <span className="flex items-center gap-2 font-medium text-ink">
-        <ShieldAlert size={16} className="text-warning" aria-hidden="true" />
-        You&apos;re managing <b>{ctx.workspace.name}</b> as staff. Changes are recorded in the audit
-        log.
-      </span>
-      <button
-        type="button"
-        className="btn btn-secondary btn-sm"
-        onClick={() => router.push(`/admin/subscribers/${ctx.workspace.id}`)}
-      >
-        Back to admin
-      </button>
-    </div>
-  ) : !entitlements.active && pathname !== '/dashboard/billing' ? (
-    <div className="flex flex-wrap items-center justify-between gap-3 bg-brand-100 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
-      <span className="font-medium text-brand-900">
-        Choose a plan to connect a phone number and create your first agent.
-      </span>
-      <Link href="/dashboard/billing" className="btn btn-primary btn-sm">
-        See plans
-      </Link>
-    </div>
-  ) : null;
+  const banner =
+    ctx.actingAsStaff && acting?.internal ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-brand-100 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
+        <span className="flex items-center gap-2 font-medium text-ink">
+          <ShieldAlert size={16} className="text-brand-700" aria-hidden="true" />
+          You&apos;re in <b>{ctx.workspace.name}</b>, the platform&apos;s own workspace: agents,
+          campaigns and calls here are ours, on the Enterprise plan with no bill.
+        </span>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => router.push('/admin')}
+        >
+          Back to admin
+        </button>
+      </div>
+    ) : ctx.actingAsStaff ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-warning/15 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
+        <span className="flex items-center gap-2 font-medium text-ink">
+          <ShieldAlert size={16} className="text-warning" aria-hidden="true" />
+          You&apos;re managing <b>{ctx.workspace.name}</b> as staff. Changes are recorded in the
+          audit log.
+        </span>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => router.push(`/admin/subscribers/${ctx.workspace.id}`)}
+        >
+          Back to admin
+        </button>
+      </div>
+    ) : !entitlements.active && pathname !== '/dashboard/billing' ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-brand-100 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
+        <span className="font-medium text-brand-900">
+          Choose a plan to connect a phone number and create your first agent.
+        </span>
+        <Link href="/dashboard/billing" className="btn btn-primary btn-sm">
+          See plans
+        </Link>
+      </div>
+    ) : null;
 
   return (
     <WorkspaceContext.Provider value={{ ...ctx, reload: load }}>

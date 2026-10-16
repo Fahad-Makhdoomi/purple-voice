@@ -25,6 +25,7 @@ import { getSetting, setSetting } from '../services/settings';
 import { revalidate } from '../services/revalidate';
 import { verifyApiKey } from '../services/ai-keys';
 import { paymentGatewayViews, saveGateway } from '../services/payment-gateways';
+import { ensureInternalWorkspace } from '../services/internal-workspace';
 
 /**
  * Super admin only: revenue insights, plans and pricing, staff, security, AI
@@ -46,6 +47,9 @@ function lastMonths(n: number): string[] {
   });
 }
 
+/** Customers only: the platform's own workspace isn't revenue or a subscriber. */
+const customers = { internal: false };
+
 superRouter.get('/insights', async (_req, res) => {
   const now = new Date();
   const windowStart = new Date(now.getTime() - 30 * DAY);
@@ -63,23 +67,29 @@ superRouter.get('/insights', async (_req, res) => {
     usage,
     topUsage,
   ] = await Promise.all([
-    prisma.subscription.findMany({ include: { plan: true } }),
-    prisma.subscriptionEvent.findMany({ where: { occurredAt: { gte: windowStart } } }),
-    prisma.subscriptionEvent.findMany({ where: { occurredAt: { gte: yearStart } } }),
-    prisma.payment.findMany({ where: { paidAt: { gte: yearStart }, status: 'paid' } }),
+    prisma.subscription.findMany({ where: { workspace: customers }, include: { plan: true } }),
+    prisma.subscriptionEvent.findMany({
+      where: { occurredAt: { gte: windowStart }, workspace: customers },
+    }),
+    prisma.subscriptionEvent.findMany({
+      where: { occurredAt: { gte: yearStart }, workspace: customers },
+    }),
+    prisma.payment.findMany({
+      where: { paidAt: { gte: yearStart }, status: 'paid', workspace: customers },
+    }),
     prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
         SELECT date_trunc('day', "createdAt") AS day, count(*) AS count
-        FROM "Workspace" WHERE "createdAt" >= ${windowStart}
+        FROM "Workspace" WHERE "createdAt" >= ${windowStart} AND NOT internal
         GROUP BY 1 ORDER BY 1`,
-    prisma.workspace.count(),
-    prisma.subscription.count(),
+    prisma.workspace.count({ where: customers }),
+    prisma.subscription.count({ where: { workspace: customers } }),
     prisma.call.aggregate({
-      where: { createdAt: { gte: monthStart } },
+      where: { createdAt: { gte: monthStart }, workspace: customers },
       _sum: { billedMinutes: true },
       _count: { _all: true },
     }),
     prisma.usagePeriod.findMany({
-      where: { periodEnd: { gt: now } },
+      where: { periodEnd: { gt: now }, workspace: customers },
       orderBy: { minutesUsed: 'desc' },
       take: 5,
       include: { workspace: { select: { id: true, name: true } } },
@@ -195,6 +205,14 @@ superRouter.patch('/plans/:code', async (req, res) => {
   });
   revalidate(['plans']);
   res.json({ plan });
+});
+
+// ── Our workspace ──────────────────────────────────────────────────────────
+// The platform's own workspace, where super admins build agents, run
+// campaigns and call (they open it like a customer's dashboard).
+
+superRouter.get('/workspace', async (_req, res) => {
+  res.json({ workspace: await ensureInternalWorkspace() });
 });
 
 // ── Staff ───────────────────────────────────────────────────────────────────

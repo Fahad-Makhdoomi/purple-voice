@@ -1,7 +1,13 @@
 import WebSocket from 'ws';
+import type { NoiseFilter } from '@prisma/client';
 import { logger } from '../../lib/logger';
 import { mulawDurationMs } from '../transports';
-import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
+import {
+  DEFAULT_OPENING,
+  type EngineCallbacks,
+  type EngineConfig,
+  type VoiceEngine,
+} from './types';
 
 /**
  * OpenAI Realtime, speech-to-speech. Carrier μ-law goes straight in and
@@ -12,6 +18,35 @@ import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
  * and truncate the assistant item to what was actually played, so the
  * model's memory matches what the caller heard.
  */
+/**
+ * Noise handling: OpenAI's noise reduction cleans the line before its voice
+ * detection runs, and a higher detection threshold plus longer required
+ * speech keeps background sounds from counting as the caller interrupting.
+ */
+const INPUT_FILTERING: Record<NoiseFilter, Record<string, unknown>> = {
+  OFF: {
+    turn_detection: { type: 'server_vad', silence_duration_ms: 500, prefix_padding_ms: 300 },
+  },
+  STANDARD: {
+    noise_reduction: { type: 'near_field' },
+    turn_detection: {
+      type: 'server_vad',
+      threshold: 0.6,
+      silence_duration_ms: 550,
+      prefix_padding_ms: 300,
+    },
+  },
+  STRONG: {
+    noise_reduction: { type: 'near_field' },
+    turn_detection: {
+      type: 'server_vad',
+      threshold: 0.75,
+      silence_duration_ms: 650,
+      prefix_padding_ms: 400,
+    },
+  },
+};
+
 export class OpenAIRealtimeEngine implements VoiceEngine {
   private ws?: WebSocket;
   private closed = false;
@@ -62,11 +97,7 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
         audio: {
           input: {
             format: { type: 'audio/pcmu' },
-            turn_detection: {
-              type: 'server_vad',
-              silence_duration_ms: 500,
-              prefix_padding_ms: 300,
-            },
+            ...INPUT_FILTERING[this.config.noiseFilter ?? 'STANDARD'],
             transcription: {
               model: 'gpt-4o-mini-transcribe',
               language: this.config.language.slice(0, 2),
@@ -90,7 +121,7 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
       response: {
         instructions: this.config.greeting
           ? `Say exactly this, then wait for the reply: "${this.config.greeting}"`
-          : 'Open the call: greet the person briefly and say why you are calling.',
+          : (this.config.opening ?? DEFAULT_OPENING),
       },
     });
   }

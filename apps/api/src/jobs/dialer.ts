@@ -20,10 +20,28 @@ export function withinCallWindow(
 }
 
 /**
+ * Seconds until the campaign may start its next call: it waits
+ * `callDelaySeconds` after the last call started and after the last one
+ * ended, whichever is later.
+ */
+export function secondsUntilNextCall(
+  delaySeconds: number,
+  last: { createdAt: Date; endedAt: Date | null } | null,
+  lastEndedAt: Date | null,
+  now = new Date(),
+): number {
+  const latest = Math.max(last?.createdAt.getTime() ?? 0, lastEndedAt?.getTime() ?? 0);
+  if (!latest) return 0;
+  return Math.max(0, Math.ceil((latest + delaySeconds * 1000 - now.getTime()) / 1000));
+}
+
+/**
  * One pass of the campaign dialer. For each running campaign inside its
- * call window, fills free concurrency slots with the next due contacts.
- * Contacts are claimed with FOR UPDATE SKIP LOCKED, so a second worker (or
- * an overlapping tick) can never dial the same person twice.
+ * call window whose pause between calls has passed, starts the next due
+ * contact if a concurrency slot is free — one call per pause, so calls are
+ * spaced out even with several lines. Contacts are claimed with FOR UPDATE
+ * SKIP LOCKED, so a second worker (or an overlapping tick) can never dial the
+ * same person twice.
  */
 export async function dialerTick(): Promise<void> {
   const campaigns = await prisma.campaign.findMany({
@@ -34,11 +52,20 @@ export async function dialerTick(): Promise<void> {
   for (const campaign of campaigns) {
     if (campaign.agent.status !== 'ACTIVE' || !withinCallWindow(campaign)) continue;
 
-    const live = await prisma.call.count({
-      where: { campaignId: campaign.id, status: { in: ['QUEUED', 'RINGING', 'IN_PROGRESS'] } },
-    });
-    const slots = campaign.concurrency - live;
-    if (slots <= 0) continue;
+    const [live, last, ended] = await Promise.all([
+      prisma.call.count({
+        where: { campaignId: campaign.id, status: { in: ['QUEUED', 'RINGING', 'IN_PROGRESS'] } },
+      }),
+      prisma.call.findFirst({
+        where: { campaignId: campaign.id },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, endedAt: true },
+      }),
+      prisma.call.aggregate({ where: { campaignId: campaign.id }, _max: { endedAt: true } }),
+    ]);
+    if (campaign.concurrency - live <= 0) continue;
+    if (secondsUntilNextCall(campaign.callDelaySeconds, last, ended._max.endedAt) > 0) continue;
+    const slots = 1;
 
     const claimed = await prisma.$queryRaw<Array<{ id: string; phone: string }>>`
       UPDATE "CampaignContact"

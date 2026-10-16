@@ -2,6 +2,8 @@ import {
   Behavior,
   GoogleGenAI,
   Modality,
+  StartSensitivity,
+  type AutomaticActivityDetection,
   type FunctionCall,
   type FunctionResponse,
   type LiveCallbacks,
@@ -10,6 +12,7 @@ import {
   type LiveServerMessage,
   type Session,
 } from '@google/genai';
+import type { NoiseFilter } from '@prisma/client';
 import { logger } from '../../lib/logger';
 import {
   Downsampler24kTo8k,
@@ -18,7 +21,12 @@ import {
   mulawEncode,
   pcm16ToBuffer,
 } from '../audio';
-import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
+import {
+  DEFAULT_OPENING,
+  type EngineCallbacks,
+  type EngineConfig,
+  type VoiceEngine,
+} from './types';
 
 /** The parts of a Live session the engine uses. */
 export type LiveSession = Pick<
@@ -39,6 +47,26 @@ const CONNECT_TIMEOUT_MS = 10_000;
 const MAX_HELD_BYTES = 2 * 16_000 * 2;
 /** Pause before each attempt to replace a connection. */
 const RECONNECT_DELAYS_MS = [0, 500, 1500, 3000];
+
+/**
+ * Gemini Live's own default is its most sensitive speech-start detection,
+ * which lets a door, a TV or a passing voice cut the agent off. The filter
+ * lowers that sensitivity and requires a stretch of real speech
+ * (prefixPaddingMs) before the caller counts as talking.
+ */
+const ACTIVITY_DETECTION: Record<NoiseFilter, AutomaticActivityDetection | undefined> = {
+  OFF: undefined,
+  STANDARD: {
+    startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+    prefixPaddingMs: 200,
+    silenceDurationMs: 600,
+  },
+  STRONG: {
+    startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+    prefixPaddingMs: 400,
+    silenceDurationMs: 700,
+  },
+};
 
 interface Connection {
   session?: LiveSession;
@@ -111,7 +139,7 @@ export class GeminiLiveEngine implements VoiceEngine {
     // Resumed connections already have this in their history.
     const text = this.config.greeting
       ? `Say exactly this, then wait for the reply: "${this.config.greeting}"`
-      : 'Open the call: greet the person briefly and say why you are calling.';
+      : (this.config.opening ?? DEFAULT_OPENING);
     this.send(conn, (s) =>
       s.sendClientContent({ turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true }),
     );
@@ -137,7 +165,9 @@ export class GeminiLiveEngine implements VoiceEngine {
 
   private liveConfig(): LiveConnectConfig {
     const { instructions, voice, tools } = this.config;
+    const activity = ACTIVITY_DETECTION[this.config.noiseFilter ?? 'STANDARD'];
     return {
+      ...(activity ? { realtimeInputConfig: { automaticActivityDetection: activity } } : {}),
       // The language is set in the instructions ("Speak in …"), not here.
       responseModalities: [Modality.AUDIO],
       systemInstruction: instructions,

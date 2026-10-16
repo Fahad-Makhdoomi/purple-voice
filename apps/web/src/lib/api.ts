@@ -22,6 +22,8 @@ const ACTING_KEY = 'pv_acting_workspace';
 export interface ActingWorkspace {
   id: string;
   name: string;
+  /** The platform's own workspace (super admins), not a customer's. */
+  internal?: boolean;
 }
 
 export function getActingWorkspace(): ActingWorkspace | null {

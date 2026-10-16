@@ -15,6 +15,7 @@ import {
   LifeBuoy,
   Lock,
   Newspaper,
+  PhoneCall,
   ScrollText,
   ShieldCheck,
   TrendingUp,
@@ -74,6 +75,7 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
           {
             label: 'Super admin',
             items: [
+              { href: '/admin/workspace', label: 'Our workspace', icon: PhoneCall },
               { href: '/admin/insights', label: 'Revenue insights', icon: TrendingUp },
               { href: '/admin/plans', label: 'Plans & pricing', icon: Layers },
               { href: '/admin/ai', label: 'AI providers', icon: BrainCircuit },

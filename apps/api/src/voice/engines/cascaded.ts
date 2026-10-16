@@ -1,4 +1,4 @@
-import type { AiProvider } from '@prisma/client';
+import type { AiProvider, NoiseFilter } from '@prisma/client';
 import { logger } from '../../lib/logger';
 import { ClaudeConversation } from '../llm/claude';
 import { OpenAIConversation } from '../llm/openai';
@@ -7,6 +7,9 @@ import type { LlmConversation } from '../llm/types';
 import { mulawDurationMs } from '../transports';
 import { DeepgramStt, deepgramSpeak } from './deepgram';
 import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
+
+/** Words the caller must say over the agent before it stops talking. */
+const INTERRUPT_WORDS: Record<NoiseFilter, number> = { OFF: 1, STANDARD: 2, STRONG: 3 };
 
 /**
  * Speech-to-text → any LLM → text-to-speech.
@@ -37,8 +40,11 @@ export class CascadedEngine implements VoiceEngine {
     this.stt = new DeepgramStt(config.speechApiKey, config.language, {
       onTranscript: (text, final) => {
         if (final) this.pendingUserText = `${this.pendingUserText} ${text}`.trim();
-        // Two or more words over the agent's voice counts as an interruption.
-        if (this.isSpeaking() && text.trim().split(/\s+/).length >= 2) this.interrupt();
+        // Only real words over the agent's voice interrupt it: a cough or a
+        // stray background word doesn't. Noisier settings need more words.
+        const words = text.trim().split(/\s+/).filter(Boolean).length;
+        if (this.isSpeaking() && words >= INTERRUPT_WORDS[config.noiseFilter ?? 'STANDARD'])
+          this.interrupt();
       },
       onUtteranceEnd: () => this.onUtteranceEnd(),
       onSpeechStarted: () => undefined,
@@ -59,6 +65,9 @@ export class CascadedEngine implements VoiceEngine {
     if (this.config.greeting) {
       this.cb.onTranscript('agent', this.config.greeting);
       this.say(this.config.greeting, new AbortController().signal);
+    } else if (this.config.opening) {
+      // No fixed line: let the model open (an incoming caller shouldn't hear silence).
+      void this.respond(`(The call has just connected. ${this.config.opening})`);
     }
   }
 

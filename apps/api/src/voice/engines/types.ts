@@ -1,3 +1,4 @@
+import type { NoiseFilter } from '@prisma/client';
 import type { ToolDefinition, ToolExecutor } from '../tools';
 
 export interface EngineCallbacks {
@@ -19,8 +20,19 @@ export interface EngineConfig {
   language: string;
   instructions: string;
   greeting: string;
+  /** What to do first when there is no fixed greeting (differs for incoming calls). */
+  opening?: string;
+  /**
+   * How hard to resist background noise. Maps to each engine's own voice
+   * detection: stricter speech-start detection and longer required speech
+   * before the caller counts as interrupting.
+   */
+  noiseFilter?: NoiseFilter;
   tools: ToolDefinition[];
 }
+
+export const DEFAULT_OPENING =
+  'Open the call: greet the person briefly and say why you are calling.';
 
 /** Turns caller audio into agent audio. One instance per call. */
 export interface VoiceEngine {

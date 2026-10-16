@@ -19,7 +19,8 @@ import { applyCallStatus, isTerminal, saveTranscript } from '../services/calls';
 import { busySlots, createEvent } from '../services/google-calendar';
 import type { TranscriptLine } from '../services/ai/summarize';
 import { adapterForAccount, type TelephonyAdapter } from '../telephony';
-import { buildInstructions } from './prompt';
+import { buildInstructions, type PreviousCall } from './prompt';
+import { createNoiseGate } from './noise-gate';
 import { TOOL_SCHEMAS, toolsForAgent, type ToolName } from './tools';
 import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from './time';
 import { mulawDurationMs, type MediaTransport } from './transports';
@@ -89,7 +90,11 @@ export class CallSession {
 
     try {
       this.engine = await this.createEngine(call.agent);
-      this.transport.onAudio((payload) => this.engine?.pushAudio(payload));
+      const gate = createNoiseGate(call.agent.noiseFilter);
+      this.transport.onAudio((payload) => {
+        const audio = gate ? gate.push(payload, Date.now() < this.playbackEndsAt) : payload;
+        if (audio) this.engine?.pushAudio(audio);
+      });
       await this.engine.start();
     } catch (err) {
       logger.error({ err, callId: this.callId }, 'Could not start voice engine');
@@ -127,14 +132,34 @@ export class CallSession {
     });
   }
 
+  /** For a call-back: the last call this agent made to the caller from this number. */
+  private async previousCall(agent: Agent): Promise<PreviousCall | null> {
+    if (!this.call.isCallback) return null;
+    const prior = await prisma.call.findFirst({
+      where: {
+        workspaceId: this.call.workspaceId,
+        agentId: agent.id,
+        direction: 'OUTBOUND',
+        toNumber: this.call.fromNumber,
+        createdAt: { lt: this.call.createdAt },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, summary: true, campaign: { select: { goal: true } } },
+    });
+    return prior
+      ? { at: prior.createdAt, summary: prior.summary, campaignGoal: prior.campaign?.goal || null }
+      : null;
+  }
+
   private async createEngine(agent: Agent): Promise<VoiceEngine> {
     const tools = toolsForAgent(agent);
-    const { instructions, greeting } = buildInstructions({
+    const { instructions, greeting, opening } = buildInstructions({
       agent,
       workspace: this.call.workspace,
       call: this.call,
       contact: this.call.contact,
       campaignGoal: this.call.campaign?.goal,
+      previous: await this.previousCall(agent),
       toolNames: tools.map((t) => t.name),
     });
     const callbacks = {
@@ -165,6 +190,8 @@ export class CallSession {
       language: agent.language,
       instructions,
       greeting,
+      opening,
+      noiseFilter: agent.noiseFilter,
       tools,
     };
 

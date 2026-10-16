@@ -19,6 +19,8 @@ import {
   useAction,
 } from '@/components/ui';
 import { formatNumber, formatRelative, humanize } from '@/lib/format';
+import { Field } from '@/components/forms/Field';
+import { MIN_CALL_DELAY_SECONDS } from '@pv/shared';
 
 interface CampaignDetail {
   campaign: {
@@ -31,6 +33,7 @@ interface CampaignDetail {
     callWindowEnd: string;
     callDays: number[];
     concurrency: number;
+    callDelaySeconds: number;
     maxAttempts: number;
     agent: { id: string; name: string; status: string };
     phoneNumber: { e164: string; routingConfigured: boolean };
@@ -54,6 +57,77 @@ interface Contact {
 }
 
 const FILTERS = ['ALL', 'PENDING', 'COMPLETED', 'NO_ANSWER', 'FAILED', 'DO_NOT_CALL'] as const;
+
+/** Calls at once and the pause between calls; changes apply from the next call. */
+function PaceEditor({
+  campaignId,
+  delaySeconds,
+  concurrency,
+  maxConcurrency,
+  onSaved,
+}: {
+  campaignId: string;
+  delaySeconds: number;
+  concurrency: number;
+  maxConcurrency: number;
+  onSaved: () => Promise<void>;
+}) {
+  const [delay, setDelay] = useState(String(delaySeconds));
+  const [lines, setLines] = useState(String(concurrency));
+  const { busy, run } = useAction();
+  const dirty = delay !== String(delaySeconds) || lines !== String(concurrency);
+  return (
+    <form
+      className="card card-pad mb-6 flex flex-wrap items-end gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void run(async () => {
+          await api(`/app/campaigns/${campaignId}`, {
+            method: 'PATCH',
+            body: { callDelaySeconds: Number(delay), concurrency: Number(lines) },
+          });
+          await onSaved();
+        }, 'Calling pace saved');
+      }}
+    >
+      <Field
+        id="pace-delay"
+        label="Wait between calls (seconds)"
+        help={`Minimum ${MIN_CALL_DELAY_SECONDS}.`}
+      >
+        <input
+          id="pace-delay"
+          type="number"
+          className="input w-40"
+          min={MIN_CALL_DELAY_SECONDS}
+          max={3600}
+          required
+          value={delay}
+          onChange={(e) => setDelay(e.target.value)}
+        />
+      </Field>
+      <Field
+        id="pace-lines"
+        label="Calls at once"
+        help={`Your plan allows up to ${maxConcurrency}.`}
+      >
+        <input
+          id="pace-lines"
+          type="number"
+          className="input w-32"
+          min={1}
+          max={maxConcurrency}
+          required
+          value={lines}
+          onChange={(e) => setLines(e.target.value)}
+        />
+      </Field>
+      <button className="btn btn-secondary" disabled={busy || !dirty}>
+        Save pace
+      </button>
+    </form>
+  );
+}
 
 export default function CampaignPage() {
   const { id } = useParams<{ id: string }>();
@@ -172,6 +246,15 @@ export default function CampaignPage() {
             )}
           </>
         }
+      />
+
+      <PaceEditor
+        key={`${campaign.callDelaySeconds}-${campaign.concurrency}`}
+        campaignId={campaign.id}
+        delaySeconds={campaign.callDelaySeconds}
+        concurrency={campaign.concurrency}
+        maxConcurrency={entitlements.limits.concurrentCalls}
+        onSaved={reload}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -25,10 +25,30 @@ export function contactVariables(
   return vars;
 }
 
+/** An earlier call this agent made to someone who is now calling back. */
+export interface PreviousCall {
+  at: Date;
+  summary: string | null;
+  campaignGoal: string | null;
+}
+
+export type CallKind = 'outbound' | 'inbound' | 'callback';
+
+/** What the agent says first when there is no fixed opening line. */
+export const OPENINGS: Record<CallKind, string> = {
+  outbound: 'Open the call: greet the person briefly and say why you are calling.',
+  inbound:
+    'Answer the call: greet the caller warmly, say who you are and where they have called, then ask how you can help.',
+  callback:
+    'Answer the call: greet them, thank them for calling back, say who you are and briefly why you called them earlier, then ask how you can help.',
+};
+
 /**
  * The full instruction set an agent runs a call with: the subscriber's own
- * prompt first (it defines the persona and the pitch), then the call
- * context, then the platform's rules for speaking on the phone.
+ * prompt first (it defines the persona and the pitch), then what this kind of
+ * call is for (outbound goal, or the agent's inbound / call-back
+ * instructions), then the call context, then the platform's rules for
+ * speaking on the phone.
  */
 export function buildInstructions(input: {
   agent: Agent;
@@ -36,26 +56,73 @@ export function buildInstructions(input: {
   call: Pick<Call, 'direction' | 'fromNumber' | 'toNumber'>;
   contact: CampaignContact | null;
   campaignGoal?: string | null;
+  /** Set when an inbound caller is someone this agent called before. */
+  previous?: PreviousCall | null;
   toolNames: string[];
-}): { instructions: string; greeting: string } {
-  const { agent, workspace, call, contact } = input;
+}): { instructions: string; greeting: string; opening: string; kind: CallKind } {
+  const { agent, workspace, call, contact, previous } = input;
+  const kind: CallKind =
+    call.direction === 'OUTBOUND' ? 'outbound' : previous ? 'callback' : 'inbound';
   const vars = contactVariables(contact, call);
   const tz = isValidTimeZone(agent.timezone) ? agent.timezone : 'UTC';
-  const goal = [agent.goal, input.campaignGoal].filter(Boolean).join(' ');
-  const greeting = fillVariables(agent.greeting, vars).trim();
+  const fill = (text: string) => fillVariables(text, vars).trim();
+
+  // The outbound opening line is a pitch ("Hi, this is Ava calling about…"),
+  // so incoming calls never use it.
+  const greeting = fill(
+    kind === 'outbound'
+      ? agent.greeting
+      : kind === 'callback'
+        ? agent.callbackGreeting || agent.inboundGreeting
+        : agent.inboundGreeting,
+  );
+  const outboundGoal = [agent.goal, input.campaignGoal].filter(Boolean).join(' ');
+  const handling =
+    kind === 'inbound'
+      ? fill(agent.inboundInstructions)
+      : kind === 'callback'
+        ? fill(agent.callbackInstructions || agent.inboundInstructions)
+        : '';
+
+  const purpose =
+    kind === 'outbound'
+      ? outboundGoal && `## Goal of this call\n${outboundGoal}`
+      : [
+          handling &&
+            `## How to handle this call\nSomeone ${kind === 'callback' ? 'is calling you back' : 'has called you'}. Follow these instructions; they take priority over anything above about making calls:\n${handling}`,
+          agent.goal && `## Your general goal (when it fits the conversation)\n${agent.goal}`,
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+  const who = vars.name ? `${vars.name}${vars.company ? ` from ${vars.company}` : ''}` : '';
+  const thisCall =
+    kind === 'outbound'
+      ? `You are calling ${who || 'a prospect'} at ${vars.phone}.`
+      : kind === 'callback'
+        ? [
+            `${who || vars.phone} is calling you back${who ? ` from ${vars.phone}` : ''}.`,
+            `You called them ${describe(previous!.at, tz)}.`,
+            previous!.campaignGoal && `That call was about: ${previous!.campaignGoal}`,
+            previous!.summary
+              ? `What happened on that call: ${previous!.summary}`
+              : 'There is no summary of that call; ask what they would like.',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : `${vars.phone} is calling in to ${call.toNumber}.`;
 
   const sections = [
     fillVariables(agent.systemPrompt, vars),
-    goal && `## Goal of this call\n${goal}`,
-    agent.knowledge && `## Reference knowledge\n${fillVariables(agent.knowledge, vars)}`,
+    purpose,
+    agent.knowledge && `## Reference knowledge\n${fill(agent.knowledge)}`,
     `## This call\n` +
       [
-        call.direction === 'OUTBOUND'
-          ? `You are calling ${vars.name || 'a prospect'}${vars.company ? ` from ${vars.company}` : ''} at ${vars.phone}.`
-          : `${vars.phone} is calling in.`,
+        thisCall,
         `You represent ${workspace.name}.`,
         `It is now ${describe(new Date(), tz)} (${tz}).`,
-        greeting && `You have already opened the call by saying: "${greeting}"`,
+        greeting &&
+          `You have already ${kind === 'outbound' ? 'opened' : 'answered'} the call by saying: "${greeting}"`,
         ...Object.entries(vars)
           .filter(([k, v]) => v && !['name', 'first_name', 'company', 'phone'].includes(k))
           .map(([k, v]) => `${k}: ${v}`),
@@ -67,11 +134,15 @@ export function buildInstructions(input: {
         '- This is a live phone call. Reply in one to three short, natural spoken sentences.',
         '- Never use lists, markdown, emojis, URLs or symbols; spell out numbers the way people say them.',
         '- Ask one question at a time, then stop and listen.',
+        '- Background sounds, other voices in the room and line noise are not the caller talking to you. If what you heard is unclear or does not fit, keep going or ask them to repeat.',
         `- Speak in ${agent.language}. If the person switches language, follow them if you can.`,
-        `- If asked, say honestly that you are an AI assistant calling on behalf of ${workspace.name}.`,
+        `- If asked, say honestly that you are an AI assistant ${kind === 'outbound' ? 'calling' : 'answering'} on behalf of ${workspace.name}.`,
         '- If the person asks not to be called again, apologise, confirm they will not be contacted, then end the call.',
-        '- If you reach voicemail or an answering machine, leave no message and end the call.',
-      ].join('\n'),
+        kind === 'outbound' &&
+          '- If you reach voicemail or an answering machine, leave no message and end the call.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
     input.toolNames.length &&
       `## Actions\n` +
         [
@@ -84,5 +155,10 @@ export function buildInstructions(input: {
           .filter(Boolean)
           .join('\n'),
   ];
-  return { instructions: sections.filter(Boolean).join('\n\n'), greeting };
+  return {
+    instructions: sections.filter(Boolean).join('\n\n'),
+    greeting,
+    opening: OPENINGS[kind],
+    kind,
+  };
 }

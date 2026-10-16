@@ -302,7 +302,7 @@ export function AgentForm({
         <div className="rounded-lg border border-line p-4">
           <p className="font-semibold">When someone calls in</p>
           <p className="text-sm text-muted">
-            Calls to a number where this agent answers (Phone numbers → Answered by), for example
+            Calls to a number where this agent answers (Phone numbers → Answers with), for example
             your customer care line.
           </p>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">

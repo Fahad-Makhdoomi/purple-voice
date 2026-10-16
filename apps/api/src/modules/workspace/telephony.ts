@@ -3,7 +3,7 @@ import { connectNumberSchema, telephonyAccountSchema, updateNumberSchema } from 
 import { prisma } from '../../lib/prisma';
 import { encryptJson } from '../../lib/crypto';
 import { audit } from '../../lib/audit';
-import { HttpError, badRequest, notFound } from '../../lib/http-error';
+import { HttpError, badRequest, conflict, notFound } from '../../lib/http-error';
 import { signedCallbackUrl } from '../../lib/signed-url';
 import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireActiveSubscription } from '../../middleware/entitlements';
@@ -17,6 +17,47 @@ import { adapterForAccount, createAdapter, TelephonyError } from '../../telephon
  * webhook at Purple Voice.
  */
 export const telephonyRouter = Router();
+
+/**
+ * A number answers inbound calls through exactly one agent. Handing it to
+ * another agent while an active one answers there would silently take that
+ * line away, so it has to be released first.
+ */
+async function assertNumberFree(
+  workspaceId: string,
+  agentId: string,
+  number?: { inboundAgentId: string | null; e164: string },
+) {
+  const agent = await prisma.agent.findFirst({ where: { id: agentId, workspaceId } });
+  if (!agent) throw badRequest('That agent does not exist');
+  if (!number?.inboundAgentId || number.inboundAgentId === agentId) return;
+  const current = await prisma.agent.findUnique({
+    where: { id: number.inboundAgentId },
+    select: { name: true, status: true },
+  });
+  if (current?.status === 'ACTIVE') {
+    throw conflict(
+      `${number.e164} already answers calls for ${current.name}, which is active. Set that agent's number to "Nobody" or pause the agent first.`,
+    );
+  }
+}
+
+/**
+ * The carrier sends a number's calls to one webhook, so a number can only be
+ * connected once across the whole platform: connecting it again elsewhere
+ * would quietly take inbound calls away from the first workspace.
+ */
+async function assertNotConnectedElsewhere(workspaceId: string, e164: string) {
+  const elsewhere = await prisma.phoneNumber.findFirst({
+    where: { e164, NOT: { workspaceId } },
+    select: { id: true },
+  });
+  if (elsewhere) {
+    throw conflict(
+      `${e164} is already connected to another Purple Voice account. Disconnect it there first, or contact support.`,
+    );
+  }
+}
 
 function asHttp(err: unknown): never {
   if (err instanceof TelephonyError) {
@@ -170,12 +211,10 @@ telephonyRouter.post('/numbers', requireActiveSubscription, async (req, res) => 
     where: { id: input.telephonyAccountId, workspaceId },
   });
   if (!account) throw notFound('Telephony account');
-  if (input.inboundAgentId) {
-    const agent = await prisma.agent.findFirst({
-      where: { id: input.inboundAgentId, workspaceId },
-    });
-    if (!agent) throw badRequest('That agent does not exist');
-  }
+  await assertNotConnectedElsewhere(workspaceId, input.e164);
+  if (await prisma.phoneNumber.findFirst({ where: { workspaceId, e164: input.e164 } }))
+    throw conflict(`${input.e164} is already connected in this workspace`);
+  if (input.inboundAgentId) await assertNumberFree(workspaceId, input.inboundAgentId);
 
   const number = await prisma.phoneNumber.create({
     data: {
@@ -203,16 +242,18 @@ telephonyRouter.patch('/numbers/:id', async (req, res) => {
   const workspaceId = wsId(req);
   const number = await prisma.phoneNumber.findFirst({ where: { id: req.params.id, workspaceId } });
   if (!number) throw notFound('Phone number');
-  if (input.inboundAgentId) {
-    const agent = await prisma.agent.findFirst({
-      where: { id: input.inboundAgentId, workspaceId },
-    });
-    if (!agent) throw badRequest('That agent does not exist');
-  }
+  if (input.inboundAgentId) await assertNumberFree(workspaceId, input.inboundAgentId, number);
   const updated = await prisma.phoneNumber.update({
     where: { id: number.id },
     data: { friendlyName: input.friendlyName, inboundAgentId: input.inboundAgentId },
   });
+  if (input.inboundAgentId !== undefined && input.inboundAgentId !== number.inboundAgentId) {
+    await audit(req, 'number.inbound_agent_changed', {
+      entity: 'PhoneNumber',
+      entityId: number.id,
+      meta: { from: number.inboundAgentId, to: input.inboundAgentId },
+    });
+  }
   res.json({ number: updated });
 });
 

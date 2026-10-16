@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { MIN_CALL_DELAY_SECONDS } from '@pv/shared';
 import { api, ApiError } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
@@ -72,6 +73,7 @@ export default function NewCampaignPage() {
           maxAttempts: Number(f.get('maxAttempts')),
           retryDelayMinutes: Number(f.get('retryHours')) * 60,
           concurrency: Number(f.get('concurrency')),
+          callDelaySeconds: Number(f.get('callDelaySeconds')),
         },
       });
       await reload();
@@ -221,6 +223,22 @@ export default function NewCampaignPage() {
               max={entitlements.limits.concurrentCalls}
               defaultValue={1}
               className="input"
+            />
+          </Field>
+          <Field
+            id="callDelaySeconds"
+            label="Wait between calls (seconds)"
+            help={`At least ${MIN_CALL_DELAY_SECONDS} seconds after a call starts or ends before the next one.`}
+          >
+            <input
+              id="callDelaySeconds"
+              name="callDelaySeconds"
+              type="number"
+              min={MIN_CALL_DELAY_SECONDS}
+              max={3600}
+              defaultValue={MIN_CALL_DELAY_SECONDS}
+              className="input"
+              required
             />
           </Field>
         </div>
