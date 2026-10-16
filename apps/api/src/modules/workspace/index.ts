@@ -9,6 +9,7 @@ import { callsRouter } from './calls';
 import { integrationsRouter } from './integrations';
 import { developersRouter } from './developers';
 import { supportRouter } from './support';
+import { dialerRouter } from './dialer';
 
 /**
  * The subscriber dashboard API: /api/app/*. Every route acts on one
@@ -27,3 +28,4 @@ workspaceRouter.use('/campaigns', campaignsRouter);
 workspaceRouter.use('/integrations', integrationsRouter);
 workspaceRouter.use('/developers', developersRouter);
 workspaceRouter.use('/support', supportRouter);
+workspaceRouter.use('/dialer', dialerRouter);

@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { Info } from 'lucide-react';
-import { LANGUAGES, type AgentInput, type WorkspaceAiView } from '@pv/shared';
+import {
+  LANGUAGES,
+  NOISE_FILTERS,
+  NOISE_FILTER_LABELS,
+  type AgentInput,
+  type WorkspaceAiView,
+} from '@pv/shared';
 import { Field } from '@/components/forms/Field';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
@@ -27,6 +33,11 @@ export const EMPTY_AGENT: AgentDraft = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   maxCallDurationSec: 900,
   recordCalls: false,
+  inboundGreeting: '',
+  inboundInstructions: '',
+  callbackGreeting: '',
+  callbackInstructions: '',
+  noiseFilter: 'STANDARD',
 };
 
 /**
@@ -177,6 +188,26 @@ export function AgentForm({
             </select>
           </Field>
         </div>
+        <div className="max-w-md">
+          <Field
+            id="noiseFilter"
+            label="Background noise filter"
+            help="Stops traffic, TVs and people in the background from interrupting the agent. Use Strong if your callers are often somewhere noisy."
+          >
+            <select
+              id="noiseFilter"
+              className="select"
+              value={value.noiseFilter}
+              onChange={(e) => set('noiseFilter', e.target.value as AgentDraft['noiseFilter'])}
+            >
+              {NOISE_FILTERS.map((f) => (
+                <option key={f} value={f}>
+                  {NOISE_FILTER_LABELS[f]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
       </section>
 
       <section className="card card-pad space-y-5" aria-labelledby="conversation">
@@ -256,6 +287,76 @@ export function AgentForm({
             Add knowledge
           </button>
         )}
+      </section>
+
+      <section className="card card-pad space-y-5" aria-labelledby="incoming">
+        <div>
+          <h2 id="incoming" className="font-semibold">
+            Incoming calls and call-backs
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            The opening line and goal above are for calls the agent makes. Set how it should answer
+            when someone rings in. Leave a box empty to use the agent&apos;s main instructions.
+          </p>
+        </div>
+        <div className="rounded-lg border border-line p-4">
+          <p className="font-semibold">When someone calls in</p>
+          <p className="text-sm text-muted">
+            Calls to a number where this agent answers (Phone numbers → Answered by), for example
+            your customer care line.
+          </p>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <Field id="inboundGreeting" label="Answer with" optional>
+              <textarea
+                id="inboundGreeting"
+                className="textarea min-h-[90px]"
+                maxLength={500}
+                value={value.inboundGreeting}
+                onChange={(e) => set('inboundGreeting', e.target.value)}
+                placeholder="Thanks for calling Northwind Solar customer care, this is Ava. How can I help?"
+              />
+            </Field>
+            <Field id="inboundInstructions" label="How to handle these calls" optional>
+              <textarea
+                id="inboundInstructions"
+                className="textarea min-h-[90px]"
+                maxLength={10000}
+                value={value.inboundInstructions}
+                onChange={(e) => set('inboundInstructions', e.target.value)}
+                placeholder="Act as customer care: find out what they need, answer from the knowledge, take a message or transfer billing questions to the team."
+              />
+            </Field>
+          </div>
+        </div>
+        <div className="rounded-lg border border-line p-4">
+          <p className="font-semibold">When someone it called calls back</p>
+          <p className="text-sm text-muted">
+            The agent recognises the number, knows when it called them and what was said, and
+            answers the call itself.
+          </p>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <Field id="callbackGreeting" label="Answer with" optional>
+              <textarea
+                id="callbackGreeting"
+                className="textarea min-h-[90px]"
+                maxLength={500}
+                value={value.callbackGreeting}
+                onChange={(e) => set('callbackGreeting', e.target.value)}
+                placeholder="Hi {{first_name}}, thanks for calling back! This is Ava from Northwind Solar."
+              />
+            </Field>
+            <Field id="callbackInstructions" label="How to handle call-backs" optional>
+              <textarea
+                id="callbackInstructions"
+                className="textarea min-h-[90px]"
+                maxLength={10000}
+                value={value.callbackInstructions}
+                onChange={(e) => set('callbackInstructions', e.target.value)}
+                placeholder="Thank them for calling back, remind them why you called, and pick up where the last call left off."
+              />
+            </Field>
+          </div>
+        </div>
       </section>
 
       <section className="card card-pad space-y-5" aria-labelledby="actions">

@@ -65,6 +65,19 @@ export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
 export const AGENT_STATUSES = ['DRAFT', 'ACTIVE', 'PAUSED'] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
 
+/** How hard an agent filters background noise before it decides the caller is speaking. */
+export const NOISE_FILTERS = ['OFF', 'STANDARD', 'STRONG'] as const;
+export type NoiseFilter = (typeof NOISE_FILTERS)[number];
+
+export const NOISE_FILTER_LABELS: Record<NoiseFilter, string> = {
+  OFF: 'Off — any sound can interrupt',
+  STANDARD: 'Standard — ignores most background noise',
+  STRONG: 'Strong — noisy places; only clear, close speech interrupts',
+};
+
+/** Shortest pause a campaign can leave between calls. */
+export const MIN_CALL_DELAY_SECONDS = 20;
+
 export const CAMPAIGN_STATUSES = ['DRAFT', 'RUNNING', 'PAUSED', 'COMPLETED', 'CANCELED'] as const;
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 

@@ -91,6 +91,14 @@ enum AiProvider {
   GEMINI
 }
 
+/// How hard the agent filters the caller's line before its voice detection
+/// hears it. STRONG suits noisy places (street, call centre, TV in the room).
+enum NoiseFilter {
+  OFF
+  STANDARD
+  STRONG
+}
+
 enum AgentStatus {
   DRAFT
   ACTIVE
@@ -189,6 +197,8 @@ model User {
   email        String     @unique
   name         String
   passwordHash String
+  /// Google account id ("sub") once the user has signed in with Google.
+  googleId     String?    @unique
   role         Role       @default(SUBSCRIBER)
   workspaceId  String?
   workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -206,6 +216,7 @@ model User {
   posts           Post[]
   leads           Lead[]          @relation("LeadOwner")
   media           MediaAsset[]
+  placedCalls     Call[]          @relation("PlacedCalls")
 
   @@index([workspaceId])
   @@index([role])
@@ -247,6 +258,9 @@ model Workspace {
   name      String
   timezone  String   @default("UTC")
   suspended Boolean  @default(false)
+  /// The platform's own workspace, where super admins run agents, campaigns
+  /// and calls. Never billed; left out of subscriber analytics.
+  internal  Boolean  @default(false)
   /// Staff-only notes about the customer.
   notes     String   @default("")
   createdAt DateTime @default(now())
@@ -513,6 +527,13 @@ model Agent {
   timezone                  String      @default("UTC")
   maxCallDurationSec        Int         @default(900)
   recordCalls               Boolean     @default(false)
+  /// Used instead of the greeting/goal when someone calls one of its numbers.
+  inboundGreeting           String      @default("")
+  inboundInstructions       String      @default("")
+  /// Used when someone this agent called earlier calls back.
+  callbackGreeting          String      @default("")
+  callbackInstructions      String      @default("")
+  noiseFilter               NoiseFilter @default(STANDARD)
   createdAt                 DateTime    @default(now())
   updatedAt                 DateTime    @updatedAt
 
@@ -542,6 +563,8 @@ model Campaign {
   maxAttempts       Int            @default(2)
   retryDelayMinutes Int            @default(240)
   concurrency       Int            @default(1)
+  /// Pause before the next call starts, after the last one started or ended.
+  callDelaySeconds  Int            @default(20)
   startedAt         DateTime?
   completedAt       DateTime?
   createdAt         DateTime       @default(now())
@@ -615,6 +638,11 @@ model Call {
   transferredTo  String?
   endReason      String?
   errorMessage   String?
+  /// A person calling from the browser dialer (no AI agent on the line).
+  placedById     String?
+  placedBy       User?             @relation("PlacedCalls", fields: [placedById], references: [id], onDelete: SetNull)
+  /// An inbound call from someone an agent called earlier.
+  isCallback     Boolean           @default(false)
   /// Set when post-call processing (summary, webhooks, usage) has run.
   finalizedAt    DateTime?
   createdAt      DateTime          @default(now())

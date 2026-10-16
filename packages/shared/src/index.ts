@@ -5,4 +5,5 @@ export * from './entitlements';
 export * from './models';
 export * from './ai-views';
 export * from './payments';
+export * from './dialer';
 export * from './schemas';

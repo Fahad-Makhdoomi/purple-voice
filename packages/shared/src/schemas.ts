@@ -12,6 +12,8 @@ import {
   TICKET_STATUSES,
   VOICE_ENGINES,
   WEBHOOK_EVENTS,
+  MIN_CALL_DELAY_SECONDS,
+  NOISE_FILTERS,
 } from './enums';
 import { PLAN_CODES } from './plans';
 import { PAYMENT_GATEWAYS } from './payments';
@@ -180,6 +182,13 @@ export const agentSchema = z.object({
   timezone: z.string().trim().max(64).default('UTC'),
   maxCallDurationSec: z.number().int().min(60).max(3600).default(900),
   recordCalls: z.boolean().default(false),
+  /** Inbound calls to the agent's numbers: first sentence and how to handle them. */
+  inboundGreeting: z.string().trim().max(500).default(''),
+  inboundInstructions: z.string().trim().max(10000).default(''),
+  /** Someone the agent called earlier calls back. */
+  callbackGreeting: z.string().trim().max(500).default(''),
+  callbackInstructions: z.string().trim().max(10000).default(''),
+  noiseFilter: z.enum(NOISE_FILTERS).default('STANDARD'),
 });
 export type AgentInput = z.infer<typeof agentSchema>;
 export const updateAgentSchema = agentSchema.partial();
@@ -190,6 +199,12 @@ export const testCallSchema = z.object({
 });
 
 // ── Campaigns ───────────────────────────────────────────────────────────────
+
+const callDelay = z
+  .number()
+  .int()
+  .min(MIN_CALL_DELAY_SECONDS, `Wait at least ${MIN_CALL_DELAY_SECONDS} seconds between calls`)
+  .max(3600);
 
 export const campaignSchema = z
   .object({
@@ -205,6 +220,8 @@ export const campaignSchema = z
     maxAttempts: z.number().int().min(1).max(5).default(2),
     retryDelayMinutes: z.number().int().min(5).max(10080).default(240),
     concurrency: z.number().int().min(1).max(50).default(1),
+    /** Pause between calls; at least 20 seconds. */
+    callDelaySeconds: callDelay.default(MIN_CALL_DELAY_SECONDS),
   })
   .refine((v) => v.callWindowStart < v.callWindowEnd, {
     message: 'Call window must end after it starts',
@@ -223,6 +240,7 @@ export const updateCampaignSchema = z.object({
   maxAttempts: z.number().int().min(1).max(5).optional(),
   retryDelayMinutes: z.number().int().min(5).max(10080).optional(),
   concurrency: z.number().int().min(1).max(50).optional(),
+  callDelaySeconds: callDelay.optional(),
 });
 
 export const contactSchema = z.object({
