@@ -111,7 +111,7 @@ export function DashboardMock() {
     <div className="[perspective:1600px]" aria-hidden="true">
       <div
         ref={ref}
-        className="relative mx-auto max-w-[1080px] overflow-hidden rounded-[28px] border border-white/10 bg-black/55 shadow-[0_40px_120px_-30px_rgb(98_54_240/0.55)] backdrop-blur-xl"
+        className="relative mx-auto max-w-[1080px] overflow-hidden rounded-[28px] border border-white/10 bg-black/40 shadow-[0_40px_120px_-30px_rgb(98_54_240/0.55)] backdrop-blur-2xl backdrop-saturate-150"
         style={{
           transform: `rotateX(${(1 - ease) * 26}deg) translateY(${(1 - ease) * 40}px) scale(${0.9 + ease * 0.1})`,
           transformOrigin: '50% 0%',

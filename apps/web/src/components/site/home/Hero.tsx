@@ -17,7 +17,11 @@ const ASSURANCES = [
 export function Hero() {
   return (
     <section className="relative pb-10 text-center text-white sm:pb-16">
-      <div className="container pt-[calc(var(--pv-header-h)+64px)] sm:pt-[calc(var(--pv-header-h)+96px)]">
+      <div className="container relative pt-[calc(var(--pv-header-h)+64px)] sm:pt-[calc(var(--pv-header-h)+96px)]">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-24 -z-10 mx-auto h-[420px] max-w-4xl bg-[radial-gradient(closest-side,rgb(0_0_0/0.62),transparent)]"
+          aria-hidden="true"
+        />
         <p className="mx-auto w-fit animate-rise rounded-pill border border-white/15 bg-white/[0.06] px-4 py-1.5 text-[13px] font-medium text-white/75 backdrop-blur">
           Now with GPT Realtime, Claude and Gemini
         </p>

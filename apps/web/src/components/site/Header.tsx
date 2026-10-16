@@ -46,7 +46,7 @@ export function Header() {
   if (darkTop) {
     return (
       <header className="fixed inset-x-0 top-3 z-50 px-3 sm:top-4">
-        <div className="mx-auto max-w-[920px] rounded-[28px] border border-white/10 bg-black/55 backdrop-blur-xl">
+        <div className="mx-auto max-w-[920px] rounded-[28px] border border-white/15 bg-black/40 backdrop-blur-2xl backdrop-saturate-150">
           <div className="flex h-14 items-center justify-between gap-3 pl-5 pr-2">
             <Link href="/" aria-label="Purple Voice home">
               <Logo tone="light" />
