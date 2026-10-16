@@ -81,7 +81,8 @@ export const updateProfileSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1).max(200),
+  /** Required by the API unless the account has never had a password (created with Google). */
+  currentPassword: z.string().min(1).max(200).optional(),
   newPassword: password,
 });
 

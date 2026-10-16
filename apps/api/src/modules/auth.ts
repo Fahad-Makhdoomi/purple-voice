@@ -1,7 +1,9 @@
 import { Router, type CookieOptions, type Request, type Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   changePasswordSchema,
   forgotPasswordSchema,
+  homePathForRole,
   isStaff,
   loginSchema,
   registerSchema,
@@ -11,22 +13,36 @@ import {
 import type { User } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
-import { hashPassword, verifyPassword } from '../lib/password';
+import { hashPassword, hasUsablePassword, verifyPassword } from '../lib/password';
 import { randomToken, sha256 } from '../lib/crypto';
 import { signAccessToken } from '../lib/jwt';
 import { badRequest, conflict, forbidden, unauthorized } from '../lib/http-error';
 import { sendMail } from '../lib/mailer';
 import { audit } from '../lib/audit';
+import { logger } from '../lib/logger';
 import { ACCESS_COOKIE, REFRESH_COOKIE, authenticate } from '../middleware/auth';
 import { authLimiter } from '../middleware/rate-limit';
 import { getEntitlements, getUsage } from '../services/entitlements';
 import { assertCaptcha } from '../services/captcha';
+import {
+  GOOGLE_STATE_TTL_SEC,
+  googleIdentityFromCode,
+  googleSignInUrl,
+  parseIntent,
+  readGoogleState,
+  resolveGoogleAccount,
+  safeNextPath,
+  signGoogleState,
+} from '../services/google-auth';
 
 export const authRouter = Router();
 
 /** Readable by the web app's middleware for routing only; never trusted for access. */
 const ROLE_COOKIE = 'pv_role';
 const REFRESH_PATH = '/api/auth';
+/** Binds a Google sign-in round trip to the browser that started it. */
+const GOOGLE_NONCE_COOKIE = 'pv_google_nonce';
+const GOOGLE_PATH = '/api/auth/google';
 
 function baseCookie(): CookieOptions {
   return {
@@ -121,11 +137,13 @@ authRouter.post('/login', authLimiter, async (req, res) => {
   const input = loginSchema.parse(req.body);
   await assertCaptcha(req, 'login', input.captchaToken);
   const user = await prisma.user.findUnique({ where: { email: input.email } });
-  // Verify against a dummy hash when the user doesn't exist so response time
-  // doesn't reveal which emails have accounts.
-  const ok = user
-    ? await verifyPassword(input.password, user.passwordHash)
-    : await verifyPassword(input.password, DUMMY_HASH).then(() => false);
+  // Verify against a dummy hash when the user doesn't exist (or has no password,
+  // having signed up with Google) so response time doesn't reveal which emails
+  // have accounts.
+  const ok =
+    user && hasUsablePassword(user.passwordHash)
+      ? await verifyPassword(input.password, user.passwordHash)
+      : await verifyPassword(input.password, DUMMY_HASH).then(() => false);
   if (!user || !ok) throw unauthorized('Email or password is incorrect');
   if (user.suspended) throw forbidden('This account is suspended. Please contact support.');
 
@@ -195,7 +213,11 @@ authRouter.get('/me', authenticate, async (req, res) => {
     usage = await getUsage(user.workspaceId, entitlements);
   }
   res.json({
-    user: publicUser(user),
+    user: {
+      ...publicUser(user),
+      googleLinked: !!user.googleId,
+      hasPassword: hasUsablePassword(user.passwordHash),
+    },
     workspace: user.workspace
       ? { id: user.workspace.id, name: user.workspace.name, timezone: user.workspace.timezone }
       : null,
@@ -223,7 +245,12 @@ authRouter.patch('/me', authenticate, async (req, res) => {
 authRouter.post('/change-password', authenticate, async (req, res) => {
   const input = changePasswordSchema.parse(req.body);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
-  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+  // Accounts created with Google have never had a password to confirm.
+  const firstPassword = !hasUsablePassword(user.passwordHash);
+  if (
+    !firstPassword &&
+    !(input.currentPassword && (await verifyPassword(input.currentPassword, user.passwordHash)))
+  ) {
     throw badRequest('Current password is incorrect');
   }
   await prisma.user.update({
@@ -240,8 +267,89 @@ authRouter.post('/change-password', authenticate, async (req, res) => {
     },
     data: { revokedAt: new Date() },
   });
-  await audit(req, 'auth.password_changed');
+  await audit(req, firstPassword ? 'auth.password_set' : 'auth.password_changed');
   res.json({ ok: true });
+});
+
+// ── Continue with Google ────────────────────────────────────────────────────
+
+/** Which sign-in methods the login and signup pages should offer. */
+authRouter.get('/providers', (_req, res) => {
+  res.json({ google: env.googleEnabled });
+});
+
+/** The callback is a browser navigation: when limited, land on the login page, not JSON. */
+const googleCallbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => env.isTest,
+  handler: (_req, res) => res.redirect(`${env.appUrl}/login?error=rate_limited`),
+});
+
+function googleNonceCookie(): CookieOptions {
+  return { ...baseCookie(), path: GOOGLE_PATH };
+}
+
+/** GET /api/auth/google?intent=login|signup&next=/path → Google's account chooser. */
+authRouter.get('/google', (req, res) => {
+  if (!env.googleEnabled) return res.redirect(`${env.appUrl}/login?error=google_unavailable`);
+  const nonce = randomToken(24);
+  res.cookie(GOOGLE_NONCE_COOKIE, nonce, {
+    ...googleNonceCookie(),
+    maxAge: GOOGLE_STATE_TTL_SEC * 1000,
+  });
+  const state = signGoogleState(
+    { intent: parseIntent(req.query.intent), next: safeNextPath(req.query.next) },
+    nonce,
+  );
+  res.redirect(googleSignInUrl(state));
+});
+
+authRouter.get('/google/callback', googleCallbackLimiter, async (req, res) => {
+  const fail = (code = 'google') => res.redirect(`${env.appUrl}/login?error=${code}`);
+  const nonce: unknown = req.cookies?.[GOOGLE_NONCE_COOKIE];
+  res.clearCookie(GOOGLE_NONCE_COOKIE, googleNonceCookie());
+  if (!env.googleEnabled) return fail('google_unavailable');
+
+  const state = readGoogleState(req.query.state, nonce);
+  if (!state) return fail();
+  // The user closed the consent screen: back where they came from, no error.
+  if (req.query.error === 'access_denied')
+    return res.redirect(`${env.appUrl}/${state.intent === 'signup' ? 'signup' : 'login'}`);
+  const code = req.query.code;
+  if (typeof code !== 'string' || !code) return fail();
+
+  try {
+    const identity = await googleIdentityFromCode(code);
+    const result = await resolveGoogleAccount(identity);
+    if (result.kind === 'suspended') return fail('suspended');
+    if (result.kind === 'conflict') {
+      logger.warn('Google sign-in: email already linked to a different Google account');
+      return fail();
+    }
+
+    const { user } = result;
+    await issueSession(req, res, user);
+    if (result.kind === 'created') {
+      await audit(req, 'auth.register', {
+        actorId: user.id,
+        workspaceId: user.workspaceId,
+        meta: { via: 'google' },
+      });
+    } else {
+      await audit(req, 'auth.google_login', {
+        actorId: user.id,
+        workspaceId: user.workspaceId,
+        meta: result.linked ? { via: 'google', linked: true } : { via: 'google' },
+      });
+    }
+    res.redirect(`${env.appUrl}${state.next ?? homePathForRole(user.role)}`);
+  } catch (err) {
+    logger.warn({ err }, 'Google sign-in failed');
+    fail();
+  }
 });
 
 authRouter.post('/forgot-password', authLimiter, async (req, res) => {
