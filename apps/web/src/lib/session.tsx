@@ -13,6 +13,10 @@ export interface Me {
     role: Role;
     workspaceId: string | null;
     timezone: string;
+    /** Can sign in with "Continue with Google". */
+    googleLinked: boolean;
+    /** False for accounts created with Google that have never set a password. */
+    hasPassword: boolean;
   };
   workspace: { id: string; name: string; timezone: string } | null;
   entitlements: Entitlements | null;

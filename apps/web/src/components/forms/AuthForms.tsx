@@ -6,14 +6,61 @@ import { useState } from 'react';
 import { CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { homePathForRole, type Role } from '@pv/shared';
 import { api, ApiError, setActingWorkspace } from '@/lib/api';
+import { GoogleMark } from '@/components/brand/GoogleMark';
 import { Field, FormError } from './Field';
 import { useCaptcha, type CaptchaProvider } from './useCaptcha';
 
 type CaptchaProps = { provider: CaptchaProvider; enabled: boolean };
 
-/** Only same-site paths are honoured as a post-login destination. */
+/** Only same-site paths are honoured as a post-login destination (browsers read `/\x` as `//x`). */
 function safeNext(next: string | null): string | null {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : null;
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\')
+    ? next
+    : null;
+}
+
+/** Messages for `/login?error=…`, set by the Google sign-in callback. */
+function signInNotice(code: string | null): string | null {
+  switch (code) {
+    case 'google':
+      return "We couldn't sign you in with Google. Please try again, or use your email and password.";
+    case 'google_unavailable':
+      return "Google sign-in isn't available right now. Please use your email and password.";
+    case 'suspended':
+      return 'This account is suspended. Please contact support.';
+    case 'rate_limited':
+      return 'Too many sign-in attempts. Wait a few minutes and try again.';
+    default:
+      return null;
+  }
+}
+
+/**
+ * "Continue with Google", styled per Google's branding guidelines (white
+ * button, grey outline, dark text, standard mark), then an "or" divider.
+ * A plain link: the API redirects to Google and back, in production through
+ * nginx and in development through the Next rewrite of /api.
+ */
+function GoogleSignIn({ intent, next }: { intent: 'login' | 'signup'; next: string | null }) {
+  const query = new URLSearchParams({ intent });
+  if (next) query.set('next', next);
+  return (
+    <div className="mt-8">
+      <a
+        href={`/api/auth/google?${query}`}
+        onClick={() => setActingWorkspace(null)}
+        className="flex h-12 w-full items-center justify-center gap-3 rounded-pill border border-[#747775] bg-white px-5 text-[15px] font-medium text-[#1f1f1f] transition duration-200 hover:bg-[#f8f9fa] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-100"
+      >
+        <GoogleMark />
+        Continue with Google
+      </a>
+      <div className="my-6 flex items-center gap-4 text-xs font-medium text-subtle">
+        <span className="h-px flex-1 bg-line" aria-hidden="true" />
+        or
+        <span className="h-px flex-1 bg-line" aria-hidden="true" />
+      </div>
+    </div>
+  );
 }
 
 function PasswordInput({
@@ -49,9 +96,11 @@ function PasswordInput({
   );
 }
 
-export function LoginForm({ captcha }: { captcha: CaptchaProps }) {
+export function LoginForm({ captcha, google }: { captcha: CaptchaProps; google: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
+  const next = safeNext(params.get('next'));
+  const [notice, setNotice] = useState(() => signInNotice(params.get('error')));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cap = useCaptcha({ ...captcha, action: 'login' });
@@ -59,6 +108,7 @@ export function LoginForm({ captcha }: { captcha: CaptchaProps }) {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    setNotice(null);
     setError(null);
     setBusy(true);
     try {
@@ -70,7 +120,7 @@ export function LoginForm({ captcha }: { captcha: CaptchaProps }) {
         },
       });
       setActingWorkspace(null);
-      router.replace(safeNext(params.get('next')) ?? homePathForRole(user.role));
+      router.replace(next ?? homePathForRole(user.role));
       router.refresh();
     } catch (err) {
       cap.reset();
@@ -83,7 +133,9 @@ export function LoginForm({ captcha }: { captcha: CaptchaProps }) {
     <>
       <h1 className="text-h2">Welcome back</h1>
       <p className="mt-2 text-muted">Sign in to manage your agents and calls.</p>
-      <form onSubmit={onSubmit} className="mt-8 space-y-5">
+      <FormError message={notice} className="mt-6" />
+      {google && <GoogleSignIn intent="login" next={next} />}
+      <form onSubmit={onSubmit} className={google ? 'space-y-5' : 'mt-8 space-y-5'}>
         <Field id="email" label="Email">
           <input
             id="email"
@@ -122,10 +174,11 @@ export function LoginForm({ captcha }: { captcha: CaptchaProps }) {
   );
 }
 
-export function SignupForm({ captcha }: { captcha: CaptchaProps }) {
+export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const plan = params.get('plan');
+  const planNext = plan === 'BASIC' || plan === 'PRO' ? `/dashboard/billing?plan=${plan}` : null;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cap = useCaptcha({ ...captcha, action: 'signup' });
@@ -145,9 +198,7 @@ export function SignupForm({ captcha }: { captcha: CaptchaProps }) {
           captchaToken: await cap.getToken(),
         },
       });
-      router.replace(
-        plan === 'BASIC' || plan === 'PRO' ? `/dashboard/billing?plan=${plan}` : '/dashboard',
-      );
+      router.replace(planNext ?? '/dashboard');
       router.refresh();
     } catch (err) {
       cap.reset();
@@ -167,7 +218,8 @@ export function SignupForm({ captcha }: { captcha: CaptchaProps }) {
             : 'Set up your workspace,'}{' '}
         choose a plan when you&apos;re ready to connect a number.
       </p>
-      <form onSubmit={onSubmit} className="mt-8 space-y-5">
+      {google && <GoogleSignIn intent="signup" next={planNext} />}
+      <form onSubmit={onSubmit} className={google ? 'space-y-5' : 'mt-8 space-y-5'}>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field id="name" label="Your name">
             <input

@@ -66,32 +66,55 @@ async function tokenRequest(params: Record<string, string>) {
   return json;
 }
 
-export async function exchangeCode(
+/**
+ * Swaps an OAuth authorization code at Google's token endpoint. Shared by the
+ * Calendar connection and "Continue with Google"; `redirectUri` must be the
+ * one the consent screen was opened with.
+ */
+export async function exchangeGoogleCode(
   code: string,
-): Promise<{ tokens: GoogleTokens; email: string | null }> {
+  redirectUri: string,
+): Promise<{ tokens: GoogleTokens; idToken: string | null }> {
   const json = await tokenRequest({
     code,
     grant_type: 'authorization_code',
-    redirect_uri: googleRedirectUri(),
+    redirect_uri: redirectUri,
   });
-  let email: string | null = null;
-  if (json.id_token) {
-    try {
-      email =
-        JSON.parse(Buffer.from(json.id_token.split('.')[1] ?? '', 'base64url').toString('utf8'))
-          .email ?? null;
-    } catch {
-      email = null;
-    }
-  }
   return {
     tokens: {
       accessToken: json.access_token!,
       refreshToken: json.refresh_token,
       expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
     },
-    email,
+    idToken: json.id_token ?? null,
   };
+}
+
+/**
+ * The claims of an id_token, without checking its signature. Only safe for a
+ * token received directly from Google's token endpoint over TLS (OIDC Core
+ * 3.1.3.7); returns null when it isn't a well-formed JWT.
+ */
+export function decodeIdTokenPayload(idToken: string): Record<string, unknown> | null {
+  const parts = idToken.split('.');
+  if (parts.length !== 3 || !parts[1]) return null;
+  try {
+    const payload: unknown = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Calendar connection: tokens to store, plus the account's email as a label. */
+export async function exchangeCode(
+  code: string,
+): Promise<{ tokens: GoogleTokens; email: string | null }> {
+  const { tokens, idToken } = await exchangeGoogleCode(code, googleRedirectUri());
+  const email = idToken ? decodeIdTokenPayload(idToken)?.email : null;
+  return { tokens, email: typeof email === 'string' ? email : null };
 }
 
 async function accessToken(integration: Integration): Promise<string> {
