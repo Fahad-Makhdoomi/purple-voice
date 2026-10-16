@@ -436,10 +436,23 @@ billingRouter.post('/checkout', async (req, res) => {
         ...(ws.billingName ? { business: ws.billingName } : {}),
       },
     });
-    if (!sub.short_url) throw new HttpError(502, 'Razorpay did not return a payment link');
-    // Razorpay's hosted page doesn't redirect back: the billing page opens it
-    // in a new tab and confirms the subscription when the customer returns.
-    return res.json({ url: sub.short_url, gateway, subscriptionId: sub.id, newTab: true });
+    // Razorpay's hosted page (short_url) is switched off on some accounts and
+    // then shows "hosted page not available". The billing page instead opens
+    // Standard Checkout (checkout.js) in a popup with the subscription id and
+    // the public key id; short_url stays as a fallback link only.
+    const config = await gatewayConfig('RAZORPAY');
+    if (!config) throw new HttpError(503, 'Razorpay is not configured', 'billing_unavailable');
+    return res.json({
+      gateway,
+      subscriptionId: sub.id,
+      razorpay: {
+        keyId: config.keyId,
+        subscriptionId: sub.id,
+        name: ws.billingName || ws.name,
+        email: user.email,
+        fallbackUrl: sub.short_url ?? null,
+      },
+    });
   }
   const { subscription, approveUrl } = await createPaypalSubscription({
     planId,

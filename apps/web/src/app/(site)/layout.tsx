@@ -8,6 +8,9 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   const settings = await getSettings();
   return (
     <>
+      <noscript>
+        <style>{'.reveal{opacity:1!important;transform:none!important;filter:none!important}'}</style>
+      </noscript>
       <Header />
       <main id="main">{children}</main>
       <Footer />

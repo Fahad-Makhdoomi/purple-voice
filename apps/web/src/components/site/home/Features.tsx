@@ -1,4 +1,5 @@
 import { ArrowLeftRight, Check, PhoneCall, Webhook, Workflow } from 'lucide-react';
+import { Reveal, Spotlight } from '@/components/site/motion';
 
 /**
  * Bento feature cards: white cards whose top half is a pastel, gridded
@@ -28,13 +29,17 @@ function Card({
   className?: string;
 }) {
   return (
-    <article className={`rounded-lg border border-line bg-surface p-2 shadow ${className}`}>
-      {art}
-      <div className="px-4 pb-5 pt-5">
-        <h3 className="text-h3">{title}</h3>
-        <p className="mt-2 text-[15px] leading-relaxed text-muted">{body}</p>
-      </div>
-    </article>
+    <Reveal className={className}>
+      <Spotlight className="h-full rounded-lg">
+        <article className="h-full rounded-lg border border-line bg-surface p-2 shadow transition-shadow duration-300 hover:shadow-lg">
+          {art}
+          <div className="px-4 pb-5 pt-5">
+            <h3 className="text-h3">{title}</h3>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted">{body}</p>
+          </div>
+        </article>
+      </Spotlight>
+    </Reveal>
   );
 }
 
@@ -50,14 +55,14 @@ export function Features() {
   return (
     <section id="features" className="bg-canvas py-section">
       <div className="container">
-        <div className="mx-auto max-w-2xl text-center">
+        <Reveal className="mx-auto max-w-2xl text-center">
           <p className="eyebrow">Product</p>
           <h2 className="mt-3 text-h1">Your sales floor, running itself</h2>
           <p className="mt-4 text-lead text-muted">
             Build an agent in minutes, point it at a list, and watch qualified conversations land in
             your calendar.
           </p>
-        </div>
+        </Reveal>
 
         <div className="mt-14 grid gap-5 md:grid-cols-6">
           <Card
@@ -84,7 +89,7 @@ export function Features() {
                 </div>
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
                   <Pill dark>
-                    <span className="h-1.5 w-1.5 rounded-full bg-success" /> Agent live
+                    <span className="h-1.5 w-1.5 animate-tick rounded-full bg-success" /> Agent live
                   </Pill>
                 </div>
               </Art>
@@ -109,7 +114,7 @@ export function Features() {
                       {initials}
                     </span>
                     <p className="mt-1.5 text-[10px] font-semibold">{name}</p>
-                    <p className="text-[9px] text-brand-600">Calling…</p>
+                    <p className="animate-pulse text-[9px] text-brand-600">Calling…</p>
                   </div>
                 ))}
                 <svg
@@ -142,7 +147,7 @@ export function Features() {
                     {Array.from({ length: 21 }, (_, i) => (
                       <span
                         key={i}
-                        className={`rounded py-1 ${i === 9 ? 'bg-ink font-bold text-white' : i % 7 > 4 ? 'text-subtle' : 'bg-brand-50'}`}
+                        className={`rounded py-1 ${i === 9 ? 'animate-tick bg-ink font-bold text-white' : i % 7 > 4 ? 'text-subtle' : 'bg-brand-50'}`}
                       >
                         {i + 6}
                       </span>
@@ -202,7 +207,7 @@ export function Features() {
                     call with an expert.
                   </p>
                   <div className="mt-3 h-1.5 rounded-pill bg-brand-50">
-                    <div className="h-full w-4/5 rounded-pill bg-gradient-brand" />
+                    <div className="h-full w-4/5 animate-shimmer rounded-pill bg-[linear-gradient(90deg,rgb(var(--pv-violet-600)),rgb(var(--pv-violet-300)),rgb(var(--pv-violet-600)))] [background-size:200%_100%]" />
                   </div>
                 </div>
                 <div className="absolute bottom-8 right-[8%] rotate-[3deg]">
@@ -213,6 +218,9 @@ export function Features() {
                 <div className="absolute right-[10%] top-8 hidden w-36 rounded-sm bg-white p-3 shadow sm:block">
                   <p className="text-[10px] text-muted">Connect rate</p>
                   <p className="num text-xl font-semibold">73%</p>
+                  <div className="mt-1.5 h-1 rounded-pill bg-brand-50">
+                    <div className="h-full w-[73%] animate-shimmer rounded-pill bg-[linear-gradient(90deg,rgb(var(--pv-violet-600)),rgb(var(--pv-violet-300)),rgb(var(--pv-violet-600)))] [background-size:200%_100%]" />
+                  </div>
                 </div>
               </Art>
             }
@@ -241,15 +249,17 @@ export function Features() {
               title: 'Automations',
               body: 'When a call ends a certain way, notify Slack, email or re-queue the lead.',
             },
-          ].map(({ icon: Icon, title, body }) => (
-            <li key={title} className="flex gap-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-                <Icon size={18} aria-hidden="true" />
-              </span>
-              <div>
-                <h3 className="text-[15px] font-semibold">{title}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-muted">{body}</p>
-              </div>
+          ].map(({ icon: Icon, title, body }, i) => (
+            <li key={title}>
+              <Reveal delay={i * 90} className="group flex gap-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 transition duration-300 group-hover:scale-110 group-hover:bg-ink group-hover:text-white">
+                  <Icon size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-semibold">{title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted">{body}</p>
+                </div>
+              </Reveal>
             </li>
           ))}
         </ul>

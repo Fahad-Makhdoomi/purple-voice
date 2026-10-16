@@ -365,8 +365,9 @@ Do-not-call outcomes are never retried. A campaign completes when nothing is pen
   gateway is offered for the plans that have its id.
   - **Stripe**: Checkout session; an existing Stripe subscription switches price in
     place (prorated). Webhook signatures are verified with a 5-minute tolerance.
-  - **Razorpay** (INR: UPI Autopay, RuPay, cards): a Subscription whose hosted
-    `short_url` opens in a new tab; the billing page polls `/api/billing/confirm`.
+  - **Razorpay** (INR: UPI Autopay, RuPay, cards): a Subscription paid in Razorpay Standard Checkout (checkout.js popup opened
+    with the subscription id and public key id; `short_url` is only a fallback link —
+    the hosted page is disabled on some accounts); the billing page polls `/api/billing/confirm`.
     Webhooks are HMAC-SHA256 of the raw body.
   - **PayPal**: a Subscription approved on PayPal, which returns to the billing page
     (`/confirm` again). Webhooks are verified by PayPal's verify-webhook-signature API.

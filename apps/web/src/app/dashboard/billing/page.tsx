@@ -15,6 +15,7 @@ import {
   GSTIN_PATTERN,
 } from '@pv/shared';
 import { api } from '@/lib/api';
+import { loadRazorpay, openRazorpay, type RazorpayCheckout } from '@/lib/razorpay';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import {
@@ -71,14 +72,23 @@ interface CheckoutResult {
   activated?: boolean;
   gateway?: PaymentGateway;
   subscriptionId?: string;
-  newTab?: boolean;
+  /** Razorpay: what the popup needs. */
+  razorpay?: {
+    keyId: string;
+    subscriptionId: string;
+    name: string;
+    email: string;
+    fallbackUrl: string | null;
+  };
 }
 
 /** A Razorpay/PayPal subscription waiting for the customer to finish paying. */
 interface Pending {
   gateway: 'RAZORPAY' | 'PAYPAL';
   subscriptionId: string;
+  /** Razorpay's hosted page, offered only as a fallback to the popup. */
   url?: string;
+  checkout?: RazorpayCheckout;
 }
 
 const POLL_MS = 5000;
@@ -200,38 +210,50 @@ function BillingInner() {
       toast('Check the GST number: 15 characters, e.g. 29ABCDE1234F1Z5', 'error');
       return;
     }
-    // Razorpay's page opens in a new tab; open it now, while the click still
-    // counts as the user's, or the browser blocks it.
-    const tab = gateway?.gateway === 'RAZORPAY' ? window.open('', '_blank') : null;
-    if (tab) tab.opener = null;
+    // Start fetching Razorpay's popup script while the API creates the subscription.
+    if (gateway?.gateway === 'RAZORPAY') void loadRazorpay().catch(() => undefined);
+    const planName = data.plans.find((p) => p.code === planCode)?.name ?? planCode;
     return run(async () => {
-      try {
-        const r = await api<CheckoutResult>('/billing/checkout', {
-          body: {
-            planCode,
-            gateway: gateway?.gateway,
-            ...(gateway?.gateway === 'RAZORPAY'
-              ? { gstin: gstin.trim(), billingName: billingName.trim() }
-              : {}),
-          },
+      const r = await api<CheckoutResult>('/billing/checkout', {
+        body: {
+          planCode,
+          gateway: gateway?.gateway,
+          ...(gateway?.gateway === 'RAZORPAY'
+            ? { gstin: gstin.trim(), billingName: billingName.trim() }
+            : {}),
+        },
+      });
+      if (r.razorpay) {
+        const p: Pending = {
+          gateway: 'RAZORPAY',
+          subscriptionId: r.razorpay.subscriptionId,
+          url: r.razorpay.fallbackUrl ?? undefined,
+          checkout: { ...r.razorpay, description: `${planName} plan, monthly` },
+        };
+        setPending(p);
+        await openRazorpay(p.checkout!, {
+          onPaid: () => void confirm(p),
+          onClosed: () => undefined,
+          onFailed: (message) => toast(message, 'error'),
         });
-        if (r.url && r.newTab && r.subscriptionId) {
-          if (tab) tab.location.href = r.url;
-          setPending({ gateway: 'RAZORPAY', subscriptionId: r.subscriptionId, url: r.url });
-        } else if (r.url) {
-          tab?.close();
-          window.location.href = r.url;
-        } else {
-          tab?.close();
-          await Promise.all([reload(), reloadWs()]);
-          toast('Plan updated');
-        }
-      } catch (err) {
-        tab?.close();
-        throw err;
+      } else if (r.url) {
+        window.location.href = r.url;
+      } else {
+        await Promise.all([reload(), reloadWs()]);
+        toast('Plan updated');
       }
     });
   };
+
+  const reopenPayment = (p: Pending) =>
+    run(async () => {
+      if (!p.checkout) return;
+      await openRazorpay(p.checkout, {
+        onPaid: () => void confirm(p),
+        onClosed: () => undefined,
+        onFailed: (message) => toast(message, 'error'),
+      });
+    });
 
   return (
     <>
@@ -256,6 +278,19 @@ function BillingInner() {
         }
       />
 
+      {suggested && !entitlements.active && data.plans.some((p) => p.code === suggested) && (
+        <div className="mb-6 rounded-sm bg-brand-50 px-4 py-3 text-sm text-ink-soft">
+          <p className="font-semibold text-ink">
+            Last step: pay for the {data.plans.find((p) => p.code === suggested)?.name} plan
+          </p>
+          <p className="mt-1">
+            Press <b>Choose {data.plans.find((p) => p.code === suggested)?.name}</b> on the
+            highlighted plan below. A secure payment window opens — pay by UPI, card or net banking.
+            Your plan switches on the moment the payment is confirmed.
+          </p>
+        </div>
+      )}
+
       {data.billingMode === 'dev' && (
         <p className="mb-6 rounded-sm bg-warning/10 px-4 py-3 text-sm text-warning">
           Development mode: no payment gateway is set up, so choosing a plan activates it instantly
@@ -270,18 +305,27 @@ function BillingInner() {
           </p>
           <p className="mt-1">
             {pending.gateway === 'RAZORPAY'
-              ? 'Finish paying in the Razorpay tab (UPI, RuPay or card). This page activates your plan as soon as Razorpay confirms it.'
+              ? 'Finish paying in the Razorpay window (UPI, RuPay or card). This page activates your plan as soon as Razorpay confirms it.'
               : 'Confirming your PayPal subscription. This usually takes a few seconds.'}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
+            {pending.checkout && (
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={busy}
+                onClick={() => void reopenPayment(pending)}
+              >
+                Reopen the payment window
+              </button>
+            )}
             {pending.url && (
               <a
                 href={pending.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-ghost btn-sm"
               >
-                Open the payment page
+                Use Razorpay&apos;s payment page instead
               </a>
             )}
             <button

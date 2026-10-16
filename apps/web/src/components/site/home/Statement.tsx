@@ -8,6 +8,7 @@ import {
   Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { Reveal } from '@/components/site/motion';
 
 const ORBIT: Array<{ icon: LucideIcon; tone: 'deep' | 'soft' | 'pink' }> = [
   { icon: PhoneCall, tone: 'deep' },
@@ -32,9 +33,11 @@ export function Statement() {
   return (
     <section className="relative isolate overflow-hidden bg-gradient-wash py-section">
       <div className="container grid items-center gap-10 lg:grid-cols-[1fr_auto_1fr]">
-        <p className="text-center text-h2 font-light text-brand-700/80 lg:text-right">
-          Every lead expects a call back. Most teams don&apos;t have the
-        </p>
+        <Reveal variant="left">
+          <p className="text-center text-h2 font-light text-brand-700/80 lg:text-right">
+            Every lead expects a call back. Most teams don&apos;t have the
+          </p>
+        </Reveal>
 
         <div className="relative mx-auto h-64 w-64 sm:h-72 sm:w-72" aria-hidden="true">
           <div className="absolute inset-6 rounded-full border-[14px] border-brand-500/25 shadow-[0_0_60px_10px_rgb(var(--pv-violet-400)/0.35)]" />
@@ -61,7 +64,9 @@ export function Statement() {
           </div>
         </div>
 
-        <p className="text-center text-h1 font-extrabold text-brand-950 lg:text-left">time.</p>
+        <Reveal variant="right" delay={150}>
+          <p className="text-center text-h1 font-extrabold text-brand-950 lg:text-left">time.</p>
+        </Reveal>
       </div>
       <p className="container mt-10 max-w-2xl text-center text-lead text-ink-soft">
         Purple Voice gives every lead a conversation within minutes — qualifying, answering and

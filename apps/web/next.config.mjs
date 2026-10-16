@@ -6,6 +6,10 @@
 const API = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000';
 const captchaHosts =
   'https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com https://js.hcaptcha.com https://*.hcaptcha.com';
+/** Razorpay Standard Checkout: the script, its payment iframe and its beacons. */
+const razorpayScript = 'https://checkout.razorpay.com';
+const razorpayFrames = 'https://api.razorpay.com https://checkout.razorpay.com';
+const razorpayConnect = 'https://*.razorpay.com';
 const analyticsHosts =
   'https://plausible.io https://www.googletagmanager.com https://www.google-analytics.com';
 /**
@@ -28,16 +32,16 @@ const siteSocket = `${site.protocol === 'https:' ? 'wss:' : 'ws:'}//${site.host}
 const devEval = process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : '';
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${devEval} ${captchaHosts} ${analyticsHosts}`,
+  `script-src 'self' 'unsafe-inline'${devEval} ${captchaHosts} ${analyticsHosts} ${razorpayScript}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self' ${siteSocket} ${captchaHosts} ${analyticsHosts}`,
-  `frame-src ${captchaHosts}`,
+  `connect-src 'self' ${siteSocket} ${captchaHosts} ${analyticsHosts} ${razorpayConnect}`,
+  `frame-src ${captchaHosts} ${razorpayFrames}`,
   "media-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  "form-action 'self' https://api.razorpay.com",
   "frame-ancestors 'none'",
   'upgrade-insecure-requests',
 ].join('; ');
@@ -80,9 +84,11 @@ const nextConfig = {
       // The dashboard's dialer uses the microphone; no third-party frame may.
       {
         key: 'Permissions-Policy',
-        value: 'camera=(), microphone=(self), geolocation=(), payment=()',
+        value:
+          'camera=(), microphone=(self), geolocation=(), payment=(self "https://checkout.razorpay.com" "https://api.razorpay.com")',
       },
-      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+      // Razorpay opens bank / UPI approval pages in a popup that must keep its opener.
+      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
     ];
     return [
       { source: '/:path*', headers: security },
