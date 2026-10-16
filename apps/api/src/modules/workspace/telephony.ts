@@ -37,7 +37,7 @@ async function assertNumberFree(
   });
   if (current?.status === 'ACTIVE') {
     throw conflict(
-      `${number.e164} already answers calls for ${current.name}, which is active. Set that agent's number to "Nobody" or pause the agent first.`,
+      `${number.e164} already answers calls for ${current.name}, which is active. Set this number to "Nobody" first, or pause ${current.name}.`,
     );
   }
 }
