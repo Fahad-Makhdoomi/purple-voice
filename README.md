@@ -39,21 +39,20 @@ deploy/           CloudPanel setup, nginx, PM2, Postgres tuning, deploy, auto-de
 
 ## Quick start (local)
 
-Requires Node 20+ and Docker (or a local Postgres 16).
+Requires Node.js 22+, Git and Docker Desktop (or your own Postgres 16).
 
 ```bash
-cp .env.example apps/api/.env          # keep the API block
-cp .env.example apps/web/.env.local    # keep the Web block
-docker compose up -d                   # Postgres on :5434, Mailpit on :8025
-npm install
-npm run db:migrate                     # create the schema
-npm run db:seed                        # plans, super admin, starter content, demo workspace
-npm run dev                            # http://localhost:3000 (web) + :4000 (api) + worker
+git clone https://github.com/Fahad-Makhdoomi/purple-voice.git && cd purple-voice
+npm run setup   # Postgres + Mailpit in Docker, env files with fresh secrets, deps, migrations, demo data
+npm run dev     # http://localhost:3000 (web) + :4000 (api) + worker
 ```
 
-Sign in as the super admin from `SEED_SUPER_ADMIN_*`, or the demo subscriber
+Sign in with the super admin login `npm run setup` prints, or the demo subscriber
 `demo@purplevoice.local` / `demo-password-1` (a Pro workspace with sample calls).
-Without Stripe keys, choosing a plan activates it instantly in development.
+Choosing a plan activates it instantly in development.
+
+Pushing to `main` deploys to production automatically once CI passes
+([DEPLOYMENT.md § Day-to-day](DEPLOYMENT.md#day-to-day-from-your-machine-to-the-live-site)).
 
 ## Scripts
 

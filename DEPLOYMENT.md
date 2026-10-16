@@ -113,26 +113,40 @@ git push ─▶ CI (ci.yml) ─▶ Deploy (deploy.yml) ─ssh─▶ deploy/remot
 
 **One-time setup** (production: `62.72.57.2`, site user `purplerocket-voice`):
 
-1. **Create the repository and push.** On GitHub create the private repository
-   `Fahad-Makhdoomi/purple-voice`, empty (no README or licence). From the project on
-   your computer: `git push -u origin main` (add the remote first if `git remote -v`
-   doesn't show it: `git remote add origin git@github.com:Fahad-Makhdoomi/purple-voice.git`).
-   CI runs; Deploy runs after it and fails with *Deploy secrets missing* until
-   step 4. That is expected.
-2. **Run the setup on the server**, as the site user (SSH in as `purplerocket-voice`;
-   not as root):
+1. **The repository**: `Fahad-Makhdoomi/purple-voice` (private) already holds the code.
+   Until step 4 is done, the Deploy workflow skips each push with an
+   *Auto-deploy not set up* notice.
+2. **Get the code onto the server from GitHub**, as the site user (SSH in as
+   `purplerocket-voice`; not as root).
+
+   *Server without the code yet* (or with an old tarball copy you want to replace):
+   ```bash
+   mkdir -p ~/.ssh && chmod 700 ~/.ssh
+   [ -f ~/.ssh/purple_voice_repo ] || ssh-keygen -t ed25519 -N '' -C purple-voice-repo -f ~/.ssh/purple_voice_repo
+   cat ~/.ssh/purple_voice_repo.pub
+   ```
+   Add the printed key as described in step 3 (*Allow write access* unticked), then:
+   ```bash
+   ssh-keyscan -t ed25519 github.com | ssh-keygen -lf -
+   # must show SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU (GitHub's key); then:
+   ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+   [ -d ~/purple-voice ] && mv ~/purple-voice ~/purple-voice-old-$(date +%s)
+   GIT_SSH_COMMAND='ssh -i ~/.ssh/purple_voice_repo -o IdentitiesOnly=yes' \
+     git clone git@github.com:Fahad-Makhdoomi/purple-voice.git ~/purple-voice
+   git -C ~/purple-voice config core.sshCommand 'ssh -i ~/.ssh/purple_voice_repo -o IdentitiesOnly=yes'
+   ```
+   If the site isn't installed yet, run section 2A step 4 (`setup.sh`, as root) now; it
+   builds and starts this checkout.
+
+   *Then, in every case*, still as the site user:
    ```bash
    bash ~/purple-voice/deploy/cloudpanel/enable-auto-deploy.sh Fahad-Makhdoomi/purple-voice 62.72.57.2
    ```
-   The code on the server must include this script. If it came from a tarball made
-   before automatic deploys existed, extract the new tarball over it first
-   (`cd ~ && tar -xzf purple-voice-source.tar.gz`).
-
-   The first run creates a read-only deploy key for the repository, prints it, and
-   stops.
-3. **Add the deploy key on GitHub**: repository → Settings → Deploy keys → Add deploy
-   key, paste it, and leave *Allow write access* unticked. Then run the command from
-   step 2 again. This time it:
+   If it says the deploy key isn't on GitHub yet, it prints the key and stops: do step
+   3, then run it again.
+3. **Add the deploy key on GitHub** (whenever a step prints it): repository → Settings
+   → Deploy keys → Add deploy key, paste it, and leave *Allow write access* unticked.
+   When `enable-auto-deploy.sh` finds the key works, it:
    - turns `~/purple-voice` into a git checkout of `main` if it isn't one: a copy of
      the old files goes to `~/purple-voice-before-git-<time>.tar.gz`, files the
      repository doesn't have are removed, and `node_modules`, builds and the env files
@@ -434,21 +448,54 @@ using it all. When you approach that:
 
 ## 8. Local development
 
+**Install once:** [Node.js 22 LTS](https://nodejs.org), [Git](https://git-scm.com) and
+[Docker Desktop](https://docs.docker.com/get-docker/) (it runs Postgres and a test mail
+inbox). Then:
+
 ```bash
-cp .env.example apps/api/.env          # keep the API block
-cp .env.example apps/web/.env.local    # keep the Web block
-docker compose up -d                   # Postgres :5434, Mailpit :8025
-npm install
-npm run db:migrate && npm run db:seed  # prints the super admin and demo logins
-npm run dev                            # web :3000, api :4000, worker
+git clone https://github.com/Fahad-Makhdoomi/purple-voice.git
+cd purple-voice
+npm run setup      # Docker Postgres + Mailpit, env files with fresh secrets, deps, migrations, demo data
+npm run dev        # http://localhost:3000 (site + dashboard + admin), API :4000, worker
 ```
 
-Demo logins after seeding: `demo@purplevoice.local` / `demo-password-1` (Pro workspace
-with sample calls) and the super admin from `SEED_SUPER_ADMIN_*`.
+`npm run setup` prints the super admin login it created; the demo subscriber is
+`demo@purplevoice.local` / `demo-password-1` (a Pro workspace with sample calls). Emails
+land in Mailpit at http://localhost:8025. Choosing a plan activates it instantly
+locally (`BILLING_DEV_BYPASS`); to try a real gateway, put its **test** keys in Super
+admin → Payment gateways. Without Docker, use your own Postgres 16:
+`npm run setup -- --database-url=postgresql://USER:PASSWORD@localhost:5432/purple_voice`.
+Re-running setup keeps your env files (`-- --force` rewrites them).
 
 To receive real calls locally, expose the API with a tunnel (`ngrok http 4000` or
 `cloudflared tunnel --url http://localhost:4000`) and set `PUBLIC_API_URL` to the tunnel
 URL, then Re-sync your test number.
+
+### Day-to-day: from your machine to the live site
+
+```
+your machine ──git push──▶ GitHub (main) ──CI: typecheck, tests, build──▶ Deploy job ──SSH──▶ VPS
+                                                                                   deploy.sh: pull, migrate, build, reload
+```
+
+1. Change code locally and check it with `npm run dev`.
+2. Before pushing, run what CI runs: `npm run typecheck && npm test`.
+3. Commit and push to `main` (or open a pull request and merge it):
+   ```bash
+   git add -A && git commit -m "Describe the change" && git push
+   ```
+4. GitHub → **Actions** shows CI, then **Deploy**. About 5–8 minutes after the push the
+   change is live on https://voice.purplerocket.co. If CI fails, nothing is deployed.
+5. Something wrong in production? Actions → Deploy → **Run workflow** with the previous
+   commit's SHA rolls back; then fix forward with a new push.
+
+Database changes: edit `apps/api/prisma/schema.prisma`, run `npm run db:migrate -- --name
+what_changed` locally (creates a migration under `apps/api/prisma/migrations`), commit it
+with the code. Every deploy applies new migrations before the new code starts. Never edit
+a migration that has already been deployed.
+
+Content (pages, blog, FAQs, SEO, plans, AI and payment settings) is edited in the live
+admin panel, not in code, and needs no deploy.
 
 ---
 

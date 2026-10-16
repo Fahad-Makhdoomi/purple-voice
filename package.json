@@ -11,6 +11,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "setup": "node scripts/setup-local.mjs",
     "dev": "npm run build -w @pv/shared && npm-run-all --parallel dev:shared dev:api dev:worker dev:web",
     "dev:shared": "npm run dev -w @pv/shared",
     "dev:api": "npm run dev -w @pv/api",
