@@ -22,10 +22,13 @@ const siteSocket = `${site.protocol === 'https:' ? 'wss:' : 'ws:'}//${site.host}
  * force every page to render per request and cost the PageSpeed budget);
  * XSS is prevented at the source instead — React escapes all output and
  * Markdown is rendered without raw HTML. See ARCHITECTURE.md § Security.
+ * 'unsafe-eval' is added in development only: `next dev` (React Refresh)
+ * evaluates code at runtime; production builds never do.
  */
+const devEval = process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : '';
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${captchaHosts} ${analyticsHosts}`,
+  `script-src 'self' 'unsafe-inline'${devEval} ${captchaHosts} ${analyticsHosts}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
