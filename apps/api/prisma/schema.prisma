@@ -42,7 +42,17 @@ enum SubscriptionStatus {
 
 enum BillingProvider {
   STRIPE
+  RAZORPAY
+  PAYPAL
   MANUAL
+}
+
+/// Gateways subscribers can pay through. Keys live in PaymentGatewayConfig
+/// (Super admin → Payment gateways).
+enum PaymentGateway {
+  STRIPE
+  RAZORPAY
+  PAYPAL
 }
 
 enum SubscriptionEventType {
@@ -281,6 +291,10 @@ model Plan {
   featured          Boolean  @default(false)
   selfServe         Boolean  @default(true)
   stripePriceId     String?
+  /// Razorpay plan (plan_…), billed in INR: UPI Autopay, RuPay and other cards.
+  razorpayPlanId    String?
+  /// PayPal billing plan (P-…).
+  paypalPlanId      String?
   active            Boolean  @default(true)
   sortOrder         Int      @default(0)
   createdAt         DateTime @default(now())
@@ -290,27 +304,29 @@ model Plan {
 }
 
 model Subscription {
-  id                   String             @id @default(cuid())
-  workspaceId          String             @unique
-  workspace            Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  planId               String
-  plan                 Plan               @relation(fields: [planId], references: [id])
-  status               SubscriptionStatus @default(INCOMPLETE)
-  provider             BillingProvider    @default(STRIPE)
-  stripeCustomerId     String?            @unique
-  stripeSubscriptionId String?            @unique
-  currentPeriodStart   DateTime?
-  currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean            @default(false)
-  canceledAt           DateTime?
+  id                     String             @id @default(cuid())
+  workspaceId            String             @unique
+  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  planId                 String
+  plan                   Plan               @relation(fields: [planId], references: [id])
+  status                 SubscriptionStatus @default(INCOMPLETE)
+  provider               BillingProvider    @default(STRIPE)
+  stripeCustomerId       String?            @unique
+  stripeSubscriptionId   String?            @unique
+  razorpaySubscriptionId String?            @unique
+  paypalSubscriptionId   String?            @unique
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  canceledAt             DateTime?
   /// Enterprise: negotiated monthly price, counted in MRR.
-  customPriceCents     Int?
+  customPriceCents       Int?
   /// Enterprise: minutes per period, overrides the plan.
-  customMinutes        Int?
+  customMinutes          Int?
   /// Partial PlanLimits overriding the plan for this workspace.
-  customLimits         Json?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  customLimits           Json?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   @@index([status])
   @@index([planId])
@@ -387,6 +403,23 @@ model WorkspaceAiSettings {
 
 /// Platform-wide AI keys (Super admin → AI providers). Used for every
 /// subscriber that has no key of its own for that vendor.
+/// A payment gateway's credentials, set by a super admin. Secrets are
+/// encrypted; `publicId` (Razorpay key id, PayPal client id) and `webhookId`
+/// (PayPal) are not secret.
+model PaymentGatewayConfig {
+  gateway          PaymentGateway @id
+  enabled          Boolean        @default(true)
+  /// "test" (sandbox) or "live".
+  mode             String         @default("test")
+  publicId         String?
+  secretEnc        String
+  webhookSecretEnc String?
+  webhookId        String?
+  last4            String
+  verifiedAt       DateTime?
+  updatedAt        DateTime       @updatedAt
+}
+
 model PlatformCredential {
   provider   CredentialProvider @id
   label      String?

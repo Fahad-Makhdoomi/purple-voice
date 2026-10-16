@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  PAYMENT_GATEWAY_LABELS,
   adminSubscriptionSchema,
   adminWorkspaceSchema,
   aiCredentialSchema,
@@ -202,11 +203,12 @@ subscribersRouter.patch('/:id/subscription', async (req, res) => {
   const workspaceId = req.params.id;
   const current = await prisma.subscription.findUnique({ where: { workspaceId } });
 
-  // Stripe is the source of truth for plan and status on Stripe-billed workspaces;
-  // changing them here would be overwritten by the next webhook.
-  if (current?.provider === 'STRIPE' && (input.planCode || input.status)) {
+  // The gateway is the source of truth for plan and status on gateway-billed
+  // workspaces; changing them here would be overwritten by the next webhook.
+  if (current && current.provider !== 'MANUAL' && (input.planCode || input.status)) {
+    const gateway = PAYMENT_GATEWAY_LABELS[current.provider];
     throw badRequest(
-      'This workspace pays through Stripe. Change its plan or status in Stripe; it syncs back automatically.',
+      `This workspace pays through ${gateway}. Change its plan or status in ${gateway}; it syncs back automatically.`,
     );
   }
   if (!current && !input.planCode) throw badRequest('Choose a plan to create a subscription');

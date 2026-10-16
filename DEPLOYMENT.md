@@ -192,10 +192,16 @@ SHA (`v1.4.0`, `3f2c1ab`). Manual runs skip the CI gate. Migrations are not undo
 **Security.**
 - The CI key's line in `~/.ssh/authorized_keys` is
   `restrict,command="… deploy/remote-deploy.sh"`. Whatever its holder asks for, sshd
-  runs that script, which accepts only `deploy <40-character SHA>`: no shell, no file
-  transfer, no port forwarding. A leaked `DEPLOY_SSH_KEY` can only redeploy commits
-  already on GitHub. Replace it with `enable-auto-deploy.sh … --rotate-ci-key` (and
-  update the secret).
+  runs that script, which accepts only `deploy <40-character SHA>` (plus `manual`, which
+  Run workflow adds): no shell, no file transfer, no port forwarding. `deploy.sh` only
+  deploys commits on one of the repository's own branches or tags, never an unmerged
+  pull request (GitHub serves those by SHA too, forks included), so a leaked
+  `DEPLOY_SSH_KEY` can only redeploy code you merged or tagged. Replace it with
+  `enable-auto-deploy.sh … --rotate-ci-key` (and update the secret).
+- Automatic deploys never go backwards: if a queued deploy finds a newer commit already
+  live, it skips itself. Rolling back is a manual Run workflow. Commits from before
+  automatic deploys existed (no `deploy/remote-deploy.sh`) are refused, because
+  deploying one would delete the script the CI key runs.
 - The server reads the repository with a read-only deploy key that works for this
   repository only. GitHub's host key is added only after it matches GitHub's
   published fingerprint.
@@ -214,7 +220,8 @@ SHA (`v1.4.0`, `3f2c1ab`). Manual runs skip the CI gate. Migrations are not undo
 |---|---|
 | *Deploy secrets missing* | Step 4. |
 | *SSH login failed* (exit 255) | Check the four secrets. If the CI key's line is gone from `~/.ssh/authorized_keys` (for example after editing SSH keys in CloudPanel), re-run the setup with `--rotate-ci-key` and update `DEPLOY_SSH_KEY`. |
-| *Not deployed: main has moved on* | Expected; the newer commit deploys after its own CI run. |
+| *Not deployed: main has moved on* / *superseded* | Expected; the newer commit deploys (or already did) after its own CI run. |
+| *is not on any branch or tag of origin* | Merge the pull request (or tag the commit) first; unmerged code is never deployed. |
 | `Permission denied (publickey)` while fetching | The deploy key was removed on GitHub: re-run the setup and add it again. |
 | *Deploy failed* (deploy.sh exited non-zero) | The job output and `~/.purple-voice/deploy.log` show the step. Fix and push, or roll back. |
 
@@ -298,18 +305,54 @@ quiet time.
 
 Each entry: where to get it, where it goes, and what to check.
 
-### Stripe (subscriptions)
-1. Create two **monthly recurring prices**: Basic $19 and Pro $299. Copy their ids into
-   `STRIPE_PRICE_BASIC` / `STRIPE_PRICE_PRO` (or paste them in Admin → Plans & pricing).
-2. `STRIPE_SECRET_KEY` = the secret key (live mode in production).
-3. Add a webhook endpoint `https://purplevoice.ai/api/billing/webhook` for
-   `checkout.session.completed`, `customer.subscription.created`,
-   `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`.
-   Put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+### Payment gateways (subscriptions): Stripe, Razorpay, PayPal
+Super admin → **Payment gateways**. Each gateway's keys are checked with the gateway,
+then encrypted; no deploy needed. A gateway is offered on the subscriber billing page
+once it's switched on **and** a plan has its id in Admin → **Plans & pricing**. With
+more than one, subscribers pick ("Pay with Stripe / Razorpay / PayPal"). The page
+shows each gateway's webhook URL and the events to send to it.
+
+**Stripe** (cards, Apple Pay, Google Pay):
+1. Create two **monthly recurring prices**: Basic $19 and Pro $299; paste their ids
+   in Plans & pricing.
+2. Developers → Webhooks: add `https://<your domain>/api/billing/webhook` for
+   `checkout.session.completed`, `customer.subscription.created/updated/deleted`,
+   `invoice.paid`.
+3. In Payment gateways, enter the secret key (`sk_live_…`) and the webhook's signing
+   secret (`whsec_…`). (`STRIPE_*` in api.env still works; a key saved here wins.)
 4. Enable the **Customer portal** (Settings → Billing → Customer portal) so subscribers
    can update cards, download invoices and cancel.
-5. Enterprise deals are billed however you agree; record them in Admin → Subscribers →
-   *Subscription* (plan Enterprise, custom price, minutes and limits).
+
+**Razorpay** (India: UPI Autopay, RuPay and other cards, in INR):
+1. Ask Razorpay to enable **Subscriptions** (and UPI Autopay) on the account.
+2. Subscriptions → Plans: create a monthly plan per self-serve plan, priced in INR;
+   paste each `plan_…` id in Plans & pricing.
+3. Settings → Webhooks: add `https://<your domain>/api/billing/webhook/razorpay`, choose
+   a secret, and tick the `subscription.*` events listed on the Payment gateways page.
+4. In Payment gateways, enter the key id (`rzp_live_…`), key secret and that webhook
+   secret.
+Subscribers pay on Razorpay's page in a new tab; the billing page activates the plan
+the moment Razorpay confirms (it also checks every few seconds).
+
+**PayPal**:
+1. developer.paypal.com → Apps & Credentials (Live): create an app; copy the client id
+   and secret.
+2. Create a product and a monthly **billing plan** per self-serve plan (Subscriptions,
+   in USD); paste each `P-…` id in Plans & pricing.
+3. In the app, add a webhook `https://<your domain>/api/billing/webhook/paypal` with the
+   `BILLING.SUBSCRIPTION.*` and `PAYMENT.SALE.COMPLETED` events; copy its **webhook id**.
+4. In Payment gateways, pick Live, and enter the client id, secret and webhook id.
+
+**How switching works.** Changing plan on Stripe is done in place (prorated). On
+Razorpay and PayPal, and when moving between gateways, the subscriber starts a new
+subscription; once it's paid it replaces the old one, which Purple Voice then cancels at
+its gateway (check the API log for "Could not cancel superseded subscription" — cancel
+those by hand to avoid double billing). Cancelling a Razorpay or PayPal plan keeps
+access until the end of the paid period. Razorpay invoices are in INR; revenue insights
+add amounts as recorded, so mixed currencies aren't converted.
+
+Enterprise deals are billed however you agree; record them in Admin → Subscribers →
+*Subscription* (plan Enterprise, custom price, minutes and limits).
 
 ### Twilio and Plivo (customers' phone numbers)
 Nothing to configure on the platform side. Each subscriber connects **their own**
@@ -397,7 +440,7 @@ blocked from private networks.
 - [ ] DNS, TLS (`https://` loads, `www` redirects), `curl https://purplevoice.ai/api/health`
 - [ ] `APP_ENCRYPTION_KEY` backed up off the server
 - [ ] Super admin can sign in; seed password removed from the env file
-- [ ] Stripe: test-mode checkout → webhook marks the plan active → portal opens; then switch to live keys
+- [ ] Each payment gateway you offer: a test-mode/sandbox checkout → webhook marks the plan active → cancel works; then switch to live keys
 - [ ] SMTP: forgot-password email arrives
 - [ ] Twilio test number: connect, test-call an agent, check transcript, summary and billed minutes
 - [ ] Plivo (if offered): same
@@ -506,7 +549,7 @@ admin panel, not in code, and needs no deploy.
 | Number shows *Needs attention* | The error under it; carrier credentials still valid; click Re-sync after domain changes. |
 | Call connects then silence | `pm2 logs pv-api` for "Could not start voice engine": a missing AI or Deepgram key, or an invalid model id on the agent. |
 | Calls never finalise / no summaries | Carrier status callbacks reaching `/api/telephony/*/status` (nginx access log); the maintenance sweep finalises stragglers within minutes. |
-| Plan not active after paying | Stripe → Webhooks → recent deliveries to `/api/billing/webhook`; the signing secret matches. |
+| Plan not active after paying | The gateway's webhook deliveries to the URL shown in Super admin → Payment gateways (Stripe/Razorpay: the signing secret matches; PayPal: the webhook id matches and the Sandbox/Live setting is right). |
 | CMS edits not showing | `REVALIDATE_SECRET` identical in both env files; `WEB_INTERNAL_URL` reachable from the API. |
 | "Cross-site request blocked" | `APP_URL` / `CORS_ORIGINS` must exactly match the site origin (scheme and host). |
 | Captcha never appears | `NEXT_PUBLIC_CAPTCHA_SITE_KEY` set before the web build; provider set in the API env; form enabled in Admin → Security. |

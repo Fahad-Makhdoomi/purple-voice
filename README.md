@@ -70,7 +70,7 @@ Pushing to `main` deploys to production automatically once CI passes
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — technical blueprint: roles, plans, data model,
   auth, API, voice runtime, dialer, billing, CMS, SEO, analytics, AI, security,
   performance, testing, known limitations.
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** — VPS setup, connecting Stripe, carriers, AI
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — VPS setup, connecting payment gateways, carriers, AI
   providers, Google Calendar, SMTP, captcha and analytics; updates, backups, capacity,
   troubleshooting.
 - **[BRAND.md](BRAND.md)** — brand, design tokens, components, imagery, data-viz and

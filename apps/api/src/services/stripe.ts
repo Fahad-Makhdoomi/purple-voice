@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { env } from '../config/env';
 import { HttpError } from '../lib/http-error';
+import { gatewayConfig } from './payment-gateways';
 
 /**
  * A deliberately small Stripe client over the REST API: Purple Voice needs
@@ -29,16 +29,16 @@ function toForm(value: Record<string, FormValue>): URLSearchParams {
 }
 
 async function stripe<T>(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   body?: Record<string, FormValue>,
 ): Promise<T> {
-  if (!env.STRIPE_SECRET_KEY)
-    throw new HttpError(503, 'Billing is not configured', 'billing_unavailable');
+  const config = await gatewayConfig('STRIPE');
+  if (!config) throw new HttpError(503, 'Billing is not configured', 'billing_unavailable');
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      Authorization: `Bearer ${config.secretKey}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body ? toForm(body) : undefined,
@@ -135,6 +135,11 @@ export async function updateSubscriptionPrice(sub: StripeSubscription, priceId: 
   });
 }
 
+/** Ends a subscription now (used when the workspace moved to another subscription). */
+export async function cancelSubscription(id: string) {
+  return stripe<StripeSubscription>('DELETE', `/subscriptions/${encodeURIComponent(id)}`);
+}
+
 /** Period bounds moved from the subscription onto its items in newer API versions. */
 export function subscriptionPeriod(sub: StripeSubscription): {
   start: Date | null;
@@ -153,8 +158,12 @@ export function subscriptionPeriod(sub: StripeSubscription): {
  * Verifies the Stripe-Signature header (t=…,v1=…) over the raw body and
  * returns the parsed event. Rejects signatures older than five minutes.
  */
-export function verifyWebhook(rawBody: Buffer, header: string | undefined): StripeEvent {
-  if (!env.STRIPE_WEBHOOK_SECRET) throw new HttpError(503, 'Webhook secret not configured');
+export function verifyWebhook(
+  rawBody: Buffer,
+  header: string | undefined,
+  secret: string | undefined,
+): StripeEvent {
+  if (!secret) throw new HttpError(503, 'Webhook secret not configured');
   if (!header) throw new HttpError(400, 'Missing Stripe-Signature');
 
   const parts = Object.fromEntries(
@@ -172,7 +181,7 @@ export function verifyWebhook(rawBody: Buffer, header: string | undefined): Stri
   if (Math.abs(Date.now() / 1000 - timestamp) > 300) throw new HttpError(400, 'Stale webhook');
 
   const expected = crypto
-    .createHmac('sha256', env.STRIPE_WEBHOOK_SECRET)
+    .createHmac('sha256', secret)
     .update(`${timestamp}.${rawBody.toString('utf8')}`)
     .digest('hex');
   const ok = signatures.some(

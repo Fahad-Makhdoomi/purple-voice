@@ -1,10 +1,18 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
-import { LIMIT_LABELS, type Entitlements, type LimitKey, type UsageSnapshot } from '@pv/shared';
+import {
+  LIMIT_LABELS,
+  PAYMENT_GATEWAY_LABELS,
+  type CheckoutOption,
+  type Entitlements,
+  type LimitKey,
+  type PaymentGateway,
+  type UsageSnapshot,
+} from '@pv/shared';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
@@ -49,7 +57,38 @@ interface BillingData {
     paidAt: string | null;
     description: string | null;
   }>;
-  billingMode: 'stripe' | 'dev' | 'unavailable';
+  checkoutOptions: CheckoutOption[];
+  billingMode: 'live' | 'dev' | 'unavailable';
+}
+
+interface CheckoutResult {
+  url?: string;
+  activated?: boolean;
+  gateway?: PaymentGateway;
+  subscriptionId?: string;
+  newTab?: boolean;
+}
+
+/** A Razorpay/PayPal subscription waiting for the customer to finish paying. */
+interface Pending {
+  gateway: 'RAZORPAY' | 'PAYPAL';
+  subscriptionId: string;
+  url?: string;
+}
+
+const POLL_MS = 5000;
+const POLL_FOR_MS = 15 * 60 * 1000;
+
+/** Invoices can be in USD (Stripe, PayPal) or INR (Razorpay). */
+function formatPaid(minor: number, currency: string) {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(minor / 100);
+  } catch {
+    return formatMoney(minor, { decimals: true });
+  }
 }
 
 const USAGE_ROWS: Array<[LimitKey, keyof UsageSnapshot]> = [
@@ -61,30 +100,101 @@ const USAGE_ROWS: Array<[LimitKey, keyof UsageSnapshot]> = [
 
 function BillingInner() {
   const params = useSearchParams();
+  const router = useRouter();
   const { reload: reloadWs } = useWorkspace();
   const { data, reload } = useApi<BillingData>('/billing');
   const { busy, run } = useAction();
   const suggested = params.get('plan');
+  const [picked, setPicked] = useState<PaymentGateway | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const pollStarted = useRef(0);
+
+  /** Asks the gateway whether the subscription is paid; true once the plan is live. */
+  const confirm = useCallback(
+    async (p: Pending, quiet = true) => {
+      try {
+        const r = await api<{ active: boolean }>('/billing/confirm', {
+          body: { gateway: p.gateway, subscriptionId: p.subscriptionId },
+        });
+        if (r.active) {
+          setPending(null);
+          await Promise.all([reload(), reloadWs()]);
+          toast('Payment received — your plan is active');
+          return true;
+        }
+        if (!quiet) toast('Not confirmed yet. Finish paying, then check again.', 'error');
+      } catch (err) {
+        if (!quiet) toast(err instanceof Error ? err.message : 'Could not check payment', 'error');
+      }
+      return false;
+    },
+    [reload, reloadWs],
+  );
 
   useEffect(() => {
-    if (params.get('checkout') === 'success') toast('Payment received — your plan is active');
-    if (params.get('checkout') === 'canceled') toast('Checkout canceled', 'error');
-  }, [params]);
+    const status = params.get('checkout');
+    if (!status) return;
+    // PayPal sends the customer back with ?subscription_id=I-…
+    const paypalId = params.get('subscription_id');
+    if (status === 'success' && params.get('gateway') === 'PAYPAL' && paypalId) {
+      const p: Pending = { gateway: 'PAYPAL', subscriptionId: paypalId };
+      setPending(p);
+      void confirm(p);
+    } else if (status === 'success') {
+      toast('Payment received — your plan is active');
+    } else if (status === 'canceled') {
+      toast('Checkout canceled', 'error');
+    }
+    router.replace('/dashboard/billing');
+  }, [params, confirm, router]);
+
+  // While a Razorpay/PayPal payment is open, check for it every few seconds.
+  useEffect(() => {
+    if (!pending) return;
+    pollStarted.current = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - pollStarted.current > POLL_FOR_MS) window.clearInterval(timer);
+      else void confirm(pending);
+    }, POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [pending, confirm]);
 
   if (!data) return <Loading />;
   const { entitlements, usage, subscription } = data;
+  const options = data.checkoutOptions;
+  const current = subscription?.provider as PaymentGateway | 'MANUAL' | undefined;
+  const gateway =
+    (picked && options.find((o) => o.gateway === picked)) ??
+    options.find((o) => o.gateway === current) ??
+    options[0];
 
-  const choose = (planCode: string) =>
-    run(async () => {
-      const r = await api<{ url?: string; activated?: boolean }>('/billing/checkout', {
-        body: { planCode },
-      });
-      if (r.url) window.location.href = r.url;
-      else {
-        await Promise.all([reload(), reloadWs()]);
-        toast('Plan updated');
+  const choose = (planCode: string) => {
+    // Razorpay's page opens in a new tab; open it now, while the click still
+    // counts as the user's, or the browser blocks it.
+    const tab = gateway?.gateway === 'RAZORPAY' ? window.open('', '_blank') : null;
+    if (tab) tab.opener = null;
+    return run(async () => {
+      try {
+        const r = await api<CheckoutResult>('/billing/checkout', {
+          body: { planCode, gateway: gateway?.gateway },
+        });
+        if (r.url && r.newTab && r.subscriptionId) {
+          if (tab) tab.location.href = r.url;
+          setPending({ gateway: 'RAZORPAY', subscriptionId: r.subscriptionId, url: r.url });
+        } else if (r.url) {
+          tab?.close();
+          window.location.href = r.url;
+        } else {
+          tab?.close();
+          await Promise.all([reload(), reloadWs()]);
+          toast('Plan updated');
+        }
+      } catch (err) {
+        tab?.close();
+        throw err;
       }
     });
+  };
 
   return (
     <>
@@ -111,9 +221,44 @@ function BillingInner() {
 
       {data.billingMode === 'dev' && (
         <p className="mb-6 rounded-sm bg-warning/10 px-4 py-3 text-sm text-warning">
-          Development mode: Stripe isn&apos;t configured, so choosing a plan activates it instantly
+          Development mode: no payment gateway is set up, so choosing a plan activates it instantly
           without payment.
         </p>
+      )}
+
+      {pending && (
+        <div className="mb-6 rounded-sm bg-brand-50 px-4 py-3 text-sm text-ink-soft">
+          <p className="font-semibold text-ink">
+            Waiting for your {PAYMENT_GATEWAY_LABELS[pending.gateway]} payment…
+          </p>
+          <p className="mt-1">
+            {pending.gateway === 'RAZORPAY'
+              ? 'Finish paying in the Razorpay tab (UPI, RuPay or card). This page activates your plan as soon as Razorpay confirms it.'
+              : 'Confirming your PayPal subscription. This usually takes a few seconds.'}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {pending.url && (
+              <a
+                href={pending.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary btn-sm"
+              >
+                Open the payment page
+              </a>
+            )}
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={busy}
+              onClick={() => run(() => confirm(pending, false))}
+            >
+              I&apos;ve paid — check now
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPending(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -159,9 +304,7 @@ function BillingInner() {
               {data.payments.map((p) => (
                 <li key={p.id} className="flex justify-between py-2.5 text-sm">
                   <span className="text-ink-soft">{formatDate(p.paidAt)}</span>
-                  <span className="num font-semibold">
-                    {formatMoney(p.amountCents, { decimals: true })}
-                  </span>
+                  <span className="num font-semibold">{formatPaid(p.amountCents, p.currency)}</span>
                 </li>
               ))}
             </ul>
@@ -169,16 +312,59 @@ function BillingInner() {
         </Section>
       </div>
 
-      <h2 className="mb-4 mt-10 text-lg font-semibold">Plans</h2>
+      <div className="mb-4 mt-10 flex flex-wrap items-end justify-between gap-4">
+        <h2 className="text-lg font-semibold">Plans</h2>
+        {options.length > 1 && gateway && (
+          <fieldset className="flex flex-wrap items-center gap-2 text-sm">
+            <legend className="sr-only">Pay with</legend>
+            <span className="text-muted">Pay with</span>
+            {options.map((o) => (
+              <label
+                key={o.gateway}
+                title={o.methods}
+                className={cn(
+                  'cursor-pointer rounded-full border px-3 py-1.5',
+                  o.gateway === gateway.gateway
+                    ? 'border-ink bg-surface font-semibold'
+                    : 'border-line text-ink-soft',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="gateway"
+                  className="sr-only"
+                  checked={o.gateway === gateway.gateway}
+                  onChange={() => setPicked(o.gateway)}
+                />
+                {o.label}
+              </label>
+            ))}
+          </fieldset>
+        )}
+      </div>
+      {gateway && (
+        <p className="-mt-2 mb-4 text-sm text-muted">
+          {gateway.label}: {gateway.methods}
+          {gateway.gateway === 'RAZORPAY' && '. Charged in rupees at the rate on the payment page.'}
+          {entitlements.active &&
+            current &&
+            current !== 'MANUAL' &&
+            current !== gateway.gateway &&
+            `. Switching moves you from ${PAYMENT_GATEWAY_LABELS[current]}; that subscription is cancelled once the new one is paid.`}
+        </p>
+      )}
       <div className="grid gap-5 lg:grid-cols-3">
         {data.plans.map((plan) => {
-          const current = entitlements.active && entitlements.planCode === plan.code;
+          const onPlan = entitlements.active && entitlements.planCode === plan.code;
+          // Same plan through another gateway is a move, not "your plan".
+          const isCurrent =
+            onPlan && (!gateway || current === gateway.gateway || current === 'MANUAL');
           return (
             <article
               key={plan.code}
               className={cn(
                 'flex flex-col rounded-xl border p-6',
-                current
+                onPlan
                   ? 'border-ink bg-surface'
                   : plan.code === suggested
                     ? 'border-brand-400 bg-surface shadow-glow'
@@ -187,7 +373,7 @@ function BillingInner() {
             >
               <div className="flex items-center justify-between">
                 <h3 className="font-bold">{plan.name}</h3>
-                {current && <span className="badge badge-success">Current</span>}
+                {onPlan && <span className="badge badge-success">Current</span>}
               </div>
               <p className="num mt-3 text-4xl font-light">
                 {formatMoney(plan.priceMonthlyCents)}
@@ -214,15 +400,22 @@ function BillingInner() {
               </ul>
               {plan.selfServe ? (
                 <button
-                  className={cn('btn mt-6 w-full', current ? 'btn-secondary' : 'btn-primary')}
-                  disabled={busy || current || data.billingMode === 'unavailable'}
+                  className={cn('btn mt-6 w-full', isCurrent ? 'btn-secondary' : 'btn-primary')}
+                  disabled={
+                    busy ||
+                    isCurrent ||
+                    data.billingMode === 'unavailable' ||
+                    (!!gateway && !gateway.planCodes.includes(plan.code))
+                  }
                   onClick={() => choose(plan.code)}
                 >
-                  {current
+                  {isCurrent
                     ? 'Your plan'
-                    : entitlements.active
-                      ? `Switch to ${plan.name}`
-                      : `Choose ${plan.name}`}
+                    : onPlan && gateway
+                      ? `Pay with ${gateway.label} instead`
+                      : entitlements.active
+                        ? `Switch to ${plan.name}`
+                        : `Choose ${plan.name}`}
                 </button>
               ) : (
                 <Link href="/contact?plan=ENTERPRISE" className="btn btn-secondary mt-6 w-full">
@@ -233,7 +426,9 @@ function BillingInner() {
           );
         })}
       </div>
-      {subscription?.provider === 'MANUAL' &&
+      {(subscription?.provider === 'MANUAL' ||
+        subscription?.provider === 'RAZORPAY' ||
+        subscription?.provider === 'PAYPAL') &&
         entitlements.active &&
         !entitlements.cancelAtPeriodEnd && (
           <p className="mt-6 text-sm text-muted">

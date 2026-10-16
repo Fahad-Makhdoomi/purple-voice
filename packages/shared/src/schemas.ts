@@ -14,6 +14,7 @@ import {
   WEBHOOK_EVENTS,
 } from './enums';
 import { PLAN_CODES } from './plans';
+import { PAYMENT_GATEWAYS } from './payments';
 
 const ROLES_FOR_STAFF = ['ADMIN', 'SUPER_ADMIN'] as const;
 
@@ -308,6 +309,14 @@ export const updateAutomationSchema = automationSchema.partial();
 
 export const checkoutSchema = z.object({
   planCode: z.enum(['BASIC', 'PRO']),
+  /** Which gateway to pay through; defaults to the first one offered. */
+  gateway: z.enum(PAYMENT_GATEWAYS).optional(),
+});
+
+/** Sync a just-approved Razorpay or PayPal subscription without waiting for its webhook. */
+export const checkoutConfirmSchema = z.object({
+  gateway: z.enum(['RAZORPAY', 'PAYPAL']),
+  subscriptionId: z.string().trim().min(4).max(80),
 });
 
 // ── Support ────────────────────────────────────────────────────────────────
@@ -456,6 +465,8 @@ export const planUpdateSchema = z.object({
   priceMonthlyCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
   includedMinutes: z.number().int().min(0).max(10_000_000).nullable().optional(),
   stripePriceId: z.string().trim().max(120).nullable().optional(),
+  razorpayPlanId: z.string().trim().max(120).nullable().optional(),
+  paypalPlanId: z.string().trim().max(120).nullable().optional(),
   limits: z.record(z.string(), z.number().int().min(0).nullable()).optional(),
   highlights: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
   active: z.boolean().optional(),

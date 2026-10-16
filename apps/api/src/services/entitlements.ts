@@ -40,7 +40,12 @@ const NO_FEATURES: PlanFeatures = {
   advancedAutomations: false,
 };
 
-/** Manual (admin-granted) subscriptions lapse at their period end; Stripe ones follow webhooks. */
+/**
+ * Manual (admin-granted) subscriptions lapse at their period end, as do
+ * Razorpay and PayPal ones cancelled at period end (PayPal stops billing at
+ * once and never sends a later event). Live gateway subscriptions follow
+ * their webhooks.
+ */
 const MANUAL_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
 export async function getEntitlements(workspaceId: string): Promise<Entitlements> {
@@ -65,7 +70,8 @@ export async function getEntitlements(workspaceId: string): Promise<Entitlements
   }
 
   const manualLapsed =
-    sub.provider === 'MANUAL' &&
+    (sub.provider === 'MANUAL' ||
+      (sub.cancelAtPeriodEnd && (sub.provider === 'RAZORPAY' || sub.provider === 'PAYPAL'))) &&
     !!sub.currentPeriodEnd &&
     sub.currentPeriodEnd.getTime() + MANUAL_GRACE_MS < Date.now();
 

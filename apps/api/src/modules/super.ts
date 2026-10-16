@@ -5,6 +5,8 @@ import {
   credentialProviderParamSchema,
   CREDENTIAL_PROVIDERS,
   paginationSchema,
+  paymentGatewayParamSchema,
+  paymentGatewaySchema,
   planUpdateSchema,
   staffSchema,
   updateStaffSchema,
@@ -22,8 +24,12 @@ import { mrrCents } from '../services/subscriptions';
 import { getSetting, setSetting } from '../services/settings';
 import { revalidate } from '../services/revalidate';
 import { verifyApiKey } from '../services/ai-keys';
+import { paymentGatewayViews, saveGateway } from '../services/payment-gateways';
 
-/** Super admin only: revenue insights, plans and pricing, staff, security, AI providers, audit. */
+/**
+ * Super admin only: revenue insights, plans and pricing, staff, security, AI
+ * providers, payment gateways, audit.
+ */
 export const superRouter = Router();
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -344,6 +350,35 @@ superRouter.delete('/ai/keys/:provider', async (req, res) => {
   await prisma.platformCredential.deleteMany({ where: { provider } });
   await audit(req, 'ai.platform_key.removed', { entity: 'PlatformCredential', entityId: provider });
   res.json(await platformAiView());
+});
+
+// ── Payment gateways ───────────────────────────────────────────────────────
+// Stripe, Razorpay and PayPal credentials. Verified with the gateway before
+// they're encrypted and saved; secrets are never returned or audited.
+
+superRouter.get('/payments', async (_req, res) => {
+  res.json({ gateways: await paymentGatewayViews() });
+});
+
+superRouter.put('/payments/gateways', async (req, res) => {
+  const input = paymentGatewaySchema.parse(req.body);
+  await saveGateway(input);
+  await audit(req, 'payments.gateway_saved', {
+    entity: 'PaymentGatewayConfig',
+    entityId: input.gateway,
+    meta: { enabled: input.enabled },
+  });
+  res.json({ gateways: await paymentGatewayViews() });
+});
+
+superRouter.delete('/payments/gateways/:gateway', async (req, res) => {
+  const gateway = paymentGatewayParamSchema.parse(req.params.gateway);
+  await prisma.paymentGatewayConfig.deleteMany({ where: { gateway } });
+  await audit(req, 'payments.gateway_removed', {
+    entity: 'PaymentGatewayConfig',
+    entityId: gateway,
+  });
+  res.json({ gateways: await paymentGatewayViews() });
 });
 
 // ── Audit log ───────────────────────────────────────────────────────────────

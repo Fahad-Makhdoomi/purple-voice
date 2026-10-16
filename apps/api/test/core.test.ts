@@ -130,9 +130,9 @@ describe('webhook signatures', () => {
       .createHmac('sha256', 'whsec_stripe')
       .update(`${t}.${body.toString()}`)
       .digest('hex');
-    expect(verifyWebhook(body, `t=${t},v1=${sig}`).id).toBe('evt_1');
-    expect(() => verifyWebhook(body, undefined)).toThrow();
-    expect(() => verifyWebhook(body, `t=${t},v1=${'0'.repeat(64)}`)).toThrow();
-    expect(() => verifyWebhook(body, `t=${t - 3600},v1=${sig}`)).toThrow();
+    expect(verifyWebhook(body, `t=${t},v1=${sig}`, 'whsec_stripe').id).toBe('evt_1');
+    expect(() => verifyWebhook(body, undefined, 'whsec_stripe')).toThrow();
+    expect(() => verifyWebhook(body, `t=${t},v1=${'0'.repeat(64)}`, 'whsec_stripe')).toThrow();
+    expect(() => verifyWebhook(body, `t=${t - 3600},v1=${sig}`, 'whsec_stripe')).toThrow();
   });
 });

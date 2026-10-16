@@ -3,7 +3,14 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { LIMIT_LABELS, type Entitlements, type LimitKey, type UsageSnapshot } from '@pv/shared';
+import {
+  LIMIT_LABELS,
+  PAYMENT_GATEWAY_LABELS,
+  type Entitlements,
+  type LimitKey,
+  type PaymentGateway,
+  type UsageSnapshot,
+} from '@pv/shared';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useSession } from '@/lib/session';
@@ -90,7 +97,12 @@ export default function SubscriberPage() {
 
   if (!data) return <Loading />;
   const { workspace, subscription, entitlements, usage } = data;
-  const stripe = subscription?.provider === 'STRIPE';
+  // Paid through a gateway: it owns plan and status (they sync back from it).
+  const gateway =
+    subscription && subscription.provider !== 'MANUAL'
+      ? PAYMENT_GATEWAY_LABELS[subscription.provider as PaymentGateway]
+      : null;
+  const stripe = !!gateway;
 
   const openDashboard = () => {
     actAs({ id: workspace.id, name: workspace.name });
@@ -175,7 +187,7 @@ export default function SubscriberPage() {
             title="Subscription"
             description={
               stripe
-                ? 'Billed through Stripe: change plan or status in Stripe (it syncs back). You can still grant extra minutes and limits here.'
+                ? `Billed through ${gateway}: change plan or status in ${gateway} (it syncs back). You can still grant extra minutes and limits here.`
                 : 'Managed manually: plan, status and dates are set here.'
             }
           >

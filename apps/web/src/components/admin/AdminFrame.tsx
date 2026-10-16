@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import {
   BrainCircuit,
+  CreditCard,
   FileText,
   Globe,
   HelpCircle,
@@ -76,6 +77,7 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
               { href: '/admin/insights', label: 'Revenue insights', icon: TrendingUp },
               { href: '/admin/plans', label: 'Plans & pricing', icon: Layers },
               { href: '/admin/ai', label: 'AI providers', icon: BrainCircuit },
+              { href: '/admin/payments', label: 'Payment gateways', icon: CreditCard },
               { href: '/admin/staff', label: 'Staff', icon: ShieldCheck },
               { href: '/admin/security', label: 'Security', icon: Lock },
               { href: '/admin/audit', label: 'Audit log', icon: ScrollText },

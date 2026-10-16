@@ -101,7 +101,7 @@ dashboard receives the same object to grey out what the plan lacks.
 | Realtime | `ws` WebSocket server inside the API process | Carrier audio streams; no extra service |
 | Jobs | A separate worker process with `FOR UPDATE SKIP LOCKED` | No Redis needed on a 4 GB box |
 | Images | sharp (WebP), local disk or any S3-compatible bucket | See §13 |
-| Billing | Stripe over its REST API | Checkout, portal and signed webhooks; no SDK version churn |
+| Billing | Stripe, Razorpay and PayPal over their REST APIs | Hosted checkout, signed/verified webhooks; no SDK version churn |
 
 **Why this fits a KVM 2 (4 GB RAM, 2 vCPU):** three Node processes (web ≈ 500 MB,
 api ≈ 300 MB, worker ≈ 150 MB) plus Postgres tuned to 1 GB of shared buffers. Live
@@ -121,7 +121,7 @@ apps/api/
     lib/                 prisma, logger, crypto (AES-GCM, hashing), password (scrypt),
                          jwt, signed URLs, SSRF guard, CSV, mailer, audit
     middleware/          auth, workspace, entitlements, origin (CSRF), rate limits, errors
-    services/            entitlements, subscriptions, stripe, calls, media, storage,
+    services/            entitlements, subscriptions, billing-sync, payment-gateways, stripe, razorpay, paypal, calls, media, storage,
                          settings, captcha, revalidate, google-calendar, ai-settings,
                          ai-keys, ai/*
     modules/             HTTP routers: auth, public, billing, workspace/*, admin/*,
@@ -208,7 +208,7 @@ and refresh tokens are stored as SHA-256 hashes.
 |---|---|---|
 | `/api/auth/*` | public / session | register, login, refresh, logout, me, profile, password |
 | `/api/public/*` | public | plans, FAQs, posts, pages, settings, sitemap, contact form |
-| `/api/billing/*` | session (+ Stripe signature for `/webhook`) | plan, checkout, portal, cancel |
+| `/api/billing/*` | session (+ gateway signature for `/webhook`, `/webhook/razorpay`, `/webhook/paypal`) | plan, checkout, confirm, portal, cancel |
 | `/api/app/*` | session; staff via `X-Workspace-Id` | context, overview, ai (voices + readiness only), telephony, agents, campaigns, calls, appointments, insights, integrations, developers, support |
 | `/api/integrations/google/callback` | signed OAuth state | Google Calendar connection |
 | `/api/admin/*` | staff | overview, staff list, leads, tickets, subscribers (incl. `/:id/ai` settings and keys), cms (pages, posts, faqs, settings, media, AI SEO) |
@@ -299,14 +299,28 @@ Do-not-call outcomes are never retried. A campaign completes when nothing is pen
 
 ## 12. Billing
 
-- Self-serve: `/api/billing/checkout` creates a Stripe Checkout session (or switches
-  the price in place for an existing subscription, prorated). The Stripe webhook
-  (`checkout.session.completed`, `customer.subscription.*`, `invoice.paid`) is the
-  source of truth; signatures are verified with a 5-minute tolerance.
+- Self-serve, through three gateways a super admin configures in the admin panel
+  (`PaymentGatewayConfig`, secrets encrypted; Stripe also reads `STRIPE_*` from the
+  env). Each plan carries a Stripe price id, Razorpay plan id and PayPal plan id; a
+  gateway is offered for the plans that have its id.
+  - **Stripe**: Checkout session; an existing Stripe subscription switches price in
+    place (prorated). Webhook signatures are verified with a 5-minute tolerance.
+  - **Razorpay** (INR: UPI Autopay, RuPay, cards): a Subscription whose hosted
+    `short_url` opens in a new tab; the billing page polls `/api/billing/confirm`.
+    Webhooks are HMAC-SHA256 of the raw body.
+  - **PayPal**: a Subscription approved on PayPal, which returns to the billing page
+    (`/confirm` again). Webhooks are verified by PayPal's verify-webhook-signature API.
+- `services/billing-sync.ts` applies every gateway's subscription state with one rule:
+  updates to the workspace's current subscription apply; another subscription takes
+  over only once it is live, after which the one it replaced is cancelled at its
+  gateway; everything else (a superseded subscription's cancellation, an abandoned
+  checkout) is ignored. Plan changes on Razorpay/PayPal and moves between gateways are
+  new subscriptions handled by that rule.
 - Manual / Enterprise: admins create or edit subscriptions directly (plan, status,
-  period end, custom price, minutes and limits). Manual subscriptions lapse three days
+  period end, custom price, minutes and limits). Manual subscriptions (and Razorpay/PayPal
+  ones cancelled at period end) lapse three days
   after their period end.
-- Development: with no Stripe key and `BILLING_DEV_BYPASS=true`, choosing a plan
+- Development: with no payment gateway switched on and `BILLING_DEV_BYPASS=true`, choosing a plan
   activates it instantly. Ignored in production.
 - **Every** change goes through `services/subscriptions.ts → applySubscriptionChange`,
   which writes a `SubscriptionEvent` with its MRR delta. Revenue analytics read that

@@ -26,6 +26,8 @@ export interface SubscriptionChange {
   provider?: BillingProvider;
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
+  razorpaySubscriptionId?: string | null;
+  paypalSubscriptionId?: string | null;
   currentPeriodStart?: Date | null;
   currentPeriodEnd?: Date | null;
   cancelAtPeriodEnd?: boolean;
@@ -35,7 +37,7 @@ export interface SubscriptionChange {
 }
 
 /**
- * The single write path for subscriptions — Stripe webhooks, the dev billing
+ * The single write path for subscriptions — gateway webhooks, the dev billing
  * bypass and admin edits all come through here, so every change lands in
  * SubscriptionEvent with its MRR delta. Churn and revenue analytics read that
  * table rather than reconstructing history from the current state.
@@ -64,6 +66,8 @@ export async function applySubscriptionChange(
     provider: change.provider,
     stripeCustomerId: change.stripeCustomerId,
     stripeSubscriptionId: change.stripeSubscriptionId,
+    razorpaySubscriptionId: change.razorpaySubscriptionId,
+    paypalSubscriptionId: change.paypalSubscriptionId,
     currentPeriodStart: change.currentPeriodStart,
     currentPeriodEnd: change.currentPeriodEnd,
     cancelAtPeriodEnd: change.cancelAtPeriodEnd,

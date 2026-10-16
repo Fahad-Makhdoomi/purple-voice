@@ -14,6 +14,8 @@ interface Plan {
   priceMonthlyCents: number | null;
   includedMinutes: number | null;
   stripePriceId: string | null;
+  razorpayPlanId: string | null;
+  paypalPlanId: string | null;
   limits: Record<LimitKey, number | null>;
   highlights: string[];
   active: boolean;
@@ -40,7 +42,7 @@ export default function PlansAdmin() {
     <>
       <PageHeader
         title="Plans & pricing"
-        description="Changes apply to the website and to every subscriber on the plan immediately. Stripe prices are changed in Stripe; paste the new price id here."
+        description="Changes apply to the website and to every subscriber on the plan immediately. Prices charged are set in each gateway (Stripe price, Razorpay plan, PayPal plan); paste their ids here. A plan without a gateway's id isn't offered through that gateway."
       />
       <div className="space-y-6">
         {data.plans.map((p) => (
@@ -63,7 +65,9 @@ export default function PlansAdmin() {
                       priceMonthlyCents:
                         f.get('price') === '' ? null : Math.round(Number(f.get('price')) * 100),
                       includedMinutes: n('minutes'),
-                      stripePriceId: String(f.get('stripePriceId') ?? '') || null,
+                      stripePriceId: String(f.get('stripePriceId') ?? '').trim() || null,
+                      razorpayPlanId: String(f.get('razorpayPlanId') ?? '').trim() || null,
+                      paypalPlanId: String(f.get('paypalPlanId') ?? '').trim() || null,
                       highlights: String(f.get('highlights') ?? '')
                         .split('\n')
                         .map((h) => h.trim())
@@ -116,7 +120,28 @@ export default function PlansAdmin() {
                     defaultValue={p.stripePriceId ?? ''}
                   />
                 </Field>
-                <Field id={`${p.code}-tagline`} label="Tagline" className="sm:col-span-4">
+                <Field
+                  id={`${p.code}-razorpay`}
+                  label="Razorpay plan id"
+                  help="plan_… · billed in INR"
+                  optional
+                >
+                  <input
+                    id={`${p.code}-razorpay`}
+                    name="razorpayPlanId"
+                    className="input font-mono text-xs"
+                    defaultValue={p.razorpayPlanId ?? ''}
+                  />
+                </Field>
+                <Field id={`${p.code}-paypal`} label="PayPal plan id" help="P-…" optional>
+                  <input
+                    id={`${p.code}-paypal`}
+                    name="paypalPlanId"
+                    className="input font-mono text-xs"
+                    defaultValue={p.paypalPlanId ?? ''}
+                  />
+                </Field>
+                <Field id={`${p.code}-tagline`} label="Tagline" className="sm:col-span-2">
                   <input
                     id={`${p.code}-tagline`}
                     name="tagline"
