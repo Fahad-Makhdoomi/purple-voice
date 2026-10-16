@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CalendarCheck } from 'lucide-react';
 import { useApi } from '@/lib/use-api';
+import { useSession } from '@/lib/session';
 import { Loading, PageHeader, Section, StatusBadge } from '@/components/ui';
 import { formatDateTime, formatDuration, humanize } from '@/lib/format';
 import { cn } from '@/lib/cn';
@@ -26,6 +27,8 @@ interface CallDetail {
     createdAt: string;
     transcript: Array<{ role: 'agent' | 'caller' | 'system'; text: string; at: string }>;
     agent: { id: string; name: string } | null;
+    /** Set when a person called from the browser dialer; no agent, transcript or summary. */
+    placedBy: { id: string; name: string } | null;
     campaign: { id: string; name: string } | null;
     contact: { name: string | null; email: string | null; company: string | null } | null;
     appointments: Array<{
@@ -46,23 +49,31 @@ function sentimentLabel(s: number | null) {
 
 export default function CallPage() {
   const { id } = useParams<{ id: string }>();
+  const { me } = useSession();
   const { data } = useApi<CallDetail>(`/app/calls/${id}`);
   if (!data) return <Loading />;
   const { call } = data;
   const other = call.direction === 'OUTBOUND' ? call.toNumber : call.fromNumber;
+  const caller = call.placedBy
+    ? call.placedBy.id === me?.user.id
+      ? 'You'
+      : call.placedBy.name
+    : null;
 
   return (
     <>
       <PageHeader
         title={call.contact?.name ?? other}
         back={{ href: '/dashboard/calls', label: 'Calls' }}
-        description={`${humanize(call.direction)} · ${formatDateTime(call.createdAt)} · ${formatDuration(call.durationSec)}`}
+        description={`${caller ? `${caller} called from the dialer` : humanize(call.direction)} · ${formatDateTime(call.createdAt)} · ${formatDuration(call.durationSec)}`}
       />
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <Section title="Transcript">
           {call.transcript.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted">
-              No conversation was recorded for this call.
+              {caller
+                ? 'Calls from the dialer are between people, so they aren’t transcribed.'
+                : 'No conversation was recorded for this call.'}
             </p>
           ) : (
             <ol className="space-y-3">
@@ -124,21 +135,28 @@ export default function CallPage() {
                 <dt className="text-muted">Billed</dt>
                 <dd className="num font-medium">{call.billedMinutes} min</dd>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Agent</dt>
-                <dd className="font-medium">
-                  {call.agent ? (
-                    <Link
-                      href={`/dashboard/agents/${call.agent.id}`}
-                      className="hover:text-brand-700"
-                    >
-                      {call.agent.name}
-                    </Link>
-                  ) : (
-                    '—'
-                  )}
-                </dd>
-              </div>
+              {caller ? (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted">Placed by</dt>
+                  <dd className="font-medium">{caller}</dd>
+                </div>
+              ) : (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted">Agent</dt>
+                  <dd className="font-medium">
+                    {call.agent ? (
+                      <Link
+                        href={`/dashboard/agents/${call.agent.id}`}
+                        className="hover:text-brand-700"
+                      >
+                        {call.agent.name}
+                      </Link>
+                    ) : (
+                      '—'
+                    )}
+                  </dd>
+                </div>
+              )}
               {call.campaign && (
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted">Campaign</dt>

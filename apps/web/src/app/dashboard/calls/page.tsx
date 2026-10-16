@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { PhoneIncoming, PhoneOutgoing, Search } from 'lucide-react';
 import { CALL_OUTCOMES } from '@pv/shared';
 import { useApi } from '@/lib/use-api';
+import { useSession } from '@/lib/session';
 import { Loading, PageHeader, Pagination, StatusBadge } from '@/components/ui';
 import { formatDateTime, formatDuration, humanize } from '@/lib/format';
 
@@ -19,11 +20,14 @@ interface CallRow {
   sentiment: number | null;
   createdAt: string;
   agent: { id: string; name: string } | null;
+  /** Set when a person called from the browser dialer. */
+  placedBy: { id: string; name: string } | null;
   campaign: { id: string; name: string } | null;
   contact: { id: string; name: string | null } | null;
 }
 
 export default function CallsPage() {
+  const { me } = useSession();
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
@@ -41,7 +45,7 @@ export default function CallsPage() {
     <>
       <PageHeader
         title="Calls"
-        description="Every call your agents made or answered, with transcript and summary."
+        description="Every call your agents made or answered, with transcript and summary, plus calls made from the dialer."
       />
       <form
         className="mb-4 flex flex-wrap gap-3"
@@ -111,7 +115,7 @@ export default function CallsPage() {
             <thead>
               <tr>
                 <th scope="col">Contact</th>
-                <th scope="col">Agent</th>
+                <th scope="col">Handled by</th>
                 <th scope="col">Status</th>
                 <th scope="col">Outcome</th>
                 <th scope="col">Duration</th>
@@ -151,7 +155,12 @@ export default function CallsPage() {
                         {c.campaign ? `${c.contact?.name ? ' · ' : ''}${c.campaign.name}` : ''}
                       </p>
                     </td>
-                    <td className="text-ink-soft">{c.agent?.name ?? '—'}</td>
+                    <td className="text-ink-soft">
+                      {c.agent?.name ??
+                        (c.placedBy
+                          ? `${c.placedBy.id === me?.user.id ? 'You' : c.placedBy.name} · dialer`
+                          : '—')}
+                    </td>
                     <td>
                       <StatusBadge status={c.status} />
                     </td>

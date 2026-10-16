@@ -149,6 +149,8 @@ callsRouter.get('/calls', async (req, res) => {
         sentiment: true,
         createdAt: true,
         agent: { select: { id: true, name: true } },
+        // Set for calls a person made from the browser dialer (no agent).
+        placedBy: { select: { id: true, name: true } },
         campaign: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true } },
       },
@@ -163,6 +165,7 @@ callsRouter.get('/calls/:id', async (req, res) => {
     where: { id: req.params.id, workspaceId: wsId(req) },
     include: {
       agent: { select: { id: true, name: true } },
+      placedBy: { select: { id: true, name: true } },
       campaign: { select: { id: true, name: true } },
       contact: true,
       appointments: true,
