@@ -365,6 +365,14 @@ account under Dashboard → Phone numbers:
 - The VPS must be reachable over HTTPS on the public domain; carriers call
   `/api/telephony/*` and open WebSockets to `/ws/*`.
 
+### Browser dialer
+Nothing to configure: the existing `/ws/` nginx location (upgrade headers, long
+timeouts) carries the browser's audio socket as well as the carriers'. The site and API
+must share one origin (the socket uses the session cookie), and `NEXT_PUBLIC_SITE_URL`
+must be set when the web app is built so its security policy allows `wss://<site>`
+and the microphone. Only Twilio and Plivo numbers can dial. Headphones give the best
+sound; leaving the Dialer page ends the call.
+
 ### SuperPhone
 Accounts and numbers can be saved, but AI calling through SuperPhone is pending its
 voice-streaming API (see ARCHITECTURE.md § 21). Until then, forward the SuperPhone

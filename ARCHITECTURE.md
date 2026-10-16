@@ -268,6 +268,26 @@ subject (`lib/signed-url.ts`), so callbacks are authenticated without depending 
 each carrier's signature scheme. Twilio drops query strings on stream URLs, so the
 media URL carries its signature in the path.
 
+### Browser dialer (`voice/dialer-bridge.ts`, `/dashboard/dialer`)
+People can call from their computer through a connected Twilio or Plivo number, with
+no AI on the line. It reuses the AI call path end to end:
+```
+POST /api/app/dialer/calls {phoneNumberId, to} ─▶ startOutboundCall (minutes, concurrency;
+     Call.placedById = the person) ─▶ returns /ws/dialer/<callId>/<sig>
+browser ─WS /ws/dialer/…─▶ DialerBridge (needs the signature, the placer's session
+     cookie and our Origin; one socket per call; pinged every 10 s)
+carrier answers ─POST /voice─▶ stream document ─▶ /ws/<carrier>/<callId> ─▶ the same
+     bridge (calls with placedById) instead of a CallSession
+```
+Binary frames carry μ-law 8 kHz both ways untouched; JSON frames carry status
+(`ringing`/`answered`/`ended`) and `hangup`. All resampling and μ-law coding runs
+in the browser (`public/dialer-worklet.js`: anti-alias filter, 20 ms frames, 80 ms
+jitter buffer; keypad digits are sent as in-band DTMF tones). The bridge ends the call
+when either side leaves, after 90 s unanswered, or at 60 minutes, and closes the Call
+row itself if the carrier's status callback never comes. Dialer calls are billed in
+minutes like AI calls and count toward concurrent calls; they have no transcript or
+summary. The registry is in memory, so pv-api must stay a single process.
+
 ### Background noise (`voice/noise-gate.ts` + engine settings)
 Each agent has a noise filter: Off, Standard (default) or Strong. Before any engine
 hears the caller, a gate on the line learns the background level and the caller's own
