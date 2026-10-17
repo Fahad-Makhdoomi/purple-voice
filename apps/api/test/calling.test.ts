@@ -231,3 +231,47 @@ describe('personalised outbound calls', () => {
     });
   });
 });
+
+describe('campaign personalization controls', () => {
+  const agent = {
+    name: 'Ava',
+    systemPrompt: 'You are Ava.',
+    greeting: 'Hi {{first_name}}',
+    goal: 'Pitch.',
+    knowledge: '',
+    language: 'en-US',
+    timezone: 'UTC',
+    inboundGreeting: '',
+    inboundInstructions: '',
+    callbackGreeting: '',
+    callbackInstructions: '',
+  } as Agent;
+  const contact = { name: 'Priya', company: 'Shah Dental', notes: null, fields: { city: 'Pune' } } as never;
+
+  it("adds the campaign's own personalisation instructions to the prompt", () => {
+    const r = buildInstructions({
+      agent,
+      contact,
+      workspace: { name: 'Northwind' },
+      toolNames: [],
+      personalization: 'Mention their city and ask about {{city}} clinics.',
+      call: { direction: 'OUTBOUND', fromNumber: '+1500', toNumber: '+1600' },
+    });
+    expect(r.instructions).toContain(
+      'Campaign instructions for personalising: Mention their city and ask about Pune clinics.',
+    );
+  });
+
+  it('describes what each uploaded column will do', async () => {
+    const { describeColumns } = await import('../src/lib/csv');
+    const cols = describeColumns([
+      { phone: '+15550001', business_name: 'Acme', industry: 'Retail', tags: 'vip' },
+      { phone: '+15550002', business_name: '', industry: 'Retail', tags: '' },
+    ]);
+    const by = Object.fromEntries(cols.map((c) => [c.key, c]));
+    expect(by.phone.role).toBe('phone');
+    expect(by.business_name).toMatchObject({ role: 'company', filled: 1, variable: '{{business_name}}' });
+    expect(by.industry).toMatchObject({ role: 'detail', filled: 2, samples: ['Retail'] });
+    expect(by.tags.variable).toBeNull();
+  });
+});

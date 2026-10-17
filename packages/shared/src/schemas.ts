@@ -213,6 +213,8 @@ export const campaignSchema = z
     agentId: z.string().min(1),
     phoneNumberId: z.string().min(1),
     goal: z.string().trim().max(1000).default(''),
+    /** How the agent should tailor each call to the contact's sheet details. */
+    personalization: z.string().trim().max(2000).default(''),
     timezone: z.string().trim().max(64).default('UTC'),
     callWindowStart: hhmm.default('09:00'),
     callWindowEnd: hhmm.default('18:00'),
@@ -234,6 +236,7 @@ export const updateCampaignSchema = z.object({
   agentId: z.string().min(1).optional(),
   phoneNumberId: z.string().min(1).optional(),
   goal: z.string().trim().max(1000).optional(),
+  personalization: z.string().trim().max(2000).optional(),
   timezone: z.string().trim().max(64).optional(),
   callWindowStart: hhmm.optional(),
   callWindowEnd: hhmm.optional(),
@@ -252,6 +255,8 @@ export const contactSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
 });
 export type ContactInput = z.infer<typeof contactSchema>;
+
+export const previewContactsSchema = z.object({ csv: z.string().min(1).max(5_000_000) });
 
 export const addContactsSchema = z.object({
   contacts: z.array(z.record(z.string(), z.unknown())).max(50000).optional(),

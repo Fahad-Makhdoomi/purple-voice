@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { Pause, Pencil, Play, Plus, Trash2, Upload, XCircle } from 'lucide-react';
+import { FileText, Pause, Pencil, Play, Plus, Trash2, Upload, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
@@ -22,6 +22,7 @@ import { formatNumber, formatRelative, humanize } from '@/lib/format';
 import { Field } from '@/components/forms/Field';
 import { MIN_CALL_DELAY_SECONDS, type FollowUpSegment } from '@pv/shared';
 import { ContactModal, type EditableContact } from './contact-modal';
+import { PersonalizationPanel, ScriptModal, UploadPreviewModal } from './personalization';
 import { AiPanel, AnalyticsPanel, ExportButton, FollowUpPanel, type Report } from './insights';
 
 interface CampaignDetail {
@@ -30,6 +31,7 @@ interface CampaignDetail {
     name: string;
     status: string;
     goal: string;
+    personalization: string;
     timezone: string;
     callWindowStart: string;
     callWindowEnd: string;
@@ -60,6 +62,7 @@ interface Contact extends EditableContact {
   attempts: number;
   lastOutcome: string | null;
   lastAttemptAt: string | null;
+  fields: Record<string, unknown> | null;
 }
 
 type View = 'contacts' | 'analytics' | 'follow-up';
@@ -155,6 +158,8 @@ export default function CampaignPage() {
   const [view, setView] = useState<View | null>(null);
   const [uploadTags, setUploadTags] = useState('');
   const [editing, setEditing] = useState<Contact | 'new' | null>(null);
+  const [pendingCsv, setPendingCsv] = useState<string | null>(null);
+  const [scriptFor, setScriptFor] = useState<Contact | null>(null);
   const [followUpSegment, setFollowUpSegment] = useState<FollowUpSegment | undefined>();
 
   if (!data) return <Loading />;
@@ -177,27 +182,7 @@ export default function CampaignPage() {
     e.target.value = '';
     if (!f) return;
     if (f.size > 5_000_000) return toast('CSV files must be under 5 MB', 'error');
-    const csv = await f.text();
-    await run(async () => {
-      const r = await api<{
-        added: number;
-        duplicates: number;
-        invalidCount: number;
-        invalid: Array<{ row: number; reason: string }>;
-      }>(`/app/campaigns/${id}/contacts`, {
-        body: {
-          csv,
-          tags: uploadTags
-            .split(/[;,]/)
-            .map((t) => t.trim())
-            .filter(Boolean),
-        },
-      });
-      await refresh();
-      toast(
-        `Added ${r.added} contacts${r.duplicates ? `, ${r.duplicates} already in the list` : ''}${r.invalidCount ? `, ${r.invalidCount} skipped (e.g. row ${r.invalid[0]?.row}: ${r.invalid[0]?.reason})` : ''}`,
-      );
-    });
+    setPendingCsv(await f.text());
   }
 
   const limit = entitlements.limits.contactsPerCampaign;
@@ -282,6 +267,16 @@ export default function CampaignPage() {
         onSaved={reload}
       />
 
+      {!finished && (
+        <PersonalizationPanel
+          key={campaign.personalization}
+          campaignId={campaign.id}
+          personalization={campaign.personalization}
+          contactCount={total}
+          onSaved={reload}
+        />
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Contacts"
@@ -344,7 +339,7 @@ export default function CampaignPage() {
         <Section
           className="mt-6"
           title="Contacts"
-          description="Add people one at a time or upload a CSV with a header row and a phone column. A tags column (e.g. vip; webinar) labels contacts, and any other column becomes a {{variable}} for the agent."
+          description="Add people one at a time or upload a CSV with a header row and a phone column. A tags column (e.g. vip; webinar) labels contacts, and any other column (business name, industry, city…) is shown to you before you import and given to the AI to personalise each call."
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <ExportButton campaignId={campaign.id} />
@@ -455,6 +450,14 @@ export default function CampaignPage() {
                             {c.name ? c.phone : ''}
                             {c.company ? ` · ${c.company}` : ''}
                           </p>
+                          {c.fields && Object.keys(c.fields).length > 0 && (
+                            <p className="mt-1 text-xs text-muted">
+                              {Object.entries(c.fields)
+                                .slice(0, 3)
+                                .map(([k, v]) => `${k}: ${String(v)}`)
+                                .join(' · ')}
+                            </p>
+                          )}
                           {c.tags.length > 0 && (
                             <p className="mt-1 flex flex-wrap gap-1">
                               {c.tags.map((t) => (
@@ -472,6 +475,14 @@ export default function CampaignPage() {
                         <td>{c.lastOutcome ? humanize(c.lastOutcome) : '—'}</td>
                         <td className="text-muted">{formatRelative(c.lastAttemptAt)}</td>
                         <td className="whitespace-nowrap text-right">
+                          <button
+                            className="btn btn-ghost btn-icon h-8 w-8"
+                            aria-label={`Preview call script for ${c.name ?? c.phone}`}
+                            title="Preview call script"
+                            onClick={() => setScriptFor(c)}
+                          >
+                            <FileText size={14} />
+                          </button>
                           {c.status !== 'CALLING' && (
                             <button
                               className="btn btn-ghost btn-icon h-8 w-8"
@@ -512,6 +523,30 @@ export default function CampaignPage() {
             </>
           )}
         </Section>
+      )}
+
+      {pendingCsv && (
+        <UploadPreviewModal
+          campaignId={campaign.id}
+          csv={pendingCsv}
+          tags={uploadTags
+            .split(/[;,]/)
+            .map((t) => t.trim())
+            .filter(Boolean)}
+          onClose={() => setPendingCsv(null)}
+          onImported={async (message) => {
+            await refresh();
+            toast(message);
+          }}
+        />
+      )}
+      {scriptFor && (
+        <ScriptModal
+          campaignId={campaign.id}
+          contactId={scriptFor.id}
+          label={scriptFor.name ?? scriptFor.phone}
+          onClose={() => setScriptFor(null)}
+        />
       )}
 
       {editing && (

@@ -32,7 +32,7 @@ import type { VoiceEngine } from './engines/types';
 type LoadedCall = Call & {
   agent: Agent | null;
   contact: CampaignContact | null;
-  campaign: { goal: string } | null;
+  campaign: { goal: string; personalization: string } | null;
   workspace: Workspace;
   phoneNumber: (PhoneNumber & { telephonyAccount: TelephonyAccount }) | null;
 };
@@ -67,7 +67,7 @@ export class CallSession {
       include: {
         agent: true,
         contact: true,
-        campaign: { select: { goal: true } },
+        campaign: { select: { goal: true, personalization: true } },
         workspace: true,
         phoneNumber: { include: { telephonyAccount: true } },
       },
@@ -159,6 +159,7 @@ export class CallSession {
       call: this.call,
       contact: this.call.contact,
       campaignGoal: this.call.campaign?.goal,
+      personalization: this.call.campaign?.personalization,
       previous: await this.previousCall(agent),
       toolNames: tools.map((t) => t.name),
     });

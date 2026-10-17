@@ -108,3 +108,34 @@ export function contactIdentity(row: Record<string, unknown>): {
     company: firstFilled(row, COMPANY_KEYS),
   };
 }
+
+export type ColumnRole = 'phone' | 'name' | 'company' | 'email' | 'notes' | 'tags' | 'detail';
+
+const PHONE_KEYS = ['phone', 'phone_number', 'number', 'mobile'];
+
+function roleOf(key: string): ColumnRole {
+  if (PHONE_KEYS.includes(key)) return 'phone';
+  if (NAME_KEYS.includes(key) || key === 'first_name' || key === 'last_name') return 'name';
+  if (COMPANY_KEYS.includes(key)) return 'company';
+  if (key === 'email' || key === 'notes' || key === 'tags') return key;
+  return 'detail';
+}
+
+/**
+ * What a CSV upload will do with each column, for the preview shown before
+ * anything is imported: where the column goes, how many rows fill it, and a
+ * few sample values. `variable` is the {{name}} the agent's prompt can use.
+ */
+export function describeColumns(rows: Array<Record<string, unknown>>) {
+  const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  return keys.map((key) => {
+    const values = rows.map((r) => String(r[key] ?? '').trim()).filter(Boolean);
+    return {
+      key,
+      role: roleOf(key),
+      variable: key === 'tags' ? null : `{{${key}}}`,
+      filled: values.length,
+      samples: [...new Set(values)].slice(0, 3),
+    };
+  });
+}

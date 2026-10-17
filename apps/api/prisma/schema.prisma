@@ -563,6 +563,8 @@ model Campaign {
   phoneNumberId     String
   phoneNumber       PhoneNumber    @relation(fields: [phoneNumberId], references: [id], onDelete: Restrict)
   goal              String         @default("")
+  /// How the agent tailors each call to the contact's details (name, business, CSV columns).
+  personalization   String         @default("")
   status            CampaignStatus @default(DRAFT)
   timezone          String         @default("UTC")
   callWindowStart   String         @default("09:00")

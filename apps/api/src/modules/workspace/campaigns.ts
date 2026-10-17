@@ -8,6 +8,7 @@ import {
   matchesFollowUp,
   paginationSchema,
   parseTags,
+  previewContactsSchema,
   updateCampaignSchema,
   updateContactSchema,
 } from '@pv/shared';
@@ -16,7 +17,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { audit } from '../../lib/audit';
 import { badRequest, notFound } from '../../lib/http-error';
-import { contactIdentity, parseCsv, toE164 } from '../../lib/csv';
+import { contactIdentity, describeColumns, parseCsv, toE164 } from '../../lib/csv';
 import { wsId } from '../../middleware/workspace';
 import {
   entitlementsFor,
@@ -27,6 +28,8 @@ import { assertWithinLimit } from '../../services/entitlements';
 import { computeCampaignAnalytics } from '../../services/campaign-analytics';
 import { buildCampaignDigest, generateCampaignReport } from '../../services/ai/campaign-report';
 import { describe, isValidTimeZone } from '../../voice/time';
+import { buildInstructions, contactVariables } from '../../voice/prompt';
+import { toolsForAgent } from '../../voice/tools';
 
 export const campaignsRouter = Router();
 
@@ -213,6 +216,81 @@ campaignsRouter.get('/:id/contacts', async (req, res) => {
     prisma.campaignContact.count({ where }),
   ]);
   res.json({ contacts, total, page, pageSize });
+});
+
+/** What an upload would do, column by column, without importing anything. */
+campaignsRouter.post('/:id/contacts/preview', async (req, res) => {
+  const { csv } = previewContactsSchema.parse(req.body);
+  await findCampaign(wsId(req), String(req.params.id));
+  const rows = parseCsv(csv);
+  if (!rows.length) throw badRequest('No rows found. The first line of the file must be the column names.');
+  const columns = describeColumns(rows);
+  if (!columns.some((c) => c.role === 'phone'))
+    throw badRequest('No phone column found. Add a column named "phone".');
+  const identity = rows.map((r) => contactIdentity(r));
+  res.json({
+    total: rows.length,
+    columns,
+    withName: identity.filter((i) => i.name).length,
+    withCompany: identity.filter((i) => i.company).length,
+    sample: rows.slice(0, 3),
+  });
+});
+
+/** The {{variables}} available in this campaign's contact data, with how many contacts fill each. */
+campaignsRouter.get('/:id/variables', async (req, res) => {
+  const campaign = await findCampaign(wsId(req), String(req.params.id));
+  const contacts = await prisma.campaignContact.findMany({
+    where: { campaignId: campaign.id },
+    select: { name: true, company: true, email: true, notes: true, fields: true },
+    take: 2000,
+  });
+  const filled = new Map<string, number>();
+  const bump = (k: string, v: unknown) => {
+    if (String(v ?? '').trim()) filled.set(k, (filled.get(k) ?? 0) + 1);
+  };
+  for (const c of contacts) {
+    bump('name', c.name);
+    bump('first_name', c.name);
+    bump('company', c.company);
+    bump('email', c.email);
+    bump('notes', c.notes);
+    for (const [k, v] of Object.entries((c.fields as Record<string, unknown> | null) ?? {}))
+      bump(k.toLowerCase(), v);
+  }
+  res.json({
+    total: contacts.length,
+    variables: [...filled.entries()].map(([key, count]) => ({ key, count })),
+  });
+});
+
+/** The exact opening line and instructions the agent would start a call to this contact with. */
+campaignsRouter.get('/:id/contacts/:contactId/script', async (req, res) => {
+  const workspaceId = wsId(req);
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: String(req.params.id), workspaceId },
+    include: { agent: true, phoneNumber: true, workspace: { select: { name: true } } },
+  });
+  if (!campaign) throw notFound('Campaign');
+  const contact = await prisma.campaignContact.findFirst({
+    where: { id: String(req.params.contactId), campaignId: campaign.id },
+  });
+  if (!contact) throw notFound('Contact');
+  const call = {
+    direction: 'OUTBOUND' as const,
+    fromNumber: campaign.phoneNumber.e164,
+    toNumber: contact.phone,
+  };
+  const { instructions, greeting } = buildInstructions({
+    agent: campaign.agent,
+    workspace: campaign.workspace,
+    call,
+    contact,
+    campaignGoal: campaign.goal,
+    personalization: campaign.personalization,
+    toolNames: toolsForAgent(campaign.agent).map((t) => t.name),
+  });
+  res.json({ greeting, instructions, variables: contactVariables(contact, call) });
 });
 
 campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res) => {

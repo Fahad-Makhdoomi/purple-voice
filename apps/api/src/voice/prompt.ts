@@ -60,6 +60,8 @@ export function buildInstructions(input: {
   call: Pick<Call, 'direction' | 'fromNumber' | 'toNumber'>;
   contact: CampaignContact | null;
   campaignGoal?: string | null;
+  /** The campaign's own instructions for tailoring the call to the contact. */
+  personalization?: string | null;
   /** Set when an inbound caller is someone this agent called before. */
   previous?: PreviousCall | null;
   toolNames: string[];
@@ -105,9 +107,13 @@ export function buildInstructions(input: {
     .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
   if (vars.notes) details.unshift(`notes: ${vars.notes}`);
   const personalise =
-    kind === 'outbound' && (vars.name || vars.company || details.length)
+    kind === 'outbound' &&
+    (vars.name || vars.company || details.length || input.personalization?.trim())
       ? '## About the person you are calling\n' +
         'This call is personalised: tailor your opening, examples and pitch to this person and their business using the details below. Use their name naturally and mention their business where it fits. Never invent facts about them that are not listed here.\n' +
+        (input.personalization?.trim()
+          ? `Campaign instructions for personalising: ${fill(input.personalization)}\n`
+          : '') +
         [vars.name && `name: ${vars.name}`, vars.company && `business: ${vars.company}`, ...details]
           .filter(Boolean)
           .map((l) => `- ${l}`)
