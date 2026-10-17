@@ -31,6 +31,18 @@ const PREVIEWS: Record<SiteTheme, React.ReactNode> = {
       <div className="absolute left-1/2 top-[44%] h-3 w-16 -translate-x-1/2 rounded-pill bg-gradient-to-r from-[#ff9ccf] to-[#b79cff]" />
     </div>
   ),
+  minimal: (
+    <div className="relative h-full overflow-hidden bg-[radial-gradient(60%_60%_at_0%_0%,#dce8d6,transparent_70%),radial-gradient(50%_50%_at_100%_10%,#fde8e4,transparent_70%)] bg-[#fafaf7]">
+      <div className="absolute left-1/2 top-[16%] h-2 w-1/2 -translate-x-1/2 rounded-pill bg-[#111]/80" />
+      <div className="absolute left-1/2 top-[27%] h-1.5 w-1/3 -translate-x-1/2 rounded-pill bg-[#111]/30" />
+      <div className="absolute left-1/2 top-[38%] h-3 w-14 -translate-x-1/2 rounded-pill bg-[#111]" />
+      <div className="absolute -bottom-10 left-1/2 h-28 w-28 -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_50%_38%,#fde3df,#ee8a7c_64%,#e8705f)] shadow-[0_0_40px_#f6b6ae]" />
+      <div className="absolute bottom-0 left-1/2 h-[46%] w-2 -translate-x-1/2 rounded-t-full bg-white/90 blur-[1px]" />
+      <div className="absolute -bottom-3 left-[8%] h-10 w-28 rounded-full bg-[#b9d2ae]/80 blur-[2px]" />
+      <div className="absolute -bottom-4 right-[6%] h-12 w-32 rounded-full bg-[#f4a79d]/70 blur-[2px]" />
+      <div className="absolute -bottom-5 left-[36%] h-9 w-28 rounded-full bg-white blur-[2px]" />
+    </div>
+  ),
 };
 
 export default function AppearancePage() {
@@ -120,9 +132,9 @@ export default function AppearancePage() {
             <span>
               <span className="font-medium">Offer background music</span>
               <span className="mt-0.5 block text-sm text-muted">
-                {value.theme === 'default'
-                  ? 'The Purple Voice theme has no music; this applies to themes that do.'
-                  : 'Visitors can play or pause it from the corner of the page.'}
+                {value.theme === 'kawaii'
+                  ? 'Visitors can play or pause it from the corner of the page.'
+                  : `The ${SITE_THEME_INFO[value.theme].name} theme has no music; this applies to themes that do.`}
               </span>
             </span>
             <input

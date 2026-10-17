@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { Building2, GraduationCap, Home, Megaphone, Stethoscope, Sun } from 'lucide-react';
 import { Reveal, Spotlight } from '@/components/site/motion';
 
@@ -34,11 +35,58 @@ const CASES = [
   },
 ];
 
-/** Who it is for: six common situations, each a hoverable glass-on-light card. */
-export function UseCases() {
+// Decorative portraits the Minimal theme floats around the heading: [left %, top px, size px, tilt deg].
+const PORTRAITS: Array<[number, number, number, number]> = [
+  [2, 10, 96, -4],
+  [14, 210, 76, 3],
+  [24, 40, 60, 5],
+  [74, 24, 70, -3],
+  [86, 150, 104, 4],
+  [80, 300, 64, -5],
+];
+
+function FloatingPortraits() {
+  return (
+    <div className="float-portraits hidden lg:block" aria-hidden="true">
+      {PORTRAITS.map(([left, top, size, tilt], i) => (
+        <span
+          key={i}
+          className="float-portrait"
+          style={
+            {
+              left: `${left}%`,
+              top,
+              width: size,
+              height: size * 1.15,
+              '--tilt': `${tilt}deg`,
+              '--dur': `${6 + (i % 3)}s`,
+              '--delay': `${-i * 0.9}s`,
+              '--px': `${30 + (i % 3) * 25}px`,
+            } as React.CSSProperties
+          }
+        >
+          <Image
+            src={`/images/themes/minimal/portrait-${i + 1}.webp`}
+            alt=""
+            fill
+            sizes="110px"
+            className="object-cover"
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Who it is for: six common situations, each a hoverable glass-on-light card.
+ * `portraits` floats people around the heading (the Minimal theme).
+ */
+export function UseCases({ portraits = false }: { portraits?: boolean }) {
   return (
     <section id="use-cases" className="scroll-mt-24 py-section" aria-labelledby="cases-title">
-      <div className="container">
+      <div className="container relative">
+        {portraits && <FloatingPortraits />}
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="eyebrow text-brand-300">Use cases</p>
           <h2

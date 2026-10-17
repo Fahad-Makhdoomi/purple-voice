@@ -191,96 +191,37 @@
   animation-delay: -10s;
 }
 
-/* ── The landing page ─────────────────────────────────────────────────────────
-   The home page is designed in black and white (`.landing` marks it and the
-   floating header pill). Kawaii inverts it to plum on pastel. Selectors match
-   a class only at the start of the attribute or after a space, so variant
-   classes such as hover:bg-white/10 keep their own meaning. */
+/* ── The landing page (shared rules in light-landing.css) ──────────────────── */
 
-[data-theme='kawaii'] main > .landing.bg-black {
-  background:
+[data-theme='kawaii'] {
+  --pv-landing-bg:
     radial-gradient(70% 40% at 15% 8%, rgb(255 214 236 / 0.9), transparent 70%),
-    radial-gradient(60% 35% at 90% 30%, rgb(var(--pv-periwinkle-200) / 0.8), transparent 70%),
+    radial-gradient(60% 35% at 90% 30%, rgb(216 224 255 / 0.8), transparent 70%),
     radial-gradient(70% 30% at 30% 62%, rgb(255 225 199 / 0.7), transparent 70%),
-    radial-gradient(60% 30% at 85% 88%, rgb(255 214 236 / 0.8), transparent 70%),
-    rgb(var(--pv-canvas));
-}
-[data-theme='kawaii'] .landing h1,
-[data-theme='kawaii'] .landing h2,
-[data-theme='kawaii'] .landing h3 {
-  font-weight: 700;
-}
-
-/* Text: white → plum ink, translucent white → softer plum. */
-[data-theme='kawaii'] .landing [class^='text-white/'],
-[data-theme='kawaii'] .landing [class*=' text-white/'] {
-  color: rgb(var(--pv-muted));
-}
-[data-theme='kawaii'] .landing .text-white,
-[data-theme='kawaii'] .landing .hover\:text-white:hover,
-[data-theme='kawaii'] .landing .text-white\/90,
-[data-theme='kawaii'] .landing .text-white\/85,
-[data-theme='kawaii'] .landing .text-white\/80,
-[data-theme='kawaii'] .landing .text-white\/75,
-[data-theme='kawaii'] .landing .text-white\/70 {
-  color: rgb(var(--pv-ink));
-}
-[data-theme='kawaii'] .landing .text-white\/70,
-[data-theme='kawaii'] .landing .text-white\/75 {
-  color: rgb(var(--pv-ink-soft));
-}
-/* Pastel accents that only worked on black. */
-[data-theme='kawaii'] .landing .text-brand-200,
-[data-theme='kawaii'] .landing .text-brand-300,
-[data-theme='kawaii'] .landing .text-violet-200,
-[data-theme='kawaii'] .landing .text-violet-300 {
-  color: rgb(var(--pv-violet-700));
-}
-[data-theme='kawaii'] .landing .text-emerald-100\/70,
-[data-theme='kawaii'] .landing .text-emerald-200,
-[data-theme='kawaii'] .landing .text-emerald-300,
-[data-theme='kawaii'] .landing .text-emerald-400 {
-  color: rgb(var(--pv-success));
-}
-[data-theme='kawaii'] .landing .text-sky-300 {
-  color: #0369a1;
-}
-
-/* Surfaces. */
-[data-theme='kawaii'] .landing [class^='bg-white/'],
-[data-theme='kawaii'] .landing [class*=' bg-white/'] {
-  background-color: rgb(var(--pv-violet-500) / 0.08);
-}
-[data-theme='kawaii'] .landing [class^='border-white/'],
-[data-theme='kawaii'] .landing [class*=' border-white/'] {
-  border-color: rgb(var(--pv-violet-500) / 0.18);
-}
-[data-theme='kawaii'] .landing .divide-white\/10 > :not([hidden]) ~ :not([hidden]) {
-  border-color: rgb(var(--pv-violet-500) / 0.18);
-}
-[data-theme='kawaii'] .landing .bg-black\/40,
-[data-theme='kawaii'] .landing .bg-black\/80 {
-  background-color: rgb(255 255 255 / 0.75);
-}
-[data-theme='kawaii'] .landing .bg-night {
-  background-color: white;
-}
-[data-theme='kawaii'] .landing .glass-dark,
-[data-theme='kawaii'] .landing .glass {
-  border-color: rgb(255 255 255 / 0.9);
-  background-color: rgb(255 255 255 / 0.55);
-  background-image: linear-gradient(
+    radial-gradient(60% 30% at 85% 88%, rgb(255 214 236 / 0.8), transparent 70%), rgb(255 248 252);
+  --pv-landing-heading-weight: 700;
+  --pv-landing-tint: rgb(177 118 238 / 0.08);
+  --pv-landing-hairline: rgb(177 118 238 / 0.18);
+  --pv-landing-card-border: rgb(255 255 255 / 0.9);
+  --pv-landing-card-bg: rgb(255 255 255 / 0.55);
+  --pv-landing-card-image: linear-gradient(
     160deg,
     rgb(255 255 255 / 0.85) 0%,
     rgb(255 255 255 / 0.6) 45%,
-    rgb(var(--pv-pink-100) / 0.55) 100%
+    rgb(255 228 242 / 0.55) 100%
   );
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.9),
-    0 24px 50px -28px rgb(var(--pv-violet-700) / 0.35);
-}
-[data-theme='kawaii'] .landing .dot-grid {
-  background-image: radial-gradient(rgb(var(--pv-violet-400) / 0.35) 1.4px, transparent 1.6px);
+  --pv-landing-card-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9), 0 24px 50px -28px rgb(106 51 191 / 0.35);
+  --pv-landing-chip-bg: linear-gradient(135deg, #ff8fc7 0%, #b67cf5 100%);
+  --pv-landing-chip-fg: white;
+  --pv-landing-cta-bg: linear-gradient(135deg, #ff8fc7 0%, #b67cf5 100%);
+  --pv-landing-cta-fg: white;
+  --pv-landing-cta-shadow:
+    0 10px 30px -8px rgb(255 143 199 / 0.85), 0 0 0 4px rgb(255 255 255 / 0.6);
+  --pv-landing-cta-arrow-bg: white;
+  --pv-landing-cta-arrow-fg: rgb(106 51 191);
+  --pv-landing-btn2-bg: rgb(255 255 255 / 0.7);
+  --pv-landing-btn2-border: white;
 }
 [data-theme='kawaii'] .landing .text-shimmer {
   background-image: linear-gradient(
@@ -290,41 +231,6 @@
     rgb(var(--pv-violet-500)) 55%,
     rgb(var(--pv-violet-800)) 80%
   );
-}
-/* Icon chips: white circles become candy-gradient ones; anything on a
-   coloured fill keeps white text. */
-[data-theme='kawaii'] .landing .bg-white.rounded-full {
-  background: var(--pv-gradient-brand);
-  color: white;
-}
-[data-theme='kawaii'] .landing .bg-gradient-brand,
-[data-theme='kawaii'] .landing .bg-ink {
-  color: white;
-}
-
-/* Buttons: white pill → candy pill, black pill → frosted white. */
-[data-theme='kawaii'] .landing .btn-white {
-  background: var(--pv-gradient-brand);
-  color: white;
-  box-shadow:
-    0 10px 30px -8px rgb(255 143 199 / 0.85),
-    0 0 0 4px rgb(255 255 255 / 0.6);
-}
-[data-theme='kawaii'] .landing .btn-white:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.05);
-}
-[data-theme='kawaii'] .landing .btn-white .bg-black {
-  background: white;
-  color: rgb(var(--pv-violet-700));
-}
-[data-theme='kawaii'] .landing .btn-dark {
-  border-color: white;
-  background-color: rgb(255 255 255 / 0.7);
-  color: rgb(var(--pv-ink));
-}
-[data-theme='kawaii'] .landing .btn-dark:hover {
-  background-color: white;
 }
 
 /* A row of cloud puffs where the page meets the twilight footer. */

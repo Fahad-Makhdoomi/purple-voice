@@ -1,6 +1,8 @@
 @import './tokens.css';
 /* Website themes (Super admin → Website theme). Each is scoped by [data-theme]. */
+@import './themes/light-landing.css';
 @import './themes/kawaii.css';
+@import './themes/minimal.css';
 
 @tailwind base;
 @tailwind components;

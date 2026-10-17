@@ -37,7 +37,7 @@ export default async function HomePage() {
     getFaqs(),
     getSettings(),
   ]);
-  const kawaii = appearance.theme === 'kawaii';
+  const { theme } = appearance;
   return (
     // `landing` scopes the theme stylesheets' remaps of this page's black-and-white palette.
     <div className="landing relative isolate overflow-x-clip bg-black">
@@ -60,10 +60,10 @@ export default async function HomePage() {
             })),
         }}
       />
-      {/* Kawaii paints its own sky; the particle sculpture is the default theme's. */}
-      {!kawaii && <ParticleField />}
+      {/* The particle sculpture is the default theme's; light themes paint their own sky. */}
+      {theme === 'default' && <ParticleField />}
       <ScrollProgress />
-      <Hero theme={appearance.theme} />
+      <Hero theme={theme} />
 
       <section aria-label="What every agent can do" className="py-8 text-white">
         <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
@@ -88,7 +88,7 @@ export default async function HomePage() {
       <Explainer />
       <FeatureRows />
       <Trust />
-      <UseCases />
+      <UseCases portraits={theme === 'minimal'} />
       <Numbers />
       <GetStarted />
 

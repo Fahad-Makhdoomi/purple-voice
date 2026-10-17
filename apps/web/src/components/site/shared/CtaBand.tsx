@@ -1,6 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { getAppearance } from '@/lib/server-api';
+import { SunScene } from '@/components/site/SunScene';
+import { cn } from '@/lib/cn';
 
 /** The closing call to action. Same words in every theme; the backdrop follows the theme. */
 export async function CtaBand({
@@ -12,11 +14,22 @@ export async function CtaBand({
 }) {
   const { theme } = await getAppearance();
   const kawaii = theme === 'kawaii';
+  // Minimal is a light band: `landing` lets light-landing.css invert its colours.
+  const minimal = theme === 'minimal';
 
   return (
     <section className="bg-canvas px-gutter pb-section">
-      <div className="relative isolate mx-auto max-w-container overflow-hidden rounded-xl bg-night px-6 py-16 text-center text-white sm:px-12 sm:py-20">
-        {kawaii ? (
+      <div
+        className={cn(
+          'relative isolate mx-auto max-w-container overflow-hidden rounded-xl px-6 py-16 text-center text-white sm:px-12 sm:py-20',
+          minimal ? 'landing border border-line bg-gradient-wash sm:pb-56' : 'bg-night',
+        )}
+      >
+        {minimal ? (
+          <div className="absolute inset-x-0 bottom-0 -z-10 h-[62%]">
+            <SunScene variant="compact" />
+          </div>
+        ) : kawaii ? (
           <Image
             src="/images/themes/kawaii/twilight.webp"
             alt=""

@@ -4,6 +4,9 @@ import { ArrowUpRight, Check } from 'lucide-react';
 import type { SiteTheme } from '@pv/shared';
 import { DashboardMock } from '@/components/site/home/DashboardMock';
 import { Waveform } from '@/components/site/motion';
+import { SunScene } from '@/components/site/SunScene';
+
+const TITLE = 'Turn every lead into a booked meeting.';
 
 const ASSURANCES = [
   'Runs on your own phone numbers',
@@ -16,10 +19,19 @@ const ASSURANCES = [
  * what fills the stage between the copy and the dashboard is the theme's.
  */
 export function Hero({ theme = 'default' }: { theme?: SiteTheme }) {
-  return theme === 'kawaii' ? <KawaiiHero /> : <DefaultHero />;
+  if (theme === 'kawaii') return <KawaiiHero />;
+  if (theme === 'minimal') return <MinimalHero />;
+  return <DefaultHero />;
 }
 
-function HeroCopy({ vignette = false }: { vignette?: boolean }) {
+function HeroCopy({
+  vignette = false,
+  wordByWord = false,
+}: {
+  vignette?: boolean;
+  /** Wrap each word so a theme can stagger them in (Minimal does). */
+  wordByWord?: boolean;
+}) {
   return (
     <div className="container relative pt-[calc(var(--pv-header-h)+64px)] sm:pt-[calc(var(--pv-header-h)+96px)]">
       {vignette && (
@@ -33,7 +45,16 @@ function HeroCopy({ vignette = false }: { vignette?: boolean }) {
       </p>
 
       <h1 className="mx-auto mt-7 max-w-5xl animate-rise text-white text-[length:clamp(44px,8.4vw,108px)] font-medium leading-[0.98] tracking-[-0.045em] [animation-delay:60ms]">
-        Turn every lead into a booked meeting.
+        {wordByWord
+          ? TITLE.split(' ').map((word, i) => (
+              <span key={i}>
+                {i > 0 && ' '}
+                <span className="hero-word" style={{ '--i': i } as React.CSSProperties}>
+                  {word}
+                </span>
+              </span>
+            ))
+          : TITLE}
       </h1>
       <p className="mx-auto mt-7 max-w-2xl animate-rise text-lead text-white/70 [animation-delay:120ms]">
         Purple Voice builds AI agents that phone your leads, answer their questions and put
@@ -133,6 +154,30 @@ function KawaiiHero() {
           />
         </div>
         <div className="container flex h-full items-end justify-center pb-4">
+          <VoiceBar />
+        </div>
+      </div>
+
+      <div className="container mt-6">
+        <DashboardMock />
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Minimal: the stage is a coral sun rising through pastel clouds with a
+ * vapour trail climbing into it (SunScene, pure CSS). The headline's words
+ * rise in one by one.
+ */
+function MinimalHero() {
+  return (
+    <section className="relative pb-10 text-center text-white sm:pb-16">
+      <HeroCopy wordByWord />
+
+      <div className="relative mt-4 h-[340px] sm:mt-6 sm:h-[480px]" aria-hidden="true">
+        <SunScene />
+        <div className="container relative flex h-full items-end justify-center pb-4">
           <VoiceBar />
         </div>
       </div>

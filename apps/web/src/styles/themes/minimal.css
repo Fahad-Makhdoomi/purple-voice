@@ -1,0 +1,492 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Minimal — a website theme.
+
+   Airy warm white with a whisper of sage, near-black ink, coral and sage
+   accents, light Inter Tight headlines and black pills. The home hero's stage
+   is a coral sun rising through pastel clouds (SunScene.tsx), and the page
+   moves with the reader: words rise in, headings fill with ink as they scroll
+   into view, clouds and portraits drift with parallax.
+
+   Applies only inside [data-theme='minimal'] (public site and sign-in pages).
+   The black landing page is inverted by light-landing.css from the
+   --pv-landing-* values set here.
+   ────────────────────────────────────────────────────────────────────────── */
+
+[data-theme='minimal'] {
+  /* Coral scale in the brand slots (600 stays AA on white). */
+  --pv-violet-50: 255 245 243;
+  --pv-violet-100: 253 232 228;
+  --pv-violet-200: 250 208 201;
+  --pv-violet-300: 245 176 166;
+  --pv-violet-400: 240 141 128;
+  --pv-violet-500: 232 112 98;
+  --pv-violet-600: 192 70 58;
+  --pv-violet-700: 163 54 44;
+  --pv-violet-800: 128 41 34;
+  --pv-violet-900: 94 30 25;
+  --pv-violet-950: 58 19 16;
+
+  --pv-pink-100: 253 232 230;
+  --pv-pink-300: 246 182 176;
+  /* Sage stands in for the cool accents. */
+  --pv-periwinkle-200: 220 232 214;
+  --pv-periwinkle-300: 186 209 176;
+  --pv-cyan-300: 168 200 160;
+
+  --pv-ink: 17 17 17;
+  --pv-ink-soft: 58 58 58;
+  --pv-muted: 107 107 107;
+  --pv-subtle: 118 118 118;
+  --pv-line: 234 234 228;
+  --pv-surface: 255 255 255;
+  --pv-canvas: 250 250 247;
+
+  --pv-night: 22 22 22;
+  --pv-night-2: 32 32 32;
+  --pv-night-3: 44 44 44;
+
+  --pv-font-sans:
+    var(--font-inter-tight), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pv-tracking-tight: -0.035em;
+
+  --pv-radius-sm: 10px;
+  --pv-radius: 16px;
+  --pv-radius-lg: 22px;
+  --pv-radius-xl: 30px;
+
+  --pv-shadow-sm: 0 1px 2px rgb(17 17 17 / 0.05);
+  --pv-shadow: 0 1px 2px rgb(17 17 17 / 0.04), 0 14px 34px -20px rgb(17 17 17 / 0.18);
+  --pv-shadow-lg: 0 30px 70px -32px rgb(17 17 17 / 0.28);
+  --pv-glow: 0 0 0 1px rgb(17 17 17 / 0.06), 0 10px 30px -10px rgb(232 112 98 / 0.55);
+
+  --pv-gradient-brand: linear-gradient(135deg, #e8705f 0%, #f09a8b 100%);
+  --pv-gradient-pastel: linear-gradient(135deg, #dce8d6 0%, #f4efe9 50%, #fad0c9 100%);
+  --pv-gradient-wash:
+    radial-gradient(55% 70% at 8% 0%, rgb(220 232 214 / 0.95), transparent 70%),
+    radial-gradient(50% 60% at 95% 10%, rgb(253 232 228 / 0.9), transparent 70%),
+    linear-gradient(rgb(250 250 247), rgb(250 250 247));
+  --pv-gradient-stat: linear-gradient(160deg, #eef3ea 0%, #fde8e4 100%);
+  --pv-gradient-neon: conic-gradient(from 200deg, #e8705f, #f6b6ae, #a8c8a0, #e8705f);
+
+  /* Light landing page (light-landing.css). */
+  --pv-landing-bg:
+    radial-gradient(60% 28% at 0% 0%, rgb(220 232 214 / 0.9), transparent 70%),
+    radial-gradient(50% 20% at 100% 34%, rgb(253 232 228 / 0.8), transparent 70%),
+    radial-gradient(55% 18% at 0% 62%, rgb(220 232 214 / 0.7), transparent 70%),
+    radial-gradient(50% 18% at 100% 88%, rgb(253 232 228 / 0.7), transparent 70%), rgb(250 250 247);
+  --pv-landing-heading-weight: 400;
+  --pv-landing-tint: rgb(17 17 17 / 0.04);
+  --pv-landing-hairline: rgb(17 17 17 / 0.09);
+  --pv-landing-card-border: rgb(17 17 17 / 0.07);
+  --pv-landing-card-bg: rgb(255 255 255 / 0.82);
+  --pv-landing-card-image: none;
+  --pv-landing-card-shadow: 0 1px 2px rgb(17 17 17 / 0.03), 0 18px 40px -26px rgb(17 17 17 / 0.22);
+  --pv-landing-chip-bg: rgb(17 17 17);
+  --pv-landing-chip-fg: white;
+  --pv-landing-cta-bg: rgb(17 17 17);
+  --pv-landing-cta-fg: white;
+  --pv-landing-cta-shadow: 0 10px 24px -12px rgb(17 17 17 / 0.5);
+  --pv-landing-cta-arrow-bg: white;
+  --pv-landing-cta-arrow-fg: rgb(17 17 17);
+  --pv-landing-btn2-bg: rgb(255 255 255 / 0.85);
+  --pv-landing-btn2-border: rgb(17 17 17 / 0.1);
+
+  background-color: rgb(var(--pv-canvas));
+  color: rgb(var(--pv-ink));
+  font-family: var(--pv-font-sans);
+}
+
+/* ── Type: light and tight, like the reference ────────────────────────────── */
+
+[data-theme='minimal'] :is(h1, h2) {
+  font-weight: 400;
+  letter-spacing: -0.035em;
+}
+[data-theme='minimal'] h3 {
+  font-weight: 500;
+}
+[data-theme='minimal'] .eyebrow {
+  color: rgb(var(--pv-ink-soft));
+  letter-spacing: 0.12em;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+/* The neon CTA (inner pages) becomes a plain pill: white on the charcoal
+   featured plan, black on light bands. */
+[data-theme='minimal'] .btn-magic {
+  background: white;
+  color: rgb(var(--pv-ink));
+  box-shadow: none;
+}
+[data-theme='minimal'] .btn-magic::before,
+[data-theme='minimal'] .btn-magic::after {
+  display: none;
+}
+[data-theme='minimal'] .btn-magic:hover {
+  box-shadow: none;
+  background: rgb(var(--pv-pink-100));
+}
+[data-theme='minimal'] .landing .btn-magic {
+  background: rgb(var(--pv-ink));
+  color: white;
+}
+[data-theme='minimal'] .landing .btn-magic:hover {
+  background: black;
+}
+[data-theme='minimal'] .landing .btn-glass {
+  border-color: rgb(17 17 17 / 0.1);
+  background: rgb(255 255 255 / 0.85);
+  color: rgb(var(--pv-ink));
+}
+[data-theme='minimal'] .btn-brand {
+  background: rgb(var(--pv-ink));
+  box-shadow: none;
+}
+
+[data-theme='minimal'] .landing .text-shimmer {
+  background-image: linear-gradient(100deg, #111 20%, #e8705f 40%, #a8c8a0 55%, #111 80%);
+}
+
+/* Hairline white cards lift gently on hover. */
+[data-theme='minimal'] .landing .spotlight:hover {
+  border-color: rgb(17 17 17 / 0.14);
+}
+
+/* The facts band: alternating sage and coral gradient tiles, gently drifting. */
+@keyframes minimal-gradient-drift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+[data-theme='minimal'] .landing dl > :nth-child(odd) .glass-dark,
+[data-theme='minimal'] .landing dl > :nth-child(even) .glass-dark {
+  border-color: transparent;
+  background-size: 220% 220%;
+  animation: minimal-gradient-drift 12s ease-in-out infinite;
+  box-shadow: 0 24px 50px -28px rgb(17 17 17 / 0.35);
+}
+[data-theme='minimal'] .landing dl > :nth-child(odd) .glass-dark {
+  background-image: linear-gradient(135deg, #6f9468 0%, #8fb087 50%, #a9c6a0 100%);
+}
+[data-theme='minimal'] .landing dl > :nth-child(even) .glass-dark {
+  background-image: linear-gradient(135deg, #d9584a 0%, #e57565 50%, #ee9486 100%);
+  animation-delay: -6s;
+}
+[data-theme='minimal'] .landing dl .glass-dark :is(.text-white, [class*='text-white/']) {
+  color: white;
+}
+
+/* The footer stays charcoal; no stars. */
+[data-theme='minimal'] .site-footer .starfield {
+  display: none;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+
+/* Hero headline: words rise in one after another (HeroCopy wraps them). */
+@keyframes minimal-word-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.45em);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+[data-theme='minimal'] .hero-word {
+  display: inline-block;
+  animation: minimal-word-rise 900ms var(--pv-ease) both;
+  animation-delay: calc(120ms + var(--i, 0) * 75ms);
+}
+[data-theme='minimal'] h1:has(.hero-word) {
+  animation: none;
+}
+
+/* Section headings fill with ink as they scroll into view; the final call to
+   action tightens from wide uppercase. Browsers without scroll-driven
+   animations simply show the finished state. */
+@supports (animation-timeline: view()) {
+  @keyframes minimal-ink-fill {
+    to {
+      background-position: 0 0;
+    }
+  }
+  [data-theme='minimal'] .landing h2[class] {
+    background-image: linear-gradient(90deg, rgb(var(--pv-ink)) 50%, rgb(17 17 17 / 0.22) 50%);
+    background-size: 200% 100%;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: minimal-ink-fill linear both;
+    animation-timeline: view();
+    animation-range: entry 20% cover 45%;
+  }
+
+  @keyframes minimal-tighten {
+    from {
+      letter-spacing: 0.08em;
+      opacity: 0.35;
+    }
+    to {
+      letter-spacing: -0.04em;
+      opacity: 1;
+    }
+  }
+  [data-theme='minimal'] .landing section[aria-label='Get started'] h2 {
+    text-transform: uppercase;
+    animation:
+      minimal-ink-fill linear both,
+      minimal-tighten linear both;
+    animation-timeline: view(), view();
+    animation-range:
+      entry 10% cover 40%,
+      entry 0% cover 45%;
+  }
+}
+
+/* ── The sun scene (hero stage, CTA band, sign-in panel) ──────────────────── */
+
+.sun-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Feathered top edge, so the scene never shows a hard line. */
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 22%);
+}
+.sun-scene__sun {
+  position: absolute;
+  left: 50%;
+  bottom: -6%;
+  width: min(48vw, 430px);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 50% 38%,
+    #fde3df 0%,
+    #f7b2a8 34%,
+    #ee8a7c 64%,
+    #e8705f 100%
+  );
+  box-shadow:
+    0 0 80px 10px rgb(246 182 176 / 0.55),
+    0 0 180px 40px rgb(253 232 228 / 0.7);
+  transform: translate(-50%, 0);
+  animation:
+    sun-rise 2.2s var(--pv-ease) both,
+    sun-breathe 7s ease-in-out 2.2s infinite;
+}
+@keyframes sun-rise {
+  from {
+    transform: translate(-50%, 55%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+@keyframes sun-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 80px 10px rgb(246 182 176 / 0.55),
+      0 0 180px 40px rgb(253 232 228 / 0.7);
+  }
+  50% {
+    box-shadow:
+      0 0 110px 22px rgb(246 182 176 / 0.7),
+      0 0 220px 60px rgb(253 232 228 / 0.8);
+  }
+}
+
+/* The rocket's vapour trail: it draws upward once, then shimmers. */
+.sun-scene__trail {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 46px;
+  height: 92%;
+  translate: -50% 0;
+  border-radius: 9999px 9999px 0 0;
+  background: linear-gradient(
+    to top,
+    rgb(255 255 255 / 0.95) 0%,
+    rgb(255 255 255 / 0.85) 45%,
+    rgb(255 255 255 / 0) 100%
+  );
+  filter: blur(3px);
+  transform-origin: bottom;
+  animation: trail-draw 2.4s 0.5s var(--pv-ease) both;
+}
+.sun-scene__trail::after {
+  content: '';
+  position: absolute;
+  inset: 0 30%;
+  border-radius: inherit;
+  background: linear-gradient(to top, transparent, rgb(255 255 255), transparent);
+  background-size: 100% 40%;
+  background-repeat: no-repeat;
+  animation: trail-shimmer 3.5s 2.6s linear infinite;
+}
+@keyframes trail-draw {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes trail-shimmer {
+  from {
+    background-position: 0 110%;
+  }
+  to {
+    background-position: 0 -40%;
+  }
+}
+
+/* Clouds: soft SVG puffs that drift sideways forever. */
+.sun-cloud {
+  position: absolute;
+  aspect-ratio: 2 / 1;
+  background: no-repeat center / contain;
+  animation: cloud-drift var(--dur, 16s) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+}
+.sun-cloud--pink {
+  background-image: url('/images/themes/minimal/cloud-pink.svg');
+}
+.sun-cloud--sage {
+  background-image: url('/images/themes/minimal/cloud-sage.svg');
+}
+.sun-cloud--white {
+  background-image: url('/images/themes/minimal/cloud-white.svg');
+}
+@keyframes cloud-drift {
+  from {
+    transform: translateX(calc(var(--dx, 24px) * -1));
+  }
+  to {
+    transform: translateX(var(--dx, 24px));
+  }
+}
+
+/* Scroll parallax: the sun sinks and the near clouds rise as you scroll on. */
+@supports (animation-timeline: scroll()) {
+  @keyframes sun-sink {
+    to {
+      translate: 0 140px;
+    }
+  }
+  @keyframes cloud-rise {
+    to {
+      translate: 0 calc(var(--rise, 60px) * -1);
+    }
+  }
+  .sun-scene--hero .sun-scene__sun {
+    animation:
+      sun-rise 2.2s var(--pv-ease) both,
+      sun-breathe 7s ease-in-out 2.2s infinite,
+      sun-sink linear both;
+    animation-timeline: auto, auto, scroll(root);
+    animation-range:
+      normal,
+      normal,
+      0 90vh;
+  }
+  .sun-scene--hero .sun-cloud {
+    animation:
+      cloud-drift var(--dur, 16s) ease-in-out var(--delay, 0s) infinite alternate,
+      cloud-rise linear both;
+    animation-timeline: auto, scroll(root);
+    animation-range:
+      normal,
+      0 90vh;
+  }
+}
+
+/* ── Floating portraits around "Any team that lives on the phone" ────────── */
+
+.float-portraits {
+  position: absolute;
+  inset: -40px 0 auto;
+  height: 420px;
+  pointer-events: none;
+}
+.float-portrait {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 4px solid white;
+  box-shadow: 0 18px 40px -20px rgb(17 17 17 / 0.4);
+  animation: portrait-float var(--dur, 7s) ease-in-out var(--delay, 0s) infinite alternate;
+}
+@keyframes portrait-float {
+  from {
+    transform: translateY(-8px) rotate(var(--tilt, 0deg));
+  }
+  to {
+    transform: translateY(8px) rotate(calc(var(--tilt, 0deg) * -1));
+  }
+}
+@supports (animation-timeline: view()) {
+  @keyframes portrait-parallax {
+    from {
+      translate: 0 var(--px, 60px);
+      opacity: 0;
+    }
+    30% {
+      opacity: 1;
+    }
+    to {
+      translate: 0 calc(var(--px, 60px) * -1);
+    }
+  }
+  .float-portrait {
+    animation:
+      portrait-float var(--dur, 7s) ease-in-out var(--delay, 0s) infinite alternate,
+      portrait-parallax linear both;
+    animation-timeline: auto, view();
+    animation-range:
+      normal,
+      cover 0% cover 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='minimal'] .hero-word,
+  [data-theme='minimal'] .landing h2[class],
+  [data-theme='minimal'] .landing dl .glass-dark,
+  .sun-scene *,
+  .sun-scene *::after,
+  .float-portrait {
+    animation: none !important;
+  }
+  [data-theme='minimal'] .landing h2[class] {
+    color: rgb(var(--pv-ink));
+    background: none;
+  }
+}
+
+/* The agent-prompt glow is built from Tailwind's own violet and sky: coral and sage here. */
+[data-theme='minimal'] .landing .via-sky-400\/60 {
+  background-image: linear-gradient(90deg, #f09a8b, #b8d0ae, #f09a8b);
+}
+
+/* Phones: a bigger, higher sun so it clears the cloud bank and the voice bar. */
+@media (max-width: 640px) {
+  .sun-scene__sun {
+    width: 74vw;
+    bottom: 12%;
+  }
+}

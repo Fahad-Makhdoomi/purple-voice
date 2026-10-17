@@ -2,6 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Logo } from '@/components/brand/Logo';
 import { getAppearance } from '@/lib/server-api';
+import { SunScene } from '@/components/site/SunScene';
+import { cn } from '@/lib/cn';
 
 /** Split screen: form on the left, the theme's brand panel on the right. */
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -22,10 +24,20 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         <p className="text-xs text-muted">© {new Date().getFullYear()} Purple Voice</p>
       </div>
       <aside
-        className="relative isolate hidden overflow-hidden bg-night text-white lg:flex lg:flex-col lg:justify-end lg:p-14"
+        className={cn(
+          'relative isolate hidden overflow-hidden text-white lg:flex lg:flex-col lg:p-14',
+          // Minimal is light: `landing` lets light-landing.css invert the quote card.
+          theme === 'minimal'
+            ? 'landing bg-gradient-wash lg:justify-start'
+            : 'bg-night lg:justify-end',
+        )}
         aria-hidden="true"
       >
-        {theme === 'kawaii' ? (
+        {theme === 'minimal' ? (
+          <div className="absolute inset-x-0 bottom-0 -z-10 h-[70%]">
+            <SunScene variant="compact" />
+          </div>
+        ) : theme === 'kawaii' ? (
           <Image
             src="/images/themes/kawaii/twilight.webp"
             alt=""

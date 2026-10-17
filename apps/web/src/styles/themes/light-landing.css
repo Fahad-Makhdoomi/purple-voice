@@ -1,0 +1,111 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Light landing page — shared by the light themes (Kawaii, Minimal).
+
+   The home page is designed in black and white with hard-coded utilities
+   (bg-black, text-white/65, glass-dark, btn-white…). `.landing` marks it and
+   the floating header pill. A light theme inverts it here: ink on its canvas,
+   frosted cards, its own call-to-action pill. Each theme sets the
+   --pv-landing-* values below on [data-theme='…'] and adds its own flourishes
+   in its stylesheet; the default theme matches none of these rules.
+
+   Selectors match a class only at the start of the attribute or after a
+   space, so variant classes such as hover:bg-white/10 keep their own meaning.
+   When you add a colour utility to the home page, add its remap here.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:is([data-theme='kawaii'], [data-theme='minimal']) main > .landing.bg-black {
+  background: var(--pv-landing-bg);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing :is(h1, h2, h3) {
+  font-weight: var(--pv-landing-heading-weight);
+}
+
+/* Text: white → ink, translucent white → muted. */
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing [class^='text-white/'],
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing [class*=' text-white/'] {
+  color: rgb(var(--pv-muted));
+}
+/* Keep every :is() list to single classes: a pseudo-class inside one would raise
+   the specificity of all its members and beat the exceptions further down. */
+:is([data-theme='kawaii'], [data-theme='minimal'])
+  .landing
+  :is(.text-white, .text-white\/90, .text-white\/85, .text-white\/80),
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .hover\:text-white:hover {
+  color: rgb(var(--pv-ink));
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing :is(.text-white\/70, .text-white\/75) {
+  color: rgb(var(--pv-ink-soft));
+}
+/* Pale accents that only worked on black. */
+:is([data-theme='kawaii'], [data-theme='minimal'])
+  .landing
+  :is(.text-brand-200, .text-brand-300, .text-violet-200, .text-violet-300) {
+  color: rgb(var(--pv-violet-700));
+}
+:is([data-theme='kawaii'], [data-theme='minimal'])
+  .landing
+  :is(.text-emerald-100\/70, .text-emerald-200, .text-emerald-300, .text-emerald-400) {
+  color: rgb(var(--pv-success));
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .text-sky-300 {
+  color: #0369a1;
+}
+
+/* Surfaces. */
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing [class^='bg-white/'],
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing [class*=' bg-white/'] {
+  background-color: var(--pv-landing-tint);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing [class^='border-white/'],
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing [class*=' border-white/'],
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .divide-white\/10 > * + * {
+  border-color: var(--pv-landing-hairline);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing :is(.bg-black\/40, .bg-black\/80) {
+  background-color: rgb(255 255 255 / 0.78);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .bg-night {
+  background-color: white;
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing :is(.glass-dark, .glass) {
+  border-color: var(--pv-landing-card-border);
+  background-color: var(--pv-landing-card-bg);
+  background-image: var(--pv-landing-card-image);
+  box-shadow: var(--pv-landing-card-shadow);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .dot-grid {
+  background-image: radial-gradient(rgb(var(--pv-violet-400) / 0.35) 1.4px, transparent 1.6px);
+}
+/* Icon chips: white circles take the theme's chip colour; anything on a
+   coloured fill keeps white text. */
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .bg-white.rounded-full {
+  background: var(--pv-landing-chip-bg);
+  color: var(--pv-landing-chip-fg);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing :is(.bg-gradient-brand, .bg-ink) {
+  color: white;
+}
+
+/* Buttons: the white pill becomes the theme's call to action; the black pill
+   becomes a light secondary one. */
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .btn-white {
+  background: var(--pv-landing-cta-bg);
+  color: var(--pv-landing-cta-fg);
+  box-shadow: var(--pv-landing-cta-shadow);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .btn-white:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .btn-white .bg-black {
+  background: var(--pv-landing-cta-arrow-bg);
+  color: var(--pv-landing-cta-arrow-fg);
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .btn-dark {
+  border-color: var(--pv-landing-btn2-border);
+  background-color: var(--pv-landing-btn2-bg);
+  color: rgb(var(--pv-ink));
+}
+:is([data-theme='kawaii'], [data-theme='minimal']) .landing .btn-dark:hover {
+  background-color: white;
+}

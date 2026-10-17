@@ -558,7 +558,7 @@ export type AnalyticsSettings = z.infer<typeof analyticsSettingsSchema>;
  * sign-in pages — colours, type, shapes, imagery, decoration — never the
  * content, which every theme renders from the same components.
  */
-export const SITE_THEMES = ['default', 'kawaii'] as const;
+export const SITE_THEMES = ['default', 'kawaii', 'minimal'] as const;
 export type SiteTheme = (typeof SITE_THEMES)[number];
 
 export const SITE_THEME_INFO: Record<SiteTheme, { name: string; description: string }> = {
@@ -570,6 +570,11 @@ export const SITE_THEME_INFO: Record<SiteTheme, { name: string; description: str
     name: 'Kawaii',
     description:
       'A lone tree in a pastel sea, fluffy clouds, candy-coloured pills and Plus Jakarta Sans, with optional background music.',
+  },
+  minimal: {
+    name: 'Minimal',
+    description:
+      'Airy white and sage with coral accents, a sun rising through clouds, light Inter Tight type, black pills and scroll-driven motion.',
   },
 };
 

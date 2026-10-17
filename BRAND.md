@@ -261,6 +261,7 @@ the same components; a theme changes only colours, type, shapes, imagery and dec
 |---|---|---|
 | Purple Voice (`default`) | Everything above | `tokens.css` |
 | Kawaii (`kawaii`) | A looping video of a lone tree in a pastel sea (home hero, poster image under reduced motion), a hand-painted twilight valley (CTA band, sign-in), plum ink, candy-gradient pills, Plus Jakarta Sans, extra-round shapes, polka-dot bento art, drifting clouds, cloud-edged twilight footer, optional background music | `styles/themes/kawaii.css`, `public/images/themes/kawaii/`, `public/video/themes/kawaii/hero.mp4`, `public/audio/themes/kawaii.mp3` |
+| Minimal (`minimal`) | Warm white with a sage wash, near-black ink, coral and sage accents, light Inter Tight, black pills, hairline white cards. Home hero stage: a coral sun rising through pastel clouds with a vapour trail (`SunScene.tsx`, CSS only); words rise in, section headings fill with ink on scroll, the closing line tightens from wide uppercase, sage/coral fact tiles drift, portraits float around Use cases (Unsplash licence) | `styles/themes/minimal.css`, `components/site/SunScene.tsx`, `public/images/themes/minimal/` |
 
 How a theme works: `(site)/layout.tsx` and `(auth)/layout.tsx` set `data-theme` on their
 wrapper; the theme's stylesheet overrides tokens under `[data-theme='…']` (gradients,
@@ -271,9 +272,10 @@ sign-in panel), the component renders a theme variant from the same copy constan
 The home page is designed in black and white with hard-coded utilities (`bg-black`,
 `text-white/65`, `glass-dark`, `btn-white`…). Its wrapper and the floating header pill carry
 `.landing`, and a theme remaps those classes under `[data-theme='…'] .landing` — so the
-default black page is untouched and each theme inverts it in CSS (see the "landing page"
-block in `themes/kawaii.css`). Kawaii also skips the particle field and puts the tree video
-on the hero stage. When you add a colour utility to the home page, add its remap there.
+default black page is untouched and each light theme inverts it in CSS: the shared rules live in `themes/light-landing.css`,
+and each theme sets its `--pv-landing-*` values. Light themes skip the particle field and put
+their own scene on the hero stage (Kawaii the tree video, Minimal the sun). When you add a
+colour utility to the home page, add its remap to `light-landing.css`.
 
 To add a theme: add its id to `SITE_THEMES` and `SITE_THEME_INFO` in
 `packages/shared/src/schemas.ts`, create `styles/themes/<id>.css` and import it in

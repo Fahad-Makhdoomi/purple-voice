@@ -1,16 +1,22 @@
 import type { Metadata, Viewport } from 'next';
-import { Manrope, Plus_Jakarta_Sans } from 'next/font/google';
+import { Inter_Tight, Manrope, Plus_Jakarta_Sans } from 'next/font/google';
 import '@/styles/globals.css';
 import { siteUrl } from '@/lib/config';
 import { getSettings } from '@/lib/server-api';
 
 // Self-hosted at build time by next/font: no request to Google, no layout shift.
 const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', display: 'swap' });
-// The Kawaii theme's face. Not preloaded: browsers fetch it only on
-// pages that use it, so other themes pay nothing for it.
+// Theme faces (Kawaii, Minimal). Not preloaded: browsers fetch them only on
+// pages that use them, so other themes pay nothing for them.
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
   variable: '--font-jakarta',
+  display: 'swap',
+  preload: false,
+});
+const interTight = Inter_Tight({
+  subsets: ['latin'],
+  variable: '--font-inter-tight',
   display: 'swap',
   preload: false,
 });
@@ -45,7 +51,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${manrope.variable} ${jakarta.variable}`}>
+    <html lang="en" className={`${manrope.variable} ${jakarta.variable} ${interTight.variable}`}>
       <body>
         <a href="#main" className="skip-link">
           Skip to content
