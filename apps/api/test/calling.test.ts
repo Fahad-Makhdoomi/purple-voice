@@ -185,3 +185,49 @@ describe('incoming calls and call-backs', () => {
     expect(r.instructions).toContain('Act as customer care.');
   });
 });
+
+describe('personalised outbound calls', () => {
+  const agent = {
+    name: 'Ava',
+    systemPrompt: 'You are Ava.',
+    greeting: 'Hi {{first_name}}, is this {{business_name}}?',
+    goal: 'Pitch our service.',
+    knowledge: '',
+    language: 'en-US',
+    timezone: 'UTC',
+    inboundGreeting: '',
+    inboundInstructions: '',
+    callbackGreeting: '',
+    callbackInstructions: '',
+  } as Agent;
+  const contact = {
+    name: 'Priya Shah',
+    company: 'Shah Dental',
+    email: null,
+    notes: 'Opened two clinics this year',
+    fields: { industry: 'Dentistry', city: 'Pune' },
+  } as never;
+
+  it('hands the sheet details to the AI and fills them into the opening line', () => {
+    const r = buildInstructions({
+      agent,
+      contact,
+      workspace: { name: 'Northwind' },
+      toolNames: [],
+      call: { direction: 'OUTBOUND', fromNumber: '+1500', toNumber: '+1600' },
+    });
+    expect(r.greeting).toBe('Hi Priya, is this Shah Dental?');
+    expect(r.instructions).toContain('## About the person you are calling');
+    expect(r.instructions).toContain('- business: Shah Dental');
+    expect(r.instructions).toContain('- industry: Dentistry');
+    expect(r.instructions).toContain('- notes: Opened two clinics this year');
+  });
+
+  it('reads business and contact names from common sheet headings', async () => {
+    const { contactIdentity } = await import('../src/lib/csv');
+    expect(contactIdentity({ business_name: 'Acme', first_name: 'Ana', last_name: 'Lee' })).toEqual({
+      name: 'Ana Lee',
+      company: 'Acme',
+    });
+  });
+});

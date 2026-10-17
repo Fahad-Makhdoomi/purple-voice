@@ -16,7 +16,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { audit } from '../../lib/audit';
 import { badRequest, notFound } from '../../lib/http-error';
-import { parseCsv, toE164 } from '../../lib/csv';
+import { contactIdentity, parseCsv, toE164 } from '../../lib/csv';
 import { wsId } from '../../middleware/workspace';
 import {
   entitlementsFor,
@@ -237,11 +237,12 @@ campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res
     if (!phone) return invalid.push({ row: idx + 2, reason: `Invalid phone "${rawPhone}"` });
     if (seen.has(phone)) return;
     seen.add(phone);
+    const identity = contactIdentity(row);
     const parsed = contactSchema.safeParse({
       phone,
-      name: (row.name ?? row.full_name) || undefined,
+      name: identity.name,
       email: row.email || undefined,
-      company: row.company || undefined,
+      company: identity.company,
       notes: row.notes || undefined,
     });
     if (!parsed.success)

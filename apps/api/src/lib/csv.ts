@@ -63,3 +63,48 @@ export function toE164(raw: string, defaultCountryCode = '1'): string | null {
   else e164 = `+${digits}`;
   return /^\+[1-9]\d{6,14}$/.test(e164) ? e164 : null;
 }
+
+const NAME_KEYS = [
+  'name',
+  'full_name',
+  'contact_name',
+  'person_name',
+  'contact',
+  'customer_name',
+  'lead_name',
+];
+const COMPANY_KEYS = [
+  'company',
+  'company_name',
+  'business',
+  'business_name',
+  'organization',
+  'organisation',
+  'organization_name',
+  'account_name',
+];
+
+const firstFilled = (row: Record<string, unknown>, keys: string[]) => {
+  for (const k of keys) {
+    const v = String(row[k] ?? '').trim();
+    if (v) return v;
+  }
+  return undefined;
+};
+
+/**
+ * Picks the person's name and business name out of a contact row, accepting
+ * the usual spreadsheet headings ("Business Name", "Contact Name", or
+ * separate "First Name" / "Last Name" columns).
+ */
+export function contactIdentity(row: Record<string, unknown>): {
+  name?: string;
+  company?: string;
+} {
+  const first = String(row.first_name ?? '').trim();
+  const last = String(row.last_name ?? '').trim();
+  return {
+    name: firstFilled(row, NAME_KEYS) ?? ([first, last].filter(Boolean).join(' ') || undefined),
+    company: firstFilled(row, COMPANY_KEYS),
+  };
+}

@@ -19,9 +19,13 @@ export function contactVariables(
     first_name: contact?.name?.split(' ')[0] ?? '',
     company: contact?.company ?? '',
     email: contact?.email ?? '',
+    notes: contact?.notes ?? '',
     phone: call.direction === 'OUTBOUND' ? call.toNumber : call.fromNumber,
   };
   for (const [k, v] of Object.entries(fields)) vars[k.toLowerCase()] = String(v ?? '');
+  // So {{business_name}} and {{contact_name}} work whatever the sheet's headings were.
+  for (const k of ['business_name', 'company_name', 'business']) vars[k] ||= vars.company;
+  vars.contact_name ||= vars.name;
   return vars;
 }
 
@@ -95,6 +99,21 @@ export function buildInstructions(input: {
           .filter(Boolean)
           .join('\n\n');
 
+  const SHOWN_ELSEWHERE = new Set(['name', 'first_name', 'company', 'phone', 'notes']);
+  const details = Object.entries(vars)
+    .filter(([k, v]) => v && !SHOWN_ELSEWHERE.has(k) && v !== vars.name && v !== vars.company)
+    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+  if (vars.notes) details.unshift(`notes: ${vars.notes}`);
+  const personalise =
+    kind === 'outbound' && (vars.name || vars.company || details.length)
+      ? '## About the person you are calling\n' +
+        'This call is personalised: tailor your opening, examples and pitch to this person and their business using the details below. Use their name naturally and mention their business where it fits. Never invent facts about them that are not listed here.\n' +
+        [vars.name && `name: ${vars.name}`, vars.company && `business: ${vars.company}`, ...details]
+          .filter(Boolean)
+          .map((l) => `- ${l}`)
+          .join('\n')
+      : '';
+
   const who = vars.name ? `${vars.name}${vars.company ? ` from ${vars.company}` : ''}` : '';
   const thisCall =
     kind === 'outbound'
@@ -115,6 +134,7 @@ export function buildInstructions(input: {
   const sections = [
     fillVariables(agent.systemPrompt, vars),
     purpose,
+    personalise,
     agent.knowledge && `## Reference knowledge\n${fill(agent.knowledge)}`,
     `## This call\n` +
       [
@@ -123,9 +143,7 @@ export function buildInstructions(input: {
         `It is now ${describe(new Date(), tz)} (${tz}).`,
         greeting &&
           `You have already ${kind === 'outbound' ? 'opened' : 'answered'} the call by saying: "${greeting}"`,
-        ...Object.entries(vars)
-          .filter(([k, v]) => v && !['name', 'first_name', 'company', 'phone'].includes(k))
-          .map(([k, v]) => `${k}: ${v}`),
+        ...(kind === 'outbound' ? [] : details),
       ]
         .filter(Boolean)
         .join('\n'),
