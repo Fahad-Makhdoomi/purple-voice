@@ -45,8 +45,8 @@ export function Header() {
   // The all-black home page gets a floating glass pill instead of a full-width bar.
   if (darkTop) {
     return (
-      <header className="fixed inset-x-0 top-3 z-50 px-3 sm:top-4">
-        <div className="mx-auto max-w-[920px] rounded-[28px] border border-white/15 bg-black/40 backdrop-blur-2xl backdrop-saturate-150">
+      <header className="landing fixed inset-x-0 top-3 z-50 px-3 sm:top-4">
+        <div className="landing-pill mx-auto max-w-[920px] rounded-[28px] border border-white/15 bg-black/40 backdrop-blur-2xl backdrop-saturate-150">
           <div className="flex h-14 items-center justify-between gap-3 pl-5 pr-2">
             <Link href="/" aria-label="Purple Voice home">
               <Logo tone="light" />

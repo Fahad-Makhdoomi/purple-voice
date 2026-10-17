@@ -265,8 +265,15 @@ the same components; a theme changes only colours, type, shapes, imagery and dec
 How a theme works: `(site)/layout.tsx` and `(auth)/layout.tsx` set `data-theme` on their
 wrapper; the theme's stylesheet overrides tokens under `[data-theme='…']` (gradients,
 shadows and the font must be redefined there too, because they are computed where they are
-declared). Where a token can't express the look (the home hero, the CTA band, the sign-in
-panel), the component renders a theme variant from the same copy constants.
+declared). Where a token can't express the look (the home hero's stage, the CTA band, the
+sign-in panel), the component renders a theme variant from the same copy constants.
+
+The home page is designed in black and white with hard-coded utilities (`bg-black`,
+`text-white/65`, `glass-dark`, `btn-white`…). Its wrapper and the floating header pill carry
+`.landing`, and a theme remaps those classes under `[data-theme='…'] .landing` — so the
+default black page is untouched and each theme inverts it in CSS (see the "landing page"
+block in `themes/kawaii.css`). Kawaii also skips the particle field and puts the tree video
+on the hero stage. When you add a colour utility to the home page, add its remap there.
 
 To add a theme: add its id to `SITE_THEMES` and `SITE_THEME_INFO` in
 `packages/shared/src/schemas.ts`, create `styles/themes/<id>.css` and import it in

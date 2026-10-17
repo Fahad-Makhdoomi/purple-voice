@@ -46,7 +46,11 @@ export function ThemeMusic({ src }: { src: string }) {
         className="theme-music fixed bottom-5 left-5 z-40 inline-flex h-11 items-center gap-2 rounded-pill border border-white bg-white/80 pl-3 pr-4 text-[13px] font-bold text-brand-700 shadow-lg backdrop-blur-md transition hover:bg-white"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-brand text-white">
-          {playing ? <Pause size={14} aria-hidden="true" /> : <Music2 size={14} aria-hidden="true" />}
+          {playing ? (
+            <Pause size={14} aria-hidden="true" />
+          ) : (
+            <Music2 size={14} aria-hidden="true" />
+          )}
         </span>
         <span className="flex h-4 items-end gap-[3px]" aria-hidden="true">
           {[0, 1, 2, 3].map((i) => (

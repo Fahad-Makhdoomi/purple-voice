@@ -21,20 +21,26 @@ import { siteUrl } from '@/lib/config';
 
 export const revalidate = 3600;
 
-const PROVIDERS = [
-  'Twilio',
-  'Plivo',
-  'SuperPhone',
-  'OpenAI',
-  'Claude',
-  'Gemini',
+const CAPABILITIES = [
+  'Inbound & outbound',
+  'Appointment booking',
+  'Live transfer',
+  'Call summaries',
   'Google Calendar',
+  'Webhooks & API',
+  'Campaigns',
 ];
 
 export default async function HomePage() {
-  const [plans, faqs, { seo }] = await Promise.all([getPlans(), getFaqs(), getSettings()]);
+  const [plans, faqs, { seo, appearance }] = await Promise.all([
+    getPlans(),
+    getFaqs(),
+    getSettings(),
+  ]);
+  const kawaii = appearance.theme === 'kawaii';
   return (
-    <div className="relative isolate overflow-x-clip bg-black">
+    // `landing` scopes the theme stylesheets' remaps of this page's black-and-white palette.
+    <div className="landing relative isolate overflow-x-clip bg-black">
       <JsonLd
         data={{
           '@context': 'https://schema.org',
@@ -54,20 +60,21 @@ export default async function HomePage() {
             })),
         }}
       />
-      <ParticleField />
+      {/* Kawaii paints its own sky; the particle sculpture is the default theme's. */}
+      {!kawaii && <ParticleField />}
       <ScrollProgress />
-      <Hero />
+      <Hero theme={appearance.theme} />
 
-      <section aria-label="Supported providers" className="py-8 text-white">
+      <section aria-label="What every agent can do" className="py-8 text-white">
         <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
-          Your numbers, leading AI
+          Your numbers, every call handled
         </p>
         <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
           <ul className="flex w-max animate-marquee gap-14 pr-14 hover:[animation-play-state:paused]">
-            {[...PROVIDERS, ...PROVIDERS].map((p, i) => (
+            {[...CAPABILITIES, ...CAPABILITIES].map((p, i) => (
               <li
                 key={i}
-                aria-hidden={i >= PROVIDERS.length}
+                aria-hidden={i >= CAPABILITIES.length}
                 className="whitespace-nowrap text-xl font-semibold tracking-tight text-white/45 transition hover:text-white"
               >
                 {p}

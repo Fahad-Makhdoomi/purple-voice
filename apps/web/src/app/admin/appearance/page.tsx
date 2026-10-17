@@ -2,12 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Check, ExternalLink } from 'lucide-react';
-import {
-  SITE_THEME_INFO,
-  SITE_THEMES,
-  type AppearanceSettings,
-  type SiteTheme,
-} from '@pv/shared';
+import { SITE_THEME_INFO, SITE_THEMES, type AppearanceSettings, type SiteTheme } from '@pv/shared';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { cn } from '@/lib/cn';
@@ -26,7 +21,10 @@ const PREVIEWS: Record<SiteTheme, React.ReactNode> = {
   kawaii: (
     <div
       className="relative h-full overflow-hidden bg-cover bg-bottom"
-      style={{ backgroundImage: 'url(/images/themes/kawaii/hero.webp)', backgroundColor: '#f6dff0' }}
+      style={{
+        backgroundImage: 'url(/images/themes/kawaii/hero.webp)',
+        backgroundColor: '#f6dff0',
+      }}
     >
       <div className="absolute left-1/2 top-[18%] h-2 w-1/2 -translate-x-1/2 rounded-pill bg-[#3b2257]/80" />
       <div className="absolute left-1/2 top-[30%] h-1.5 w-1/3 -translate-x-1/2 rounded-pill bg-[#3b2257]/40" />

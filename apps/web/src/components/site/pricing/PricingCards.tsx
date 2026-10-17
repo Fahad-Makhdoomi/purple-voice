@@ -148,8 +148,7 @@ export function PricingCards({
 export function PhoneBillingNote({ tone = 'light' }: { tone?: Tone }) {
   return (
     <p className={cn('mt-8 text-center text-sm', tone === 'dark' ? 'text-white/45' : 'text-muted')}>
-      Phone number rental is billed separately by your carrier (Twilio, Plivo or SuperPhone) and is
-      not included in any plan. AI model usage is billed by your AI provider on your own key.
+      Phone number rental and AI usage are billed separately and are not included in any plan.
     </p>
   );
 }

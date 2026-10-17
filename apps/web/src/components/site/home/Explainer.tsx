@@ -23,7 +23,7 @@ const POINTS = [
   {
     icon: Users,
     title: 'You bring the leads',
-    body: 'Upload a contact list or answer inbound calls on your own Twilio, Plivo or SuperPhone number.',
+    body: 'Upload a contact list or answer inbound calls on the phone number you already have.',
   },
   {
     icon: PhoneForwarded,

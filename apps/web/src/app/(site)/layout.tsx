@@ -17,9 +17,11 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   return (
     <div data-theme={theme} className="site-theme">
       <noscript>
-        <style>{'.reveal{opacity:1!important;transform:none!important;filter:none!important}'}</style>
+        <style>
+          {'.reveal{opacity:1!important;transform:none!important;filter:none!important}'}
+        </style>
       </noscript>
-      <Header theme={theme} />
+      <Header />
       <main id="main">{children}</main>
       <Footer />
       {music && <ThemeMusic src={music} />}

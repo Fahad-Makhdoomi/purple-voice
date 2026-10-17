@@ -18,7 +18,7 @@ const STEPS = [
   {
     icon: Bot,
     title: 'Connect a number, build your agent',
-    body: 'Add your Twilio, Plivo or SuperPhone number, write what your agent should say, and test it on your own phone.',
+    body: 'Connect the phone number you already use, write what your agent should say, and test it on your own phone.',
     time: '10 min',
   },
   {

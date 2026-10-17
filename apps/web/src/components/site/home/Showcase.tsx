@@ -100,13 +100,7 @@ function AgentMock() {
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {[
-          'Goal: book consult',
-          'Tone: warm',
-          'English (US)',
-          'Voice: Ava',
-          'Model: GPT Realtime',
-        ].map((t) => (
+        {['Goal: book consult', 'Tone: warm', 'English (US)', 'Voice: Ava'].map((t) => (
           <span
             key={t}
             className="rounded-pill border border-white/10 bg-white/[0.06] px-3 py-1 text-[11px] text-white/70"

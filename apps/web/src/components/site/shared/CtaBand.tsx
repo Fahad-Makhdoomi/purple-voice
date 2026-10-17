@@ -41,7 +41,9 @@ export async function CtaBand({
           }
         >
           <h2 className="mx-auto max-w-2xl text-h1 text-white">{title}</h2>
-          <p className={`mx-auto mt-4 max-w-xl text-lead ${kawaii ? 'text-white/90' : 'text-white/65'}`}>
+          <p
+            className={`mx-auto mt-4 max-w-xl text-lead ${kawaii ? 'text-white/90' : 'text-white/65'}`}
+          >
             {body}
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">

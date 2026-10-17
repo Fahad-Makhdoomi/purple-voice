@@ -60,8 +60,7 @@
   --pv-shadow:
     0 2px 4px rgb(var(--pv-violet-500) / 0.06), 0 16px 36px -18px rgb(var(--pv-violet-700) / 0.28);
   --pv-shadow-lg: 0 30px 70px -30px rgb(var(--pv-violet-700) / 0.4);
-  --pv-glow:
-    0 0 0 1px rgb(255 255 255 / 0.6), 0 10px 30px -8px rgb(var(--pv-pink-300) / 0.9);
+  --pv-glow: 0 0 0 1px rgb(255 255 255 / 0.6), 0 10px 30px -8px rgb(var(--pv-pink-300) / 0.9);
 
   --pv-gradient-brand: linear-gradient(135deg, #ff8fc7 0%, #b67cf5 100%);
   --pv-gradient-pastel: linear-gradient(
@@ -76,7 +75,11 @@
     radial-gradient(55% 60% at 88% 12%, rgb(var(--pv-periwinkle-200) / 0.95), transparent 70%),
     radial-gradient(70% 80% at 40% 100%, rgb(255 225 199 / 0.85), transparent 70%),
     linear-gradient(rgb(var(--pv-canvas)), rgb(var(--pv-canvas)));
-  --pv-gradient-stat: linear-gradient(160deg, rgb(var(--pv-pink-100)) 0%, rgb(var(--pv-violet-200)) 100%);
+  --pv-gradient-stat: linear-gradient(
+    160deg,
+    rgb(var(--pv-pink-100)) 0%,
+    rgb(var(--pv-violet-200)) 100%
+  );
   --pv-gradient-neon: conic-gradient(from 200deg, #ff8fc7, #ffd59e, #a8f0d8, #b9c6ff, #ff8fc7);
 
   background-color: rgb(var(--pv-canvas));
@@ -100,18 +103,6 @@
   padding: 0.35rem 0.85rem;
   letter-spacing: 0.08em;
   color: rgb(var(--pv-violet-700));
-}
-
-/* "How it works": big candy numerals. */
-[data-theme='kawaii'] .step-num {
-  display: block;
-  font-size: 3.75rem;
-  font-weight: 800;
-  line-height: 1;
-  background: var(--pv-gradient-brand);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
@@ -160,26 +151,11 @@
     transform: translateX(130vw);
   }
 }
-@keyframes kawaii-twinkle {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8) rotate(0deg);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1) rotate(20deg);
-  }
-}
-
-[data-theme='kawaii'] .kawaii-twinkle {
-  animation: kawaii-twinkle 3.2s ease-in-out infinite;
-  filter: drop-shadow(0 0 6px rgb(255 255 255 / 0.9));
-}
-
-/* Clouds drifting through page intros. */
+/* Clouds drifting through page intros and across the landing page. */
 [data-theme='kawaii'] .page-intro::before,
-[data-theme='kawaii'] .page-intro::after {
+[data-theme='kawaii'] .page-intro::after,
+[data-theme='kawaii'] main > .landing::before,
+[data-theme='kawaii'] main > .landing::after {
   content: '';
   position: absolute;
   z-index: -1;
@@ -202,6 +178,153 @@
   opacity: 0.75;
   animation-duration: 95s;
   animation-delay: -60s;
+}
+[data-theme='kawaii'] main > .landing::before {
+  top: 1400px;
+  animation-delay: -35s;
+}
+[data-theme='kawaii'] main > .landing::after {
+  top: 3600px;
+  width: 260px;
+  height: 130px;
+  animation-duration: 110s;
+  animation-delay: -10s;
+}
+
+/* ── The landing page ─────────────────────────────────────────────────────────
+   The home page is designed in black and white (`.landing` marks it and the
+   floating header pill). Kawaii inverts it to plum on pastel. Selectors match
+   a class only at the start of the attribute or after a space, so variant
+   classes such as hover:bg-white/10 keep their own meaning. */
+
+[data-theme='kawaii'] main > .landing.bg-black {
+  background:
+    radial-gradient(70% 40% at 15% 8%, rgb(255 214 236 / 0.9), transparent 70%),
+    radial-gradient(60% 35% at 90% 30%, rgb(var(--pv-periwinkle-200) / 0.8), transparent 70%),
+    radial-gradient(70% 30% at 30% 62%, rgb(255 225 199 / 0.7), transparent 70%),
+    radial-gradient(60% 30% at 85% 88%, rgb(255 214 236 / 0.8), transparent 70%),
+    rgb(var(--pv-canvas));
+}
+[data-theme='kawaii'] .landing h1,
+[data-theme='kawaii'] .landing h2,
+[data-theme='kawaii'] .landing h3 {
+  font-weight: 700;
+}
+
+/* Text: white → plum ink, translucent white → softer plum. */
+[data-theme='kawaii'] .landing [class^='text-white/'],
+[data-theme='kawaii'] .landing [class*=' text-white/'] {
+  color: rgb(var(--pv-muted));
+}
+[data-theme='kawaii'] .landing .text-white,
+[data-theme='kawaii'] .landing .hover\:text-white:hover,
+[data-theme='kawaii'] .landing .text-white\/90,
+[data-theme='kawaii'] .landing .text-white\/85,
+[data-theme='kawaii'] .landing .text-white\/80,
+[data-theme='kawaii'] .landing .text-white\/75,
+[data-theme='kawaii'] .landing .text-white\/70 {
+  color: rgb(var(--pv-ink));
+}
+[data-theme='kawaii'] .landing .text-white\/70,
+[data-theme='kawaii'] .landing .text-white\/75 {
+  color: rgb(var(--pv-ink-soft));
+}
+/* Pastel accents that only worked on black. */
+[data-theme='kawaii'] .landing .text-brand-200,
+[data-theme='kawaii'] .landing .text-brand-300,
+[data-theme='kawaii'] .landing .text-violet-200,
+[data-theme='kawaii'] .landing .text-violet-300 {
+  color: rgb(var(--pv-violet-700));
+}
+[data-theme='kawaii'] .landing .text-emerald-100\/70,
+[data-theme='kawaii'] .landing .text-emerald-200,
+[data-theme='kawaii'] .landing .text-emerald-300,
+[data-theme='kawaii'] .landing .text-emerald-400 {
+  color: rgb(var(--pv-success));
+}
+[data-theme='kawaii'] .landing .text-sky-300 {
+  color: #0369a1;
+}
+
+/* Surfaces. */
+[data-theme='kawaii'] .landing [class^='bg-white/'],
+[data-theme='kawaii'] .landing [class*=' bg-white/'] {
+  background-color: rgb(var(--pv-violet-500) / 0.08);
+}
+[data-theme='kawaii'] .landing [class^='border-white/'],
+[data-theme='kawaii'] .landing [class*=' border-white/'] {
+  border-color: rgb(var(--pv-violet-500) / 0.18);
+}
+[data-theme='kawaii'] .landing .divide-white\/10 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(var(--pv-violet-500) / 0.18);
+}
+[data-theme='kawaii'] .landing .bg-black\/40,
+[data-theme='kawaii'] .landing .bg-black\/80 {
+  background-color: rgb(255 255 255 / 0.75);
+}
+[data-theme='kawaii'] .landing .bg-night {
+  background-color: white;
+}
+[data-theme='kawaii'] .landing .glass-dark,
+[data-theme='kawaii'] .landing .glass {
+  border-color: rgb(255 255 255 / 0.9);
+  background-color: rgb(255 255 255 / 0.55);
+  background-image: linear-gradient(
+    160deg,
+    rgb(255 255 255 / 0.85) 0%,
+    rgb(255 255 255 / 0.6) 45%,
+    rgb(var(--pv-pink-100) / 0.55) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    0 24px 50px -28px rgb(var(--pv-violet-700) / 0.35);
+}
+[data-theme='kawaii'] .landing .dot-grid {
+  background-image: radial-gradient(rgb(var(--pv-violet-400) / 0.35) 1.4px, transparent 1.6px);
+}
+[data-theme='kawaii'] .landing .text-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    rgb(var(--pv-violet-700)) 20%,
+    #ff8fc7 40%,
+    rgb(var(--pv-violet-500)) 55%,
+    rgb(var(--pv-violet-800)) 80%
+  );
+}
+/* Icon chips: white circles become candy-gradient ones; anything on a
+   coloured fill keeps white text. */
+[data-theme='kawaii'] .landing .bg-white.rounded-full {
+  background: var(--pv-gradient-brand);
+  color: white;
+}
+[data-theme='kawaii'] .landing .bg-gradient-brand,
+[data-theme='kawaii'] .landing .bg-ink {
+  color: white;
+}
+
+/* Buttons: white pill → candy pill, black pill → frosted white. */
+[data-theme='kawaii'] .landing .btn-white {
+  background: var(--pv-gradient-brand);
+  color: white;
+  box-shadow:
+    0 10px 30px -8px rgb(255 143 199 / 0.85),
+    0 0 0 4px rgb(255 255 255 / 0.6);
+}
+[data-theme='kawaii'] .landing .btn-white:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+[data-theme='kawaii'] .landing .btn-white .bg-black {
+  background: white;
+  color: rgb(var(--pv-violet-700));
+}
+[data-theme='kawaii'] .landing .btn-dark {
+  border-color: white;
+  background-color: rgb(255 255 255 / 0.7);
+  color: rgb(var(--pv-ink));
+}
+[data-theme='kawaii'] .landing .btn-dark:hover {
+  background-color: white;
 }
 
 /* A row of cloud puffs where the page meets the twilight footer. */
@@ -241,7 +364,8 @@
 @media (prefers-reduced-motion: reduce) {
   [data-theme='kawaii'] .page-intro::before,
   [data-theme='kawaii'] .page-intro::after,
-  [data-theme='kawaii'] .kawaii-twinkle {
+  [data-theme='kawaii'] main > .landing::before,
+  [data-theme='kawaii'] main > .landing::after {
     animation: none;
   }
 }

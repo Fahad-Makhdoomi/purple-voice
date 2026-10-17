@@ -15,7 +15,7 @@ const ITEMS = [
   {
     icon: PlugZap,
     title: 'Your numbers, your AI',
-    body: 'Bring Twilio, Plivo or SuperPhone, and run on OpenAI, Gemini or Claude, with keys you control.',
+    body: 'Calls run on the phone numbers you already own, and every credential stays encrypted and under your control.',
   },
   {
     icon: KeyRound,

@@ -2,8 +2,8 @@ import { CountUp, Reveal } from '@/components/site/motion';
 
 const STATS = [
   { value: 24, suffix: '/7', label: 'Calling, with no breaks or holidays' },
-  { value: 3, label: 'Phone carriers supported: Twilio, Plivo, SuperPhone' },
-  { value: 3, label: 'AI engines to choose from: OpenAI, Gemini, Claude' },
+  { value: 3, label: 'Phone providers supported — keep the number you have' },
+  { value: 3, label: 'Voice engines tuned for natural conversation' },
   { value: 1000, suffix: '+', label: 'Call minutes included from $19 a month' },
 ];
 
