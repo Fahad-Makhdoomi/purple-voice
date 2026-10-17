@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { CalendarCheck } from 'lucide-react';
+import { CalendarCheck, PhoneOff } from 'lucide-react';
+import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useSession } from '@/lib/session';
-import { Loading, PageHeader, Section, StatusBadge } from '@/components/ui';
+import { Loading, PageHeader, Section, StatusBadge, useAction } from '@/components/ui';
 import { formatDateTime, formatDuration, humanize } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
@@ -50,7 +51,8 @@ function sentimentLabel(s: number | null) {
 export default function CallPage() {
   const { id } = useParams<{ id: string }>();
   const { me } = useSession();
-  const { data } = useApi<CallDetail>(`/app/calls/${id}`);
+  const { data, reload } = useApi<CallDetail>(`/app/calls/${id}`);
+  const { busy, run } = useAction();
   if (!data) return <Loading />;
   const { call } = data;
   const other = call.direction === 'OUTBOUND' ? call.toNumber : call.fromNumber;
@@ -183,6 +185,23 @@ export default function CallPage() {
                 </dd>
               </div>
             </dl>
+            {['QUEUED', 'RINGING', 'IN_PROGRESS'].includes(call.status) && (
+              <button
+                type="button"
+                className="btn mt-4 inline-flex w-full items-center justify-center gap-2 text-danger"
+                disabled={busy}
+                onClick={() => {
+                  if (!window.confirm('End this call now?')) return;
+                  void run(async () => {
+                    await api(`/app/calls/${call.id}/end`, { method: 'POST' });
+                    await reload();
+                  }, 'Call ended');
+                }}
+              >
+                <PhoneOff size={16} aria-hidden="true" />
+                End call
+              </button>
+            )}
             {call.errorMessage && (
               <p className="mt-4 rounded-sm bg-danger/5 px-3 py-2 text-xs text-danger">
                 {call.errorMessage}

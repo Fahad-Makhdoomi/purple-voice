@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { badRequest, notFound, planLimit } from '../lib/http-error';
 import { signedCallbackUrl } from '../lib/signed-url';
-import { adapterForNumber } from '../telephony';
+import { adapterForAccount, adapterForNumber } from '../telephony';
 import { emitEvent } from '../events';
 import { canStartCall, getEntitlements, recordUsage } from './entitlements';
 import { summarizeCall, type TranscriptLine } from './ai/summarize';
@@ -112,6 +112,32 @@ export async function applyCallStatus(
     },
   });
   if (isTerminal(next)) setTimeout(() => void finalizeCall(callId), FINALIZE_DELAY_MS);
+}
+
+/**
+ * Ends a call that is stuck: asks the carrier to hang up (best effort), then
+ * closes the row ourselves so it stops counting as live and gets finalised.
+ * A call nobody answered is CANCELED; one that connected is COMPLETED.
+ */
+export async function forceEndCall(workspaceId: string, callId: string): Promise<Call> {
+  const call = await prisma.call.findFirst({
+    where: { id: callId, workspaceId },
+    include: { phoneNumber: { include: { telephonyAccount: true } } },
+  });
+  if (!call) throw notFound('Call');
+  if (isTerminal(call.status)) throw badRequest('This call has already ended');
+
+  if (call.providerCallId && call.phoneNumber) {
+    await adapterForAccount(call.phoneNumber.telephonyAccount)
+      .hangup(call.providerCallId)
+      .catch((err) => logger.warn({ err, callId }, 'Carrier hangup failed during force end'));
+  }
+  await prisma.call.updateMany({
+    where: { id: callId, endReason: null },
+    data: { endReason: 'force_ended' },
+  });
+  await applyCallStatus(callId, call.answeredAt ? 'COMPLETED' : 'CANCELED');
+  return prisma.call.findUniqueOrThrow({ where: { id: callId } });
 }
 
 function contactStatusFor(

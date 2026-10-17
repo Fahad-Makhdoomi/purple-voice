@@ -8,6 +8,7 @@ import { wsId } from '../../middleware/workspace';
 import { requireFeature } from '../../middleware/entitlements';
 import { getEntitlements, getUsage } from '../../services/entitlements';
 import { getAiStatus } from '../../services/ai-settings';
+import { forceEndCall } from '../../services/calls';
 
 export const callsRouter = Router();
 
@@ -173,6 +174,12 @@ callsRouter.get('/calls/:id', async (req, res) => {
   });
   if (!call) throw notFound('Call');
   res.json({ call });
+});
+
+/** Force-ends a stuck call. */
+callsRouter.post('/calls/:id/end', async (req, res) => {
+  const call = await forceEndCall(wsId(req), req.params.id);
+  res.json({ call: { id: call.id, status: call.status } });
 });
 
 // ── Appointments ────────────────────────────────────────────────────────────

@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { PhoneIncoming, PhoneOutgoing, Search } from 'lucide-react';
+import { PhoneIncoming, PhoneOff, PhoneOutgoing, Search } from 'lucide-react';
 import { CALL_OUTCOMES } from '@pv/shared';
 import { useApi } from '@/lib/use-api';
 import { useSession } from '@/lib/session';
-import { Loading, PageHeader, Pagination, StatusBadge } from '@/components/ui';
+import { Loading, PageHeader, Pagination, StatusBadge, useAction } from '@/components/ui';
+import { api } from '@/lib/api';
 import { formatDateTime, formatDuration, humanize } from '@/lib/format';
 
 interface CallRow {
@@ -26,8 +27,11 @@ interface CallRow {
   contact: { id: string; name: string | null } | null;
 }
 
+const LIVE_STATUSES = ['QUEUED', 'RINGING', 'IN_PROGRESS'];
+
 export default function CallsPage() {
   const { me } = useSession();
+  const { busy, run } = useAction();
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
@@ -37,7 +41,7 @@ export default function CallsPage() {
   if (query) params.set('q', query);
   if (direction) params.set('direction', direction);
   if (outcome) params.set('outcome', outcome);
-  const { data } = useApi<{ calls: CallRow[]; total: number; page: number; pageSize: number }>(
+  const { data, reload } = useApi<{ calls: CallRow[]; total: number; page: number; pageSize: number }>(
     `/app/calls?${params}`,
   );
 
@@ -120,12 +124,15 @@ export default function CallsPage() {
                 <th scope="col">Outcome</th>
                 <th scope="col">Duration</th>
                 <th scope="col">When</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {data.calls.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted">
+                  <td colSpan={7} className="py-10 text-center text-muted">
                     No calls match.
                   </td>
                 </tr>
@@ -173,6 +180,26 @@ export default function CallsPage() {
                     </td>
                     <td className="num">{formatDuration(c.durationSec)}</td>
                     <td className="whitespace-nowrap text-muted">{formatDateTime(c.createdAt)}</td>
+                    <td className="text-right">
+                      {LIVE_STATUSES.includes(c.status) && (
+                        <button
+                          type="button"
+                          className="btn btn-sm inline-flex items-center gap-1.5 text-danger"
+                          disabled={busy}
+                          title="Force end this call if it is stuck"
+                          onClick={() => {
+                            if (!window.confirm('End this call now?')) return;
+                            void run(async () => {
+                              await api(`/app/calls/${c.id}/end`, { method: 'POST' });
+                              await reload();
+                            }, 'Call ended');
+                          }}
+                        >
+                          <PhoneOff size={14} aria-hidden="true" />
+                          End call
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
