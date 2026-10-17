@@ -246,3 +246,30 @@ Lighthouse accessibility on the public site: 96–100.
 | The logo | `components/brand/Logo.tsx`, `app/icon.svg`, `public/images/brand/*` |
 | Social card | `app/opengraph-image.tsx`, or set an image in Admin → SEO |
 | Plan names, prices, bullets | Admin → Plans & pricing (no deploy) |
+| The website's theme | Super admin → Website theme (no deploy) |
+
+## 12. Website themes
+
+The public website and sign-in pages can wear a different theme; the dashboard and
+admin always use the Purple Voice look. A super admin picks the theme in **Super admin →
+Website theme** (SiteSetting `appearance`), and it is live within seconds.
+
+**Every theme shows the same content.** Copy, plans, FAQs and page structure come from
+the same components; a theme changes only colours, type, shapes, imagery and decoration.
+
+| Theme | Look | Files |
+|---|---|---|
+| Purple Voice (`default`) | Everything above | `tokens.css` |
+| Kawaii (`kawaii`) | A looping video of a lone tree in a pastel sea (home hero, poster image under reduced motion), a hand-painted twilight valley (CTA band, sign-in), plum ink, candy-gradient pills, Plus Jakarta Sans, extra-round shapes, polka-dot bento art, drifting clouds, cloud-edged twilight footer, optional background music | `styles/themes/kawaii.css`, `public/images/themes/kawaii/`, `public/video/themes/kawaii/hero.mp4`, `public/audio/themes/kawaii.mp3` |
+
+How a theme works: `(site)/layout.tsx` and `(auth)/layout.tsx` set `data-theme` on their
+wrapper; the theme's stylesheet overrides tokens under `[data-theme='…']` (gradients,
+shadows and the font must be redefined there too, because they are computed where they are
+declared). Where a token can't express the look (the home hero, the CTA band, the sign-in
+panel), the component renders a theme variant from the same copy constants.
+
+To add a theme: add its id to `SITE_THEMES` and `SITE_THEME_INFO` in
+`packages/shared/src/schemas.ts`, create `styles/themes/<id>.css` and import it in
+`globals.css`, add a preview in `app/admin/appearance/page.tsx`, and add variants only where
+needed. Music is optional (`lib/theme.ts`); the play button appears only when the file
+exists and the super admin left music on, and it never autoplays.

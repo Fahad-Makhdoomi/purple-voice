@@ -1,0 +1,247 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Kawaii — a website theme.
+
+   Hand-painted pastel valleys under cotton-candy clouds, candy-coloured pills,
+   Plus Jakarta Sans and soft, extra-round shapes. Applies only inside
+   [data-theme='kawaii'] (the public site and sign-in pages), so the dashboard
+   and admin keep the Purple Voice look.
+
+   Most of the theme is token overrides: every component reads these, so the
+   copy and layout stay identical to the default theme. The rules after the
+   tokens handle the few places a token can't express the look.
+   ────────────────────────────────────────────────────────────────────────── */
+
+[data-theme='kawaii'] {
+  /* Candy lilac scale (600 stays AA on white for links and small text). */
+  --pv-violet-50: 255 246 252;
+  --pv-violet-100: 252 232 246;
+  --pv-violet-200: 246 211 238;
+  --pv-violet-300: 233 181 240;
+  --pv-violet-400: 207 148 242;
+  --pv-violet-500: 177 118 238;
+  --pv-violet-600: 126 70 214;
+  --pv-violet-700: 106 51 191;
+  --pv-violet-800: 85 37 156;
+  --pv-violet-900: 63 27 117;
+  --pv-violet-950: 42 17 80;
+
+  --pv-pink-100: 255 228 242;
+  --pv-pink-300: 255 179 217;
+  --pv-periwinkle-200: 216 224 255;
+  --pv-periwinkle-300: 185 198 255;
+  /* The "neon" accent becomes a minty sparkle. */
+  --pv-cyan-300: 168 240 216;
+
+  /* Plum ink instead of near-black. */
+  --pv-ink: 59 34 87;
+  --pv-ink-soft: 91 67 116;
+  --pv-muted: 117 96 140;
+  --pv-subtle: 124 104 146;
+  --pv-line: 243 226 242;
+  --pv-surface: 255 255 255;
+  --pv-canvas: 255 248 252;
+
+  /* "Night" sections become a soft twilight plum. */
+  --pv-night: 58 36 88;
+  --pv-night-2: 74 46 110;
+  --pv-night-3: 92 58 133;
+
+  --pv-font-sans:
+    var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pv-tracking-tight: -0.015em;
+
+  /* Rounder everything. */
+  --pv-radius-sm: 14px;
+  --pv-radius: 20px;
+  --pv-radius-lg: 28px;
+  --pv-radius-xl: 40px;
+
+  --pv-shadow-sm: 0 1px 3px rgb(var(--pv-violet-500) / 0.1);
+  --pv-shadow:
+    0 2px 4px rgb(var(--pv-violet-500) / 0.06), 0 16px 36px -18px rgb(var(--pv-violet-700) / 0.28);
+  --pv-shadow-lg: 0 30px 70px -30px rgb(var(--pv-violet-700) / 0.4);
+  --pv-glow:
+    0 0 0 1px rgb(255 255 255 / 0.6), 0 10px 30px -8px rgb(var(--pv-pink-300) / 0.9);
+
+  --pv-gradient-brand: linear-gradient(135deg, #ff8fc7 0%, #b67cf5 100%);
+  --pv-gradient-pastel: linear-gradient(
+    135deg,
+    #ffe1c7 0%,
+    rgb(var(--pv-pink-300)) 35%,
+    rgb(var(--pv-violet-300)) 70%,
+    rgb(var(--pv-periwinkle-300)) 100%
+  );
+  --pv-gradient-wash:
+    radial-gradient(60% 70% at 12% 18%, rgb(255 214 236 / 0.95), transparent 70%),
+    radial-gradient(55% 60% at 88% 12%, rgb(var(--pv-periwinkle-200) / 0.95), transparent 70%),
+    radial-gradient(70% 80% at 40% 100%, rgb(255 225 199 / 0.85), transparent 70%),
+    linear-gradient(rgb(var(--pv-canvas)), rgb(var(--pv-canvas)));
+  --pv-gradient-stat: linear-gradient(160deg, rgb(var(--pv-pink-100)) 0%, rgb(var(--pv-violet-200)) 100%);
+  --pv-gradient-neon: conic-gradient(from 200deg, #ff8fc7, #ffd59e, #a8f0d8, #b9c6ff, #ff8fc7);
+
+  background-color: rgb(var(--pv-canvas));
+  color: rgb(var(--pv-ink));
+  font-family: var(--pv-font-sans);
+}
+
+/* ── Type ─────────────────────────────────────────────────────────────────── */
+
+[data-theme='kawaii'] h1,
+[data-theme='kawaii'] h2,
+[data-theme='kawaii'] h3 {
+  font-weight: 800;
+}
+
+/* Eyebrows become little pastel tags. */
+[data-theme='kawaii'] .eyebrow {
+  display: inline-block;
+  border-radius: var(--pv-radius-pill);
+  background: rgb(var(--pv-pink-100));
+  padding: 0.35rem 0.85rem;
+  letter-spacing: 0.08em;
+  color: rgb(var(--pv-violet-700));
+}
+
+/* "How it works": big candy numerals. */
+[data-theme='kawaii'] .step-num {
+  display: block;
+  font-size: 3.75rem;
+  font-weight: 800;
+  line-height: 1;
+  background: var(--pv-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+/* The magic CTA becomes a candy pill with a shimmering pastel edge. */
+[data-theme='kawaii'] .btn-magic {
+  color: white;
+  box-shadow:
+    0 10px 30px -8px rgb(255 143 199 / 0.85),
+    0 0 0 4px rgb(255 255 255 / 0.55);
+  text-shadow: 0 1px 2px rgb(var(--pv-violet-900) / 0.25);
+}
+[data-theme='kawaii'] .btn-magic::after {
+  background: var(--pv-gradient-brand);
+}
+[data-theme='kawaii'] .btn-magic:hover {
+  box-shadow:
+    0 14px 36px -8px rgb(255 143 199 / 0.95),
+    0 0 0 4px rgb(255 255 255 / 0.75);
+  transform: translateY(-1px);
+}
+[data-theme='kawaii'] .btn {
+  font-weight: 800;
+}
+
+/* Frosted glass reads better than smoked glass over painted skies. */
+[data-theme='kawaii'] .glass {
+  border-color: rgb(255 255 255 / 0.35);
+  background: rgb(var(--pv-night) / 0.35);
+  backdrop-filter: blur(14px);
+}
+
+/* Polka dots instead of a grid on the bento illustrations. */
+[data-theme='kawaii'] .grid-pattern {
+  background-image: radial-gradient(rgb(255 255 255 / 0.6) 1.6px, transparent 1.8px);
+  background-size: 18px 18px;
+}
+
+/* ── Decoration ───────────────────────────────────────────────────────────── */
+
+@keyframes kawaii-drift {
+  from {
+    transform: translateX(-30vw);
+  }
+  to {
+    transform: translateX(130vw);
+  }
+}
+@keyframes kawaii-twinkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) rotate(20deg);
+  }
+}
+
+[data-theme='kawaii'] .kawaii-twinkle {
+  animation: kawaii-twinkle 3.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgb(255 255 255 / 0.9));
+}
+
+/* Clouds drifting through page intros. */
+[data-theme='kawaii'] .page-intro::before,
+[data-theme='kawaii'] .page-intro::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  width: 220px;
+  height: 110px;
+  background: url('/images/themes/kawaii/cloud.svg') no-repeat center / contain;
+  opacity: 0.9;
+  animation: kawaii-drift 70s linear infinite;
+  pointer-events: none;
+}
+[data-theme='kawaii'] .page-intro::before {
+  top: calc(var(--pv-header-h) + 12px);
+  animation-delay: -20s;
+}
+[data-theme='kawaii'] .page-intro::after {
+  bottom: 8px;
+  width: 160px;
+  height: 80px;
+  opacity: 0.75;
+  animation-duration: 95s;
+  animation-delay: -60s;
+}
+
+/* A row of cloud puffs where the page meets the twilight footer. */
+[data-theme='kawaii'] .site-footer {
+  padding-top: 48px;
+}
+[data-theme='kawaii'] .site-footer::before {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 56px;
+  background:
+    radial-gradient(circle at 50% 0, rgb(var(--pv-canvas)) 34px, transparent 35px) 0 0 / 88px 56px
+      repeat-x,
+    radial-gradient(circle at 50% 0, rgb(var(--pv-canvas)) 24px, transparent 25px) 44px 0 / 88px
+      40px repeat-x;
+  pointer-events: none;
+}
+
+/* Music pill equaliser. */
+@keyframes kawaii-eq {
+  0%,
+  100% {
+    height: 30%;
+  }
+  50% {
+    height: 100%;
+  }
+}
+.theme-music-bar {
+  height: 30%;
+}
+.theme-music-bar.is-playing {
+  animation: kawaii-eq 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='kawaii'] .page-intro::before,
+  [data-theme='kawaii'] .page-intro::after,
+  [data-theme='kawaii'] .kawaii-twinkle {
+    animation: none;
+  }
+}

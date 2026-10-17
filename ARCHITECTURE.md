@@ -40,7 +40,7 @@ One product, five faces:
 | Website pages, blog, FAQs, media, SEO & analytics settings | | | ✓ | ✓ |
 | Leads (CRM) and support queue | | | ✓ | ✓ |
 | Revenue, MRR, churn & usage insights | | | | ✓ |
-| Plans & pricing, staff, security (captcha), audit log | | | | ✓ |
+| Plans & pricing, staff, security (captcha), website theme, audit log | | | | ✓ |
 
 Enforcement lives in the API, never the UI:
 
@@ -226,7 +226,7 @@ and refresh tokens are stored as SHA-256 hashes.
 | `/api/app/*` | session; staff via `X-Workspace-Id` | context, overview, ai (voices + readiness only), telephony, agents, campaigns, calls, appointments, insights, integrations, developers, support |
 | `/api/integrations/google/callback` | signed OAuth state | Google Calendar connection |
 | `/api/admin/*` | staff | overview, staff list, leads, tickets, subscribers (incl. `/:id/ai` settings and keys), cms (pages, posts, faqs, settings, media, AI SEO) |
-| `/api/admin/super/*` | super admin | insights, plans, staff, security settings, audit, ai (platform keys + default AI) |
+| `/api/admin/super/*` | super admin | insights, plans, staff, security and appearance (website theme) settings, audit, ai (platform keys + default AI) |
 | `/api/telephony/:carrier/*` | signed URL | inbound, voice (answered), status, transfer |
 | `/api/v1/*` | `Bearer pv_live_…` (Pro) | agents, calls, place a call, campaigns, add contacts |
 | `ws /ws/:carrier/:call/:sig` | signed path | live call audio |
@@ -400,6 +400,10 @@ once the period's minutes are used.
   calls `POST /internal/revalidate` with a shared secret; changes are live within
   seconds while pages stay static. If the API is unreachable, readers fall back to
   built-in content, so builds never fail on it.
+- **Website themes** — SiteSetting `appearance` (`theme`, `music`) is part of
+  `/api/public/settings`; the site and auth layouts set `data-theme` from it, so a theme
+  switch is just a `settings` revalidation. Content is identical in every theme
+  (BRAND.md § 12).
 - Pages and blog posts are written in Markdown and rendered on the server with
   `react-markdown`, which **does not render raw HTML** — admin content can't become XSS.
 - Editors include a live preview, an image picker wired to the media library, an SEO

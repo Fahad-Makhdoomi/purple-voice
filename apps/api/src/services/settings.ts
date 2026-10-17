@@ -3,9 +3,11 @@ import type { AiSettingsInput } from '@pv/shared';
 import {
   aiSettingsSchema,
   analyticsSettingsSchema,
+  appearanceSettingsSchema,
   securitySettingsSchema,
   seoSettingsSchema,
   type AnalyticsSettings,
+  type AppearanceSettings,
   type SecuritySettings,
   type SeoSettings,
 } from '@pv/shared';
@@ -34,6 +36,7 @@ const DEFAULTS = {
     captcha: { signup: true, login: false, forgotPassword: true, contact: true },
   } satisfies SecuritySettings,
   analytics: { plausibleDomain: null, ga4MeasurementId: null } satisfies AnalyticsSettings,
+  appearance: { theme: 'default', music: true } satisfies AppearanceSettings,
   /** The AI layer for subscribers staff haven't configured individually. */
   ai: {
     voiceEngine: 'GEMINI_LIVE',
@@ -46,6 +49,7 @@ const SCHEMAS = {
   seo: seoSettingsSchema,
   security: securitySettingsSchema,
   analytics: analyticsSettingsSchema,
+  appearance: appearanceSettingsSchema,
   ai: aiSettingsSchema,
 } as const;
 
@@ -72,7 +76,7 @@ export async function setSetting<K extends SettingKey>(
   return data;
 }
 
-/** Keys any admin may edit from the CMS. `security` and `ai` are super-admin only. */
+/** Keys any admin may edit from the CMS. `security`, `appearance` and `ai` are super-admin only. */
 const CMS_SETTING_KEYS = ['seo', 'analytics'] as const;
 
 export function isCmsSettingKey(key: string): key is (typeof CMS_SETTING_KEYS)[number] {

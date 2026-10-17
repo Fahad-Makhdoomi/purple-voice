@@ -551,6 +551,36 @@ export const analyticsSettingsSchema = z.object({
 });
 export type AnalyticsSettings = z.infer<typeof analyticsSettingsSchema>;
 
+// ── Site settings: appearance (website themes) ─────────────────────────────
+
+/**
+ * Website themes. A theme changes only the look of the public website and
+ * sign-in pages — colours, type, shapes, imagery, decoration — never the
+ * content, which every theme renders from the same components.
+ */
+export const SITE_THEMES = ['default', 'kawaii'] as const;
+export type SiteTheme = (typeof SITE_THEMES)[number];
+
+export const SITE_THEME_INFO: Record<SiteTheme, { name: string; description: string }> = {
+  default: {
+    name: 'Purple Voice',
+    description: 'Night sky, a glowing violet orb and neon buttons. The original brand look.',
+  },
+  kawaii: {
+    name: 'Kawaii',
+    description:
+      'A lone tree in a pastel sea, fluffy clouds, candy-coloured pills and Plus Jakarta Sans, with optional background music.',
+  },
+};
+
+/** Super admin → Website theme. Changes go live within seconds, no deploy. */
+export const appearanceSettingsSchema = z.object({
+  theme: z.enum(SITE_THEMES).default('default'),
+  /** Offer visitors a play button for the theme's background music (never autoplays). */
+  music: z.boolean().default(true),
+});
+export type AppearanceSettings = z.infer<typeof appearanceSettingsSchema>;
+
 export const leadUpdateSchema = z.object({
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'WON', 'LOST']).optional(),
   notes: z.string().max(10000).optional(),

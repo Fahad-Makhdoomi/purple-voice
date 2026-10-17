@@ -115,14 +115,16 @@ publicRouter.get('/pages/:slug', async (req, res) => {
 });
 
 publicRouter.get('/settings', async (_req, res) => {
-  const [seo, analytics, security] = await Promise.all([
+  const [seo, analytics, security, appearance] = await Promise.all([
     getSetting('seo'),
     getSetting('analytics'),
     getSetting('security'),
+    getSetting('appearance'),
   ]);
   res.json({
     seo,
     analytics,
+    appearance,
     captcha: {
       provider: env.captchaEnabled ? env.CAPTCHA_PROVIDER : 'none',
       forms: env.captchaEnabled

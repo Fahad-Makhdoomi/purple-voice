@@ -86,12 +86,12 @@ const FAQS = [
   [
     'Getting started',
     'Do I need my own phone number?',
-    'Yes. Connect a Twilio or Plivo account and pick a number you already rent there. Number rental is billed by your carrier and is not part of a Purple Voice plan.',
+    'Yes. Connect your phone provider and pick a number you already rent there. Number rental is billed by your provider and is not part of a Purple Voice plan.',
   ],
   [
     'Getting started',
     'Which AI models do my agents use?',
-    'Leading speech and language models from OpenAI, Google Gemini and Anthropic Claude, including speech-to-speech models for the most natural conversations. The Purple Voice team sets up the AI for your workspace, so there are no AI keys for you to manage.',
+    'Leading speech and language models, including speech-to-speech models for the most natural conversations. The Purple Voice team sets up the AI for your workspace, so there are no AI keys for you to manage.',
   ],
   [
     'Pricing',

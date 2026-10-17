@@ -26,7 +26,7 @@ export async function Footer() {
   ];
 
   return (
-    <footer className="relative overflow-hidden bg-night text-white">
+    <footer className="site-footer relative overflow-hidden bg-night text-white">
       <div
         className="starfield pointer-events-none absolute inset-0 opacity-40"
         aria-hidden="true"
@@ -35,7 +35,7 @@ export async function Footer() {
         <div className="max-w-xs">
           <Logo tone="light" />
           <p className="mt-4 text-sm leading-relaxed text-white/60">
-            AI voice agents that call, qualify and book — on your numbers, with your models.
+            AI voice agents that call, qualify and book — on your own phone numbers.
           </p>
           <a
             href={`mailto:${seo.contactEmail}`}
@@ -68,7 +68,7 @@ export async function Footer() {
         <p>
           © {new Date().getFullYear()} {seo.siteName}. All rights reserved.
         </p>
-        <p>Phone number rental and AI model usage are billed by your providers.</p>
+        <p>Phone number rental and AI usage are billed separately.</p>
       </div>
     </footer>
   );

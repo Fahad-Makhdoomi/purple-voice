@@ -303,6 +303,21 @@ superRouter.put('/settings/security', async (req, res) => {
   res.json({ value });
 });
 
+// ── Website theme ───────────────────────────────────────────────────────────
+
+superRouter.get('/settings/appearance', async (_req, res) => {
+  res.json({ value: await getSetting('appearance') });
+});
+
+superRouter.put('/settings/appearance', async (req, res) => {
+  const value = await setSetting('appearance', req.body);
+  await audit(req, 'settings.appearance_updated', {
+    meta: value as unknown as Prisma.InputJsonValue,
+  });
+  revalidate(['settings']);
+  res.json({ value });
+});
+
 // ── AI providers ────────────────────────────────────────────────────────────
 // The default AI layer for subscribers staff haven't set up individually, and
 // the platform's own vendor keys, used by every subscriber without a key of

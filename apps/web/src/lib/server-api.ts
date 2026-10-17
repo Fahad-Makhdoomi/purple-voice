@@ -1,5 +1,5 @@
 import 'server-only';
-import { PLAN_LIST, type SeoSettings } from '@pv/shared';
+import { PLAN_LIST, type AppearanceSettings, type SeoSettings } from '@pv/shared';
 
 /**
  * Server-side reads for the public website. Responses are cached by Next
@@ -128,6 +128,7 @@ export async function getFooterPages() {
 export interface PublicSettings {
   seo: SeoSettings;
   analytics: { plausibleDomain?: string | null; ga4MeasurementId?: string | null };
+  appearance: AppearanceSettings;
   captcha: {
     provider: 'none' | 'turnstile' | 'recaptcha' | 'hcaptcha';
     forms: Record<string, boolean>;
@@ -144,12 +145,22 @@ export const DEFAULT_SEO: SeoSettings = {
   contactEmail: 'hello@purplevoice.ai',
   googleSiteVerification: null,
 };
+export const DEFAULT_APPEARANCE: AppearanceSettings = { theme: 'default', music: true };
+
 export async function getSettings(): Promise<PublicSettings> {
-  return get<PublicSettings>('/settings', ['settings'], {
+  const settings = await get<PublicSettings>('/settings', ['settings'], {
     seo: DEFAULT_SEO,
     analytics: {},
+    appearance: DEFAULT_APPEARANCE,
     captcha: { provider: 'none', forms: {} },
   });
+  // An API from before themes existed sends no `appearance`.
+  return { ...settings, appearance: settings.appearance ?? DEFAULT_APPEARANCE };
+}
+
+/** The active website theme (Super admin → Website theme). */
+export async function getAppearance(): Promise<AppearanceSettings> {
+  return (await getSettings()).appearance;
 }
 
 export async function getSitemapEntries() {
