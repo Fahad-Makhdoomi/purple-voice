@@ -1,7 +1,7 @@
 import { cn } from '@/lib/cn';
 
 type Cloud = {
-  tone: 'pink' | 'sage' | 'white';
+  tone: 'lilac' | 'periwinkle' | 'white';
   /** Position and width, in percent of the scene. */
   left: number;
   bottom: number;
@@ -15,16 +15,16 @@ type Cloud = {
 
 // Back to front: far clouds frame the sun, near ones bank up around the trail.
 const CLOUDS: Cloud[] = [
-  { tone: 'sage', left: -6, bottom: 20, width: 34, dx: 18, dur: 18, delay: 0, rise: 30 },
-  { tone: 'pink', left: 70, bottom: 26, width: 36, dx: 22, dur: 20, delay: -6, rise: 36 },
-  { tone: 'pink', left: 8, bottom: 2, width: 40, dx: 26, dur: 16, delay: -3, rise: 70 },
-  { tone: 'sage', left: 58, bottom: -2, width: 46, dx: 20, dur: 17, delay: -9, rise: 80 },
+  { tone: 'periwinkle', left: -6, bottom: 20, width: 34, dx: 18, dur: 18, delay: 0, rise: 30 },
+  { tone: 'lilac', left: 70, bottom: 26, width: 36, dx: 22, dur: 20, delay: -6, rise: 36 },
+  { tone: 'lilac', left: 8, bottom: 2, width: 40, dx: 26, dur: 16, delay: -3, rise: 70 },
+  { tone: 'periwinkle', left: 58, bottom: -2, width: 46, dx: 20, dur: 17, delay: -9, rise: 80 },
   { tone: 'white', left: 24, bottom: -10, width: 30, dx: 14, dur: 13, delay: -2, rise: 110 },
   { tone: 'white', left: 46, bottom: -12, width: 28, dx: 16, dur: 15, delay: -7, rise: 120 },
 ];
 
 /**
- * The Minimal theme's scene: a coral sun rising through pastel clouds with a
+ * The Minimal theme's scene: a violet sun rising through lilac and periwinkle clouds with a
  * rocket's vapour trail climbing into it. Pure CSS and three tiny SVGs; all
  * motion is in themes/minimal.css and stops under reduced motion. `hero`
  * adds scroll parallax (the sun sinks, the clouds rise).

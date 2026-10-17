@@ -574,7 +574,7 @@ export const SITE_THEME_INFO: Record<SiteTheme, { name: string; description: str
   minimal: {
     name: 'Minimal',
     description:
-      'Airy white and sage with coral accents, a sun rising through clouds, light Inter Tight type, black pills and scroll-driven motion.',
+      'Airy lavender-white with purple shades, a violet sun rising through clouds, light Inter Tight type, yellow call-to-action pills and scroll-driven motion.',
   },
 };
 

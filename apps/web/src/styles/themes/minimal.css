@@ -1,9 +1,9 @@
 /* ──────────────────────────────────────────────────────────────────────────
    Minimal — a website theme.
 
-   Airy warm white with a whisper of sage, near-black ink, coral and sage
-   accents, light Inter Tight headlines and black pills. The home hero's stage
-   is a coral sun rising through pastel clouds (SunScene.tsx), and the page
+   Airy lavender-white, violet-cast ink, the Purple Voice violets with lilac
+   accents, light Inter Tight headlines and yellow call-to-action pills. The home hero's stage
+   is a violet sun rising through lilac clouds (SunScene.tsx), and the page
    moves with the reader: words rise in, headings fill with ink as they scroll
    into view, clouds and portraits drift with parallax.
 
@@ -13,37 +13,42 @@
    ────────────────────────────────────────────────────────────────────────── */
 
 [data-theme='minimal'] {
-  /* Coral scale in the brand slots (600 stays AA on white). */
-  --pv-violet-50: 255 245 243;
-  --pv-violet-100: 253 232 228;
-  --pv-violet-200: 250 208 201;
-  --pv-violet-300: 245 176 166;
-  --pv-violet-400: 240 141 128;
-  --pv-violet-500: 232 112 98;
-  --pv-violet-600: 192 70 58;
-  --pv-violet-700: 163 54 44;
-  --pv-violet-800: 128 41 34;
-  --pv-violet-900: 94 30 25;
-  --pv-violet-950: 58 19 16;
+  /* Purple Voice violets in the brand slots, as in tokens.css. */
+  --pv-violet-50: 247 244 255;
+  --pv-violet-100: 238 233 255;
+  --pv-violet-200: 221 211 254;
+  --pv-violet-300: 190 172 252;
+  --pv-violet-400: 156 128 250;
+  --pv-violet-500: 124 88 248;
+  --pv-violet-600: 98 54 240;
+  --pv-violet-700: 76 29 216;
+  --pv-violet-800: 53 18 168;
+  --pv-violet-900: 38 14 120;
+  --pv-violet-950: 21 8 64;
 
-  --pv-pink-100: 253 232 230;
-  --pv-pink-300: 246 182 176;
-  /* Sage stands in for the cool accents. */
-  --pv-periwinkle-200: 220 232 214;
-  --pv-periwinkle-300: 186 209 176;
-  --pv-cyan-300: 168 200 160;
+  --pv-pink-100: 251 236 252;
+  --pv-pink-300: 232 190 248;
+  --pv-periwinkle-200: 224 228 255;
+  --pv-periwinkle-300: 182 192 252;
+  --pv-cyan-300: 199 210 254;
 
-  --pv-ink: 17 17 17;
-  --pv-ink-soft: 58 58 58;
-  --pv-muted: 107 107 107;
-  --pv-subtle: 118 118 118;
-  --pv-line: 234 234 228;
+  /* Ink with a violet cast; a lavender-white canvas. */
+  --pv-ink: 20 14 38;
+  --pv-ink-soft: 58 50 82;
+  --pv-muted: 104 97 128;
+  --pv-subtle: 116 109 140;
+  --pv-line: 234 230 245;
   --pv-surface: 255 255 255;
-  --pv-canvas: 250 250 247;
+  --pv-canvas: 250 249 255;
 
-  --pv-night: 22 22 22;
-  --pv-night-2: 32 32 32;
-  --pv-night-3: 44 44 44;
+  /* Dark surfaces (footer, featured plan) are a deep violet. */
+  --pv-night: 26 16 56;
+  --pv-night-2: 36 24 74;
+  --pv-night-3: 50 34 98;
+
+  /* The call-to-action yellow. */
+  --pv-cta: 255 210 63;
+  --pv-cta-hover: 247 196 20;
 
   --pv-font-sans:
     var(--font-inter-tight), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -57,23 +62,23 @@
   --pv-shadow-sm: 0 1px 2px rgb(17 17 17 / 0.05);
   --pv-shadow: 0 1px 2px rgb(17 17 17 / 0.04), 0 14px 34px -20px rgb(17 17 17 / 0.18);
   --pv-shadow-lg: 0 30px 70px -32px rgb(17 17 17 / 0.28);
-  --pv-glow: 0 0 0 1px rgb(17 17 17 / 0.06), 0 10px 30px -10px rgb(232 112 98 / 0.55);
+  --pv-glow: 0 0 0 1px rgb(20 14 38 / 0.06), 0 10px 30px -10px rgb(124 88 248 / 0.55);
 
-  --pv-gradient-brand: linear-gradient(135deg, #e8705f 0%, #f09a8b 100%);
-  --pv-gradient-pastel: linear-gradient(135deg, #dce8d6 0%, #f4efe9 50%, #fad0c9 100%);
+  --pv-gradient-brand: linear-gradient(135deg, #7c58f8 0%, #4c1dd8 100%);
+  --pv-gradient-pastel: linear-gradient(135deg, #e6defe 0%, #f5f3fb 50%, #f1dcfb 100%);
   --pv-gradient-wash:
-    radial-gradient(55% 70% at 8% 0%, rgb(220 232 214 / 0.95), transparent 70%),
-    radial-gradient(50% 60% at 95% 10%, rgb(253 232 228 / 0.9), transparent 70%),
-    linear-gradient(rgb(250 250 247), rgb(250 250 247));
-  --pv-gradient-stat: linear-gradient(160deg, #eef3ea 0%, #fde8e4 100%);
-  --pv-gradient-neon: conic-gradient(from 200deg, #e8705f, #f6b6ae, #a8c8a0, #e8705f);
+    radial-gradient(55% 70% at 8% 0%, rgb(230 222 254 / 0.95), transparent 70%),
+    radial-gradient(50% 60% at 95% 10%, rgb(251 236 252 / 0.9), transparent 70%),
+    linear-gradient(rgb(250 249 255), rgb(250 249 255));
+  --pv-gradient-stat: linear-gradient(160deg, #f1edff 0%, #fbecfc 100%);
+  --pv-gradient-neon: conic-gradient(from 200deg, #7c58f8, #c7d2fe, #e8bef8, #7c58f8);
 
   /* Light landing page (light-landing.css). */
   --pv-landing-bg:
-    radial-gradient(60% 28% at 0% 0%, rgb(220 232 214 / 0.9), transparent 70%),
-    radial-gradient(50% 20% at 100% 34%, rgb(253 232 228 / 0.8), transparent 70%),
-    radial-gradient(55% 18% at 0% 62%, rgb(220 232 214 / 0.7), transparent 70%),
-    radial-gradient(50% 18% at 100% 88%, rgb(253 232 228 / 0.7), transparent 70%), rgb(250 250 247);
+    radial-gradient(60% 28% at 0% 0%, rgb(230 222 254 / 0.9), transparent 70%),
+    radial-gradient(50% 20% at 100% 34%, rgb(251 236 252 / 0.8), transparent 70%),
+    radial-gradient(55% 18% at 0% 62%, rgb(224 228 255 / 0.7), transparent 70%),
+    radial-gradient(50% 18% at 100% 88%, rgb(251 236 252 / 0.7), transparent 70%), rgb(250 249 255);
   --pv-landing-heading-weight: 400;
   --pv-landing-tint: rgb(17 17 17 / 0.04);
   --pv-landing-hairline: rgb(17 17 17 / 0.09);
@@ -81,13 +86,13 @@
   --pv-landing-card-bg: rgb(255 255 255 / 0.82);
   --pv-landing-card-image: none;
   --pv-landing-card-shadow: 0 1px 2px rgb(17 17 17 / 0.03), 0 18px 40px -26px rgb(17 17 17 / 0.22);
-  --pv-landing-chip-bg: rgb(17 17 17);
+  --pv-landing-chip-bg: rgb(98 54 240);
   --pv-landing-chip-fg: white;
-  --pv-landing-cta-bg: rgb(17 17 17);
-  --pv-landing-cta-fg: white;
-  --pv-landing-cta-shadow: 0 10px 24px -12px rgb(17 17 17 / 0.5);
-  --pv-landing-cta-arrow-bg: white;
-  --pv-landing-cta-arrow-fg: rgb(17 17 17);
+  --pv-landing-cta-bg: rgb(255 210 63);
+  --pv-landing-cta-fg: rgb(20 14 38);
+  --pv-landing-cta-shadow: 0 10px 26px -12px rgb(214 160 0 / 0.75);
+  --pv-landing-cta-arrow-bg: rgb(20 14 38);
+  --pv-landing-cta-arrow-fg: rgb(255 210 63);
   --pv-landing-btn2-bg: rgb(255 255 255 / 0.85);
   --pv-landing-btn2-border: rgb(17 17 17 / 0.1);
 
@@ -112,40 +117,31 @@
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 
-/* The neon CTA (inner pages) becomes a plain pill: white on the charcoal
-   featured plan, black on light bands. */
-[data-theme='minimal'] .btn-magic {
-  background: white;
+/* Calls to action are yellow pills with dark text everywhere: the neon CTA,
+   the primary and brand buttons (sign-up, plans, forms) and, via
+   --pv-landing-cta-*, the landing page's white pills. Secondary buttons stay
+   white. */
+[data-theme='minimal'] :is(.btn-magic, .btn-primary, .btn-brand) {
+  background: rgb(var(--pv-cta));
   color: rgb(var(--pv-ink));
-  box-shadow: none;
+  box-shadow: 0 10px 26px -12px rgb(214 160 0 / 0.75);
+}
+[data-theme='minimal'] :is(.btn-magic, .btn-primary, .btn-brand):hover {
+  background: rgb(var(--pv-cta-hover));
+  filter: none;
 }
 [data-theme='minimal'] .btn-magic::before,
 [data-theme='minimal'] .btn-magic::after {
   display: none;
 }
-[data-theme='minimal'] .btn-magic:hover {
-  box-shadow: none;
-  background: rgb(var(--pv-pink-100));
-}
-[data-theme='minimal'] .landing .btn-magic {
-  background: rgb(var(--pv-ink));
-  color: white;
-}
-[data-theme='minimal'] .landing .btn-magic:hover {
-  background: black;
-}
 [data-theme='minimal'] .landing .btn-glass {
-  border-color: rgb(17 17 17 / 0.1);
+  border-color: rgb(20 14 38 / 0.1);
   background: rgb(255 255 255 / 0.85);
   color: rgb(var(--pv-ink));
 }
-[data-theme='minimal'] .btn-brand {
-  background: rgb(var(--pv-ink));
-  box-shadow: none;
-}
 
 [data-theme='minimal'] .landing .text-shimmer {
-  background-image: linear-gradient(100deg, #111 20%, #e8705f 40%, #a8c8a0 55%, #111 80%);
+  background-image: linear-gradient(100deg, #140e26 20%, #7c58f8 40%, #c7d2fe 55%, #140e26 80%);
 }
 
 /* Hairline white cards lift gently on hover. */
@@ -153,7 +149,7 @@
   border-color: rgb(17 17 17 / 0.14);
 }
 
-/* The facts band: alternating sage and coral gradient tiles, gently drifting. */
+/* The facts band: alternating deep-violet and purple gradient tiles, gently drifting. */
 @keyframes minimal-gradient-drift {
   0%,
   100% {
@@ -171,10 +167,10 @@
   box-shadow: 0 24px 50px -28px rgb(17 17 17 / 0.35);
 }
 [data-theme='minimal'] .landing dl > :nth-child(odd) .glass-dark {
-  background-image: linear-gradient(135deg, #6f9468 0%, #8fb087 50%, #a9c6a0 100%);
+  background-image: linear-gradient(135deg, #3512a8 0%, #6236f0 50%, #8b6cf9 100%);
 }
 [data-theme='minimal'] .landing dl > :nth-child(even) .glass-dark {
-  background-image: linear-gradient(135deg, #d9584a 0%, #e57565 50%, #ee9486 100%);
+  background-image: linear-gradient(135deg, #6b21a8 0%, #8e3fd0 50%, #ad6be6 100%);
   animation-delay: -6s;
 }
 [data-theme='minimal'] .landing dl .glass-dark :is(.text-white, [class*='text-white/']) {
@@ -272,14 +268,14 @@
   border-radius: 9999px;
   background: radial-gradient(
     circle at 50% 38%,
-    #fde3df 0%,
-    #f7b2a8 34%,
-    #ee8a7c 64%,
-    #e8705f 100%
+    #f3eeff 0%,
+    #cdbdfd 30%,
+    #9c80fa 62%,
+    #6236f0 100%
   );
   box-shadow:
-    0 0 80px 10px rgb(246 182 176 / 0.55),
-    0 0 180px 40px rgb(253 232 228 / 0.7);
+    0 0 80px 10px rgb(190 172 252 / 0.55),
+    0 0 180px 40px rgb(238 233 255 / 0.7);
   transform: translate(-50%, 0);
   animation:
     sun-rise 2.2s var(--pv-ease) both,
@@ -299,13 +295,13 @@
   0%,
   100% {
     box-shadow:
-      0 0 80px 10px rgb(246 182 176 / 0.55),
-      0 0 180px 40px rgb(253 232 228 / 0.7);
+      0 0 80px 10px rgb(190 172 252 / 0.55),
+      0 0 180px 40px rgb(238 233 255 / 0.7);
   }
   50% {
     box-shadow:
-      0 0 110px 22px rgb(246 182 176 / 0.7),
-      0 0 220px 60px rgb(253 232 228 / 0.8);
+      0 0 110px 22px rgb(190 172 252 / 0.7),
+      0 0 220px 60px rgb(238 233 255 / 0.8);
   }
 }
 
@@ -363,11 +359,11 @@
   animation: cloud-drift var(--dur, 16s) ease-in-out infinite alternate;
   animation-delay: var(--delay, 0s);
 }
-.sun-cloud--pink {
-  background-image: url('/images/themes/minimal/cloud-pink.svg');
+.sun-cloud--lilac {
+  background-image: url('/images/themes/minimal/cloud-lilac.svg');
 }
-.sun-cloud--sage {
-  background-image: url('/images/themes/minimal/cloud-sage.svg');
+.sun-cloud--periwinkle {
+  background-image: url('/images/themes/minimal/cloud-periwinkle.svg');
 }
 .sun-cloud--white {
   background-image: url('/images/themes/minimal/cloud-white.svg');
@@ -478,9 +474,9 @@
   }
 }
 
-/* The agent-prompt glow is built from Tailwind's own violet and sky: coral and sage here. */
+/* The agent-prompt glow is built from Tailwind's own violet and sky: brand violet and periwinkle here. */
 [data-theme='minimal'] .landing .via-sky-400\/60 {
-  background-image: linear-gradient(90deg, #f09a8b, #b8d0ae, #f09a8b);
+  background-image: linear-gradient(90deg, #9c80fa, #c7d2fe, #9c80fa);
 }
 
 /* Phones: a bigger, higher sun so it clears the cloud bank and the voice bar. */
