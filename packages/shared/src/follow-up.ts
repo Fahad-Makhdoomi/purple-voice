@@ -147,3 +147,53 @@ export const updateContactSchema = z.object({
   tags: tagList.optional(),
 });
 export type UpdateContactInput = z.infer<typeof updateContactSchema>;
+
+// ── Run again: a new batch inside the same finished campaign ────────────────
+
+/**
+ * Re-queue people of a finished campaign by how their last call went, without
+ * making a new campaign. Do-not-call and wrong-number contacts are never included.
+ */
+export const RERUN_TARGETS = [
+  'NO_ANSWER',
+  'VOICEMAIL',
+  'FAILED',
+  'CALLBACK_REQUESTED',
+  'INTERESTED',
+  'NOT_INTERESTED',
+] as const;
+export type RerunTarget = (typeof RERUN_TARGETS)[number];
+
+export const RERUN_TARGET_INFO: Record<RerunTarget, { label: string; description: string }> = {
+  NO_ANSWER: { label: 'Did not pick up', description: 'No answer or busy.' },
+  VOICEMAIL: { label: 'Went to voicemail', description: 'The call reached voicemail.' },
+  FAILED: { label: 'Call failed', description: 'The call could not be connected.' },
+  CALLBACK_REQUESTED: { label: 'Asked for a callback', description: 'Said "call me later".' },
+  INTERESTED: { label: 'Interested', description: 'Showed interest but did not book.' },
+  NOT_INTERESTED: { label: 'Not interested', description: 'Declined last time.' },
+};
+
+/** The one target a contact falls under, or null when they must not be called again. */
+export function rerunTargetOf(contact: {
+  status: ContactStatus;
+  lastOutcome: CallOutcome | null;
+}): RerunTarget | null {
+  const { status, lastOutcome } = contact;
+  if (status === 'DO_NOT_CALL' || lastOutcome === 'DO_NOT_CALL' || lastOutcome === 'WRONG_NUMBER')
+    return null;
+  if (status === 'PENDING' || status === 'CALLING') return null;
+  if (lastOutcome === 'VOICEMAIL') return 'VOICEMAIL';
+  if (lastOutcome === 'CALLBACK_REQUESTED') return 'CALLBACK_REQUESTED';
+  if (lastOutcome === 'INTERESTED') return 'INTERESTED';
+  if (lastOutcome === 'NOT_INTERESTED') return 'NOT_INTERESTED';
+  if (status === 'NO_ANSWER') return 'NO_ANSWER';
+  if (status === 'FAILED') return 'FAILED';
+  return null;
+}
+
+export const rerunSchema = z.object({
+  targets: z.array(z.enum(RERUN_TARGETS)).min(1, 'Choose who to call again'),
+  /** Attempts each re-queued contact gets in this batch. */
+  maxAttempts: z.number().int().min(1).max(5).optional(),
+});
+export type RerunInput = z.infer<typeof rerunSchema>;

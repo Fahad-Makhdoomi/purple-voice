@@ -201,7 +201,9 @@ export function PersonalizationPanel({
                   key={v.key}
                   className="chip"
                   title={`${v.count} contacts have this. Click to add it to your instructions.`}
-                  onClick={() => setText((t) => `${t}${t && !t.endsWith(' ') ? ' ' : ''}{{${v.key}}}`)}
+                  onClick={() =>
+                    setText((t) => `${t}${t && !t.endsWith(' ') ? ' ' : ''}{{${v.key}}}`)
+                  }
                 >
                   {`{{${v.key}}}`} · {v.count}
                 </button>

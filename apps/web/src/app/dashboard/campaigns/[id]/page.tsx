@@ -23,6 +23,7 @@ import { Field } from '@/components/forms/Field';
 import { MIN_CALL_DELAY_SECONDS, type FollowUpSegment } from '@pv/shared';
 import { ContactModal, type EditableContact } from './contact-modal';
 import { PersonalizationPanel, ScriptModal, UploadPreviewModal } from './personalization';
+import { EditCampaignModal, RerunPanel, type EditableCampaign } from './campaign-tools';
 import { AiPanel, AnalyticsPanel, ExportButton, FollowUpPanel, type Report } from './insights';
 
 interface CampaignDetail {
@@ -39,8 +40,9 @@ interface CampaignDetail {
     concurrency: number;
     callDelaySeconds: number;
     maxAttempts: number;
+    retryDelayMinutes: number;
     agent: { id: string; name: string; status: string };
-    phoneNumber: { e164: string; routingConfigured: boolean };
+    phoneNumber: { id: string; e164: string; routingConfigured: boolean };
     aiReport: Report | null;
     aiReportAt: string | null;
     parentCampaign: { id: string; name: string } | null;
@@ -158,6 +160,7 @@ export default function CampaignPage() {
   const [view, setView] = useState<View | null>(null);
   const [uploadTags, setUploadTags] = useState('');
   const [editing, setEditing] = useState<Contact | 'new' | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
   const [scriptFor, setScriptFor] = useState<Contact | null>(null);
   const [followUpSegment, setFollowUpSegment] = useState<FollowUpSegment | undefined>();
@@ -201,6 +204,13 @@ export default function CampaignPage() {
         }
         actions={
           <>
+            <button
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => setEditingCampaign(true)}
+            >
+              <Pencil size={16} aria-hidden="true" /> Edit
+            </button>
             {['DRAFT', 'PAUSED'].includes(campaign.status) && (
               <button
                 className="btn btn-brand"
@@ -257,6 +267,17 @@ export default function CampaignPage() {
           </>
         }
       />
+
+      {finished && (
+        <RerunPanel
+          key={campaign.maxAttempts}
+          campaign={campaign}
+          onStarted={async () => {
+            setView('contacts');
+            await refresh();
+          }}
+        />
+      )}
 
       <PaceEditor
         key={`${campaign.callDelaySeconds}-${campaign.concurrency}`}
@@ -525,6 +546,13 @@ export default function CampaignPage() {
         </Section>
       )}
 
+      {editingCampaign && (
+        <EditCampaignModal
+          campaign={campaign as EditableCampaign}
+          onClose={() => setEditingCampaign(false)}
+          onSaved={reload}
+        />
+      )}
       {pendingCsv && (
         <UploadPreviewModal
           campaignId={campaign.id}

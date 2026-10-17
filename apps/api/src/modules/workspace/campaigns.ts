@@ -9,6 +9,8 @@ import {
   paginationSchema,
   parseTags,
   previewContactsSchema,
+  rerunSchema,
+  rerunTargetOf,
   updateCampaignSchema,
   updateContactSchema,
 } from '@pv/shared';
@@ -223,7 +225,8 @@ campaignsRouter.post('/:id/contacts/preview', async (req, res) => {
   const { csv } = previewContactsSchema.parse(req.body);
   await findCampaign(wsId(req), String(req.params.id));
   const rows = parseCsv(csv);
-  if (!rows.length) throw badRequest('No rows found. The first line of the file must be the column names.');
+  if (!rows.length)
+    throw badRequest('No rows found. The first line of the file must be the column names.');
   const columns = describeColumns(rows);
   if (!columns.some((c) => c.role === 'phone'))
     throw badRequest('No phone column found. Add a column named "phone".');
@@ -747,4 +750,83 @@ campaignsRouter.post('/:id/follow-up', requireActiveSubscription, async (req, re
     meta: { parent: parent.id, contacts: people.length, segments: input.segments },
   });
   res.status(201).json({ campaign, contacts: people.length });
+});
+
+// ── Run again: a new batch inside the same campaign ─────────────────────────
+
+/** How many people each "run again" choice would call. */
+campaignsRouter.get('/:id/rerun/preview', async (req, res) => {
+  const campaign = await findCampaign(wsId(req), req.params.id);
+  const all = await prisma.campaignContact.findMany({
+    where: { campaignId: campaign.id },
+    select: { status: true, lastOutcome: true },
+  });
+  const counts: Record<string, number> = {};
+  for (const c of all) {
+    const target = rerunTargetOf(c);
+    if (target) counts[target] = (counts[target] ?? 0) + 1;
+  }
+  res.json({ counts });
+});
+
+campaignsRouter.post('/:id/rerun', requireActiveSubscription, async (req, res) => {
+  const input = rerunSchema.parse(req.body);
+  const workspaceId = wsId(req);
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: String(req.params.id), workspaceId },
+    include: { agent: true, phoneNumber: true },
+  });
+  if (!campaign) throw notFound('Campaign');
+  if (!['COMPLETED', 'CANCELED'].includes(campaign.status))
+    throw badRequest('Run again is available once the campaign has finished.');
+  if (campaign.agent.status !== 'ACTIVE')
+    throw badRequest(`Activate the agent "${campaign.agent.name}" first`);
+  if (!campaign.phoneNumber.routingConfigured) {
+    throw badRequest(
+      'The caller number is not connected to Purple Voice yet. Re-sync it under Phone numbers.',
+    );
+  }
+
+  const people = (
+    await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } })
+  ).filter((c) => {
+    const target = rerunTargetOf(c);
+    return target !== null && input.targets.includes(target);
+  });
+  if (!people.length) throw badRequest('No contacts match that choice.');
+
+  await prisma.$transaction(async (tx) => {
+    for (const p of people) {
+      await tx.campaignContact.update({
+        where: { id: p.id },
+        data: {
+          status: 'PENDING',
+          attempts: 0,
+          nextAttemptAt: null,
+          lastOutcome: null,
+          fields: {
+            ...((p.fields as Record<string, unknown> | null) ?? {}),
+            previous_outcome: p.lastOutcome
+              ? p.lastOutcome.toLowerCase().replace(/_/g, ' ')
+              : 'no answer',
+            previous_attempts: p.attempts,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+    await tx.campaign.update({
+      where: { id: campaign.id },
+      data: {
+        status: 'RUNNING',
+        completedAt: null,
+        maxAttempts: input.maxAttempts ?? undefined,
+      },
+    });
+  });
+  await audit(req, 'campaign.rerun', {
+    entity: 'Campaign',
+    entityId: campaign.id,
+    meta: { contacts: people.length, targets: input.targets },
+  });
+  res.json({ contacts: people.length });
 });
