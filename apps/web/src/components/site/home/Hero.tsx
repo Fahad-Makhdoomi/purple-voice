@@ -4,7 +4,7 @@ import { ArrowUpRight, Check } from 'lucide-react';
 import { contentSettingsSchema, type ContentSettings, type SiteTheme } from '@pv/shared';
 import { DashboardMock } from '@/components/site/home/DashboardMock';
 import { Waveform } from '@/components/site/motion';
-import { SunScene } from '@/components/site/SunScene';
+import { MinimalStage } from '@/components/site/home/MinimalStage';
 
 type HeroText = ContentSettings['hero'];
 /** Built-in copy, used until it is edited in Admin → Site settings. */
@@ -56,10 +56,14 @@ function HeroCopy({
 
       <h1 className="mx-auto mt-7 max-w-5xl animate-rise text-white text-[length:clamp(44px,8.4vw,108px)] font-medium leading-[0.98] tracking-[-0.045em] [animation-delay:60ms]">
         {wordByWord
-          ? copy.title.split(' ').map((word, i) => (
+          ? copy.title.split(' ').map((word, i, words) => (
               <span key={i}>
                 {i > 0 && ' '}
-                <span className="hero-word" style={{ '--i': i } as React.CSSProperties}>
+                <span
+                  // The last word carries the accent sweep.
+                  className={i === words.length - 1 ? 'hero-word hero-word--accent' : 'hero-word'}
+                  style={{ '--i': i } as React.CSSProperties}
+                >
                   {word}
                 </span>
               </span>
@@ -185,14 +189,18 @@ function MinimalHero({ copy }: { copy: HeroText }) {
       <HeroCopy copy={copy} wordByWord />
 
       <div className="relative mt-4 h-[340px] sm:mt-6 sm:h-[480px]" aria-hidden="true">
-        <SunScene />
-        <div className="container relative flex h-full items-end justify-center pb-4">
-          <VoiceBar />
-        </div>
+        <MinimalStage>
+          <div className="container relative flex h-full items-end justify-center pb-4">
+            <VoiceBar />
+          </div>
+        </MinimalStage>
       </div>
 
-      <div className="container mt-6">
-        <DashboardMock />
+      {/* Tilts up into place as it scrolls into view (minimal.css). */}
+      <div className="container mt-6 [perspective:1600px]">
+        <div className="dash-tilt">
+          <DashboardMock />
+        </div>
       </div>
     </section>
   );

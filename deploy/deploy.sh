@@ -96,6 +96,9 @@ pm2c startOrReload deploy/ecosystem.config.cjs --only pv-api,pv-worker --update-
 wait_for "http://127.0.0.1:$API_PORT/api/health"
 
 echo "==> Building the web app (static pages render from the running API)"
+# Next keeps fetched API data between builds; drop it so pages are built from the
+# content and plans the migrations and seed just wrote, not an hour-old copy.
+rm -rf apps/web/.next/cache/fetch-cache
 ( set -a; . "$PV_ENV_DIR/web.env"; set +a; NEXT_TELEMETRY_DISABLED=1 npm run build -w @pv/web )
 
 echo "==> Restarting the web app"

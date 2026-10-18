@@ -43,6 +43,52 @@ interface Analytics {
   byDay: Array<{ date: string; calls: number; answered: number }>;
   durationBuckets: Array<{ label: string; calls: number }>;
   segments: Record<FollowUpSegment, number>;
+  notReached?: {
+    total: number;
+    waitingRetry: number;
+    byReason: Record<string, number>;
+    sample: Array<{
+      id: string;
+      phone: string;
+      name: string | null;
+      reason: string;
+      attempts: number;
+    }>;
+  };
+}
+
+/** Numbers the campaign never got through to, by why, with the people to act on. */
+function NotReached({ data }: { data: NonNullable<Analytics['notReached']> }) {
+  if (!data.total) return null;
+  return (
+    <Section
+      title={`Not reached (${formatNumber(data.total)})`}
+      description={
+        data.waitingRetry
+          ? `${formatNumber(data.waitingRetry)} still waiting for a retry.`
+          : 'Out of retries or never called. Run them again or start a follow-up campaign.'
+      }
+    >
+      <BarList
+        items={Object.entries(data.byReason)
+          .filter(([, v]) => v > 0)
+          .map(([k, v]) => ({ label: humanize(k), value: v }))}
+      />
+      <ul className="mt-5 divide-y divide-line text-sm">
+        {data.sample.slice(0, 12).map((c) => (
+          <li key={c.id} className="flex justify-between gap-3 py-2">
+            <span>
+              <span className="font-semibold">{c.name ?? c.phone}</span>
+              {c.name && <span className="num ml-2 text-muted">{c.phone}</span>}
+            </span>
+            <span className="text-muted">
+              {humanize(c.reason)} · {c.attempts} call{c.attempts === 1 ? '' : 's'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
 }
 
 export interface Report {
@@ -115,6 +161,8 @@ export function AnalyticsPanel({ campaignId }: { campaignId: string }) {
           hint="From −1 (hostile) to 1 (enthusiastic)"
         />
       </div>
+
+      {a.notReached && <NotReached data={a.notReached} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Section title="Funnel" description="How many people made it to each step.">
