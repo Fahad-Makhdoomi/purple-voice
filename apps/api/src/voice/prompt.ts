@@ -142,6 +142,9 @@ export function buildInstructions(input: {
     purpose,
     personalise,
     agent.knowledge && `## Reference knowledge\n${fill(agent.knowledge)}`,
+    (input.toolNames.includes('send_email') || input.toolNames.includes('send_whatsapp')) &&
+      agent.shareInfo?.trim() &&
+      `## Information you can send\nWhen the person wants details in writing, send them. Only send what is below or what was said on this call; never invent links, prices or promises:\n${fill(agent.shareInfo)}`,
     `## This call\n` +
       [
         thisCall,
@@ -172,6 +175,12 @@ export function buildInstructions(input: {
         [
           input.toolNames.includes('check_availability') &&
             '- Before suggesting meeting times, call check_availability. Offer at most two or three options. Book with book_appointment once they agree, then confirm the day and time back to them.',
+          input.toolNames.includes('send_email') &&
+            '- If they want something by email, offer to send it, ask for their email address, spell it back letter by letter and wait for a clear yes, then call send_email. Send links and long details instead of reading them out.',
+          input.toolNames.includes('send_whatsapp') &&
+            '- If they would rather have it on WhatsApp, check it should go to the number you are speaking to them on (or take the number they give), then call send_whatsapp.',
+          (input.toolNames.includes('send_email') || input.toolNames.includes('send_whatsapp')) &&
+            '- Only send messages the person asked for or agreed to, and only say it was sent once the tool confirms it.',
           input.toolNames.includes('transfer_call') &&
             '- If they ask for a person or need something you cannot answer, say you are connecting them, then call transfer_call.',
           '- When the conversation is finished, say a short goodbye and then call end_call.',

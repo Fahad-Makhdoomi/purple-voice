@@ -170,6 +170,7 @@ callsRouter.get('/calls/:id', async (req, res) => {
       campaign: { select: { id: true, name: true } },
       contact: true,
       appointments: true,
+      messages: { orderBy: { createdAt: 'asc' } },
     },
   });
   if (!call) throw notFound('Call');

@@ -31,11 +31,33 @@ export const TOOL_SCHEMAS = {
   }),
   transfer_call: z.object({ reason: z.string().max(300) }),
   end_call: z.object({ reason: z.string().max(300) }),
+  send_email: z.object({
+    to: z.string().trim().email().max(254),
+    subject: z.string().trim().min(1).max(200),
+    message: z.string().trim().min(1).max(5000),
+  }),
+  send_whatsapp: z.object({
+    to: z
+      .string()
+      .trim()
+      .regex(/^\+[1-9]\d{6,14}$/)
+      .optional()
+      .or(z.literal('')),
+    message: z.string().trim().min(1).max(1500),
+  }),
 };
 export type ToolName = keyof typeof TOOL_SCHEMAS;
 
+/** Messaging the workspace has connected; an agent's email/WhatsApp tools need them. */
+export interface MessagingChannels {
+  email: boolean;
+  whatsapp: boolean;
+}
+
 export function toolsForAgent(
-  agent: Pick<Agent, 'appointmentBookingEnabled' | 'transferEnabled' | 'transferNumber'>,
+  agent: Pick<Agent, 'appointmentBookingEnabled' | 'transferEnabled' | 'transferNumber'> &
+    Partial<Pick<Agent, 'emailEnabled' | 'whatsappEnabled'>>,
+  channels: MessagingChannels = { email: true, whatsapp: true },
 ): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
   if (agent.appointmentBookingEnabled) {
@@ -95,6 +117,53 @@ export function toolsForAgent(
         additionalProperties: false,
       },
       schema: TOOL_SCHEMAS.transfer_call,
+    });
+  }
+  if (agent.emailEnabled && channels.email) {
+    tools.push({
+      name: 'send_email',
+      description:
+        'Email the person information they asked for (or agreed to receive), e.g. a link, prices or details from the information you may send. Before calling, read their email address back to them and get a clear yes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Their email address, exactly as confirmed.' },
+          subject: { type: 'string', description: 'A short, specific subject line.' },
+          message: {
+            type: 'string',
+            description:
+              'The email body in plain text: a greeting, the information they asked for, and a sign-off with your name and the business name. No made-up facts.',
+          },
+        },
+        required: ['to', 'subject', 'message'],
+        additionalProperties: false,
+      },
+      schema: TOOL_SCHEMAS.send_email,
+    });
+  }
+  if (agent.whatsappEnabled && channels.whatsapp) {
+    tools.push({
+      name: 'send_whatsapp',
+      description:
+        'Send the person a WhatsApp message with information they asked for (or agreed to receive). It goes to the number on this call unless they give another one.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: {
+            type: 'string',
+            description:
+              'Only if they want it on a different number: international format, e.g. +14155550123. Leave empty for the number on this call.',
+          },
+          message: {
+            type: 'string',
+            description:
+              'The message text: short, friendly, with the information or link they asked for.',
+          },
+        },
+        required: ['message'],
+        additionalProperties: false,
+      },
+      schema: TOOL_SCHEMAS.send_whatsapp,
     });
   }
   tools.push({

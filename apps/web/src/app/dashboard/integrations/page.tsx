@@ -9,6 +9,7 @@ import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import { Loading, Modal, PageHeader, Section, toast, useAction } from '@/components/ui';
 import { Field } from '@/components/forms/Field';
+import { SmtpModal, WhatsappModal } from '@/components/dashboard/MessagingForms';
 
 const APP_HELP: Partial<Record<IntegrationType, { label: string; placeholder: string }>> = {
   SLACK: { label: 'Incoming webhook URL', placeholder: 'https://hooks.slack.com/services/…' },
@@ -27,10 +28,12 @@ function IntegrationsInner() {
       accountLabel: string | null;
       connectedAt: string;
       lastError: string | null;
+      config: Record<string, unknown> | null;
     }>;
     available: Array<{ type: IntegrationType; connected: boolean; configured: boolean }>;
   }>('/app/integrations');
   const [appFor, setAppFor] = useState<IntegrationType | null>(null);
+  const [messaging, setMessaging] = useState<'SMTP' | 'WHATSAPP' | null>(null);
   const { busy, run } = useAction();
 
   useEffect(() => {
@@ -81,13 +84,25 @@ function IntegrationsInner() {
                           ? 'Not available on this server yet'
                           : a.type === 'GOOGLE_CALENDAR'
                             ? 'Let agents check availability and book meetings.'
-                            : a.type === 'SLACK'
-                              ? 'Post call results to a channel (via Automations).'
-                              : a.type === 'ZAPIER'
-                                ? 'Every call and booking event is sent to your Zap.'
-                                : 'Save your token now; contact sync is coming soon.'}
+                            : a.type === 'SMTP'
+                              ? 'Agents email people what they ask for, from your mailbox.'
+                              : a.type === 'WHATSAPP'
+                                ? 'Agents send WhatsApp messages with the details people ask for.'
+                                : a.type === 'SLACK'
+                                  ? 'Post call results to a channel (via Automations).'
+                                  : a.type === 'ZAPIER'
+                                    ? 'Every call and booking event is sent to your Zap.'
+                                    : 'Save your token now; contact sync is coming soon.'}
                     </p>
                   </div>
+                  {connected && (a.type === 'SMTP' || a.type === 'WHATSAPP') && (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setMessaging(a.type as 'SMTP' | 'WHATSAPP')}
+                    >
+                      Settings
+                    </button>
+                  )}
                   {connected ? (
                     <button
                       className="btn btn-ghost btn-sm text-danger"
@@ -103,7 +118,13 @@ function IntegrationsInner() {
                       Disconnect
                     </button>
                   ) : a.type === 'SMTP' || a.type === 'WHATSAPP' ? (
-                    <span className="badge badge-neutral">Coming soon</span>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      disabled={!entitlements.active}
+                      onClick={() => setMessaging(a.type as 'SMTP' | 'WHATSAPP')}
+                    >
+                      Connect
+                    </button>
                   ) : a.type === 'GOOGLE_CALENDAR' ? (
                     <button
                       className="btn btn-primary btn-sm"
@@ -134,6 +155,25 @@ function IntegrationsInner() {
           </ul>
         </Section>
       </div>
+
+      {messaging === 'SMTP' && (
+        <SmtpModal
+          open
+          config={apps.data.integrations.find((i) => i.type === 'SMTP')?.config ?? null}
+          connected={apps.data.integrations.some((i) => i.type === 'SMTP')}
+          onClose={() => setMessaging(null)}
+          onSaved={refreshApps}
+        />
+      )}
+      {messaging === 'WHATSAPP' && (
+        <WhatsappModal
+          open
+          config={apps.data.integrations.find((i) => i.type === 'WHATSAPP')?.config ?? null}
+          connected={apps.data.integrations.some((i) => i.type === 'WHATSAPP')}
+          onClose={() => setMessaging(null)}
+          onSaved={refreshApps}
+        />
+      )}
 
       <Modal
         open={!!appFor}

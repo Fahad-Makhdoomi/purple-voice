@@ -38,6 +38,17 @@ interface CallDetail {
       contactName: string;
       externalEventUrl: string | null;
     }>;
+    /** Emails and WhatsApp messages the agent sent during the call. */
+    messages: Array<{
+      id: string;
+      channel: 'EMAIL' | 'WHATSAPP';
+      to: string;
+      subject: string | null;
+      body: string;
+      status: string;
+      error: string | null;
+      createdAt: string;
+    }>;
   };
 }
 
@@ -229,6 +240,28 @@ export default function CallPage() {
                         </a>
                       )}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          {call.messages?.length > 0 && (
+            <Section title="Sent during the call">
+              <ul className="space-y-4">
+                {call.messages.map((m) => (
+                  <li key={m.id} className="text-sm">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span className="badge badge-neutral">
+                        {m.channel === 'EMAIL' ? 'Email' : 'WhatsApp'}
+                      </span>
+                      <span className="font-semibold">{m.to}</span>
+                      <span className={m.status === 'sent' ? 'text-success' : 'text-danger'}>
+                        {m.status === 'sent' ? 'Sent' : 'Not sent'}
+                      </span>
+                    </p>
+                    {m.subject && <p className="mt-1 font-medium">{m.subject}</p>}
+                    <p className="mt-1 line-clamp-4 whitespace-pre-line text-muted">{m.body}</p>
+                    {m.error && <p className="mt-1 text-xs text-danger">{m.error}</p>}
                   </li>
                 ))}
               </ul>

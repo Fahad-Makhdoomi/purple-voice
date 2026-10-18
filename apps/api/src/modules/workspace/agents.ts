@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  agentNumbersSchema,
   agentSchema,
   testCallSchema,
   updateAgentSchema,
@@ -9,7 +10,7 @@ import {
 } from '@pv/shared';
 import { prisma } from '../../lib/prisma';
 import { audit } from '../../lib/audit';
-import { badRequest, notFound, planLimit } from '../../lib/http-error';
+import { HttpError, badRequest, notFound, planLimit } from '../../lib/http-error';
 import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireActiveSubscription } from '../../middleware/entitlements';
 import { assertWithinLimit } from '../../services/entitlements';
@@ -82,7 +83,15 @@ agentsRouter.get('/:id', async (req, res) => {
   const workspaceId = wsId(req);
   const agent = await prisma.agent.findFirst({
     where: { id: req.params.id, workspaceId },
-    include: { inboundNumbers: { select: { id: true, e164: true, friendlyName: true } } },
+    include: {
+      inboundNumbers: { select: { id: true, e164: true, friendlyName: true } },
+      // Campaigns still to run, so their caller number can be changed from the agent.
+      campaigns: {
+        where: { status: { in: ['DRAFT', 'RUNNING', 'PAUSED'] } },
+        select: { id: true, name: true, status: true, phoneNumberId: true },
+        orderBy: { createdAt: 'desc' },
+      },
+    },
   });
   if (!agent) throw notFound('Agent');
   const stats = await prisma.call.groupBy({
@@ -113,6 +122,62 @@ agentsRouter.patch('/:id', async (req, res) => {
   const agent = await prisma.agent.update({ where: { id: existing.id }, data: input });
   await audit(req, 'agent.updated', { entity: 'Agent', entityId: agent.id });
   res.json({ agent });
+});
+
+/**
+ * Sets the numbers this agent answers. Numbers left out stop answering
+ * through it; a number another *active* agent answers moves only when the
+ * subscriber confirms (move: true), so no line changes hands by accident.
+ */
+agentsRouter.put('/:id/numbers', async (req, res) => {
+  const input = agentNumbersSchema.parse(req.body);
+  const workspaceId = wsId(req);
+  const agent = await prisma.agent.findFirst({ where: { id: String(req.params.id), workspaceId } });
+  if (!agent) throw notFound('Agent');
+  const numbers = await prisma.phoneNumber.findMany({
+    where: { workspaceId },
+    include: { inboundAgent: { select: { id: true, name: true, status: true } } },
+  });
+  const wanted = new Set(input.phoneNumberIds);
+  if ([...wanted].some((id) => !numbers.some((n) => n.id === id)))
+    throw badRequest('Choose from your connected numbers');
+  const taken = numbers.filter(
+    (n) =>
+      wanted.has(n.id) &&
+      n.inboundAgent &&
+      n.inboundAgent.id !== agent.id &&
+      n.inboundAgent.status === 'ACTIVE',
+  );
+  if (taken.length && !input.move) {
+    throw new HttpError(
+      409,
+      taken.map((n) => `${n.e164} answers for ${n.inboundAgent!.name}`).join('; ') +
+        `. Move ${taken.length > 1 ? 'them' : 'it'} to ${agent.name}?`,
+      'number_taken',
+      { numbers: taken.map((n) => ({ id: n.id, e164: n.e164, agent: n.inboundAgent!.name })) },
+    );
+  }
+  const before = numbers.filter((n) => n.inboundAgentId === agent.id).map((n) => n.id);
+  await prisma.$transaction([
+    prisma.phoneNumber.updateMany({
+      where: { workspaceId, inboundAgentId: agent.id, id: { notIn: [...wanted] } },
+      data: { inboundAgentId: null },
+    }),
+    prisma.phoneNumber.updateMany({
+      where: { workspaceId, id: { in: [...wanted] } },
+      data: { inboundAgentId: agent.id },
+    }),
+  ]);
+  await audit(req, 'agent.numbers_changed', {
+    entity: 'Agent',
+    entityId: agent.id,
+    meta: { from: before, to: [...wanted], moved: taken.map((n) => n.id) },
+  });
+  const updated = await prisma.phoneNumber.findMany({
+    where: { workspaceId, inboundAgentId: agent.id },
+    select: { id: true, e164: true, friendlyName: true },
+  });
+  res.json({ numbers: updated });
 });
 
 agentsRouter.delete('/:id', async (req, res) => {

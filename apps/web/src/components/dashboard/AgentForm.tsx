@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Info } from 'lucide-react';
 import {
@@ -418,6 +419,73 @@ export function AgentForm({
                   className="input"
                   value={value.appointmentDurationMin}
                   onChange={(e) => set('appointmentDurationMin', Number(e.target.value))}
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-line p-4">
+          <p className="font-semibold">Send information</p>
+          <p className="text-sm text-muted">
+            When someone asks for details in writing, the agent sends them while you talk: a price
+            list, a booking link, your address.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ['emailEnabled', 'By email', 'SMTP', 'Email (SMTP)'],
+                ['whatsappEnabled', 'On WhatsApp', 'WHATSAPP', 'WhatsApp'],
+              ] as const
+            ).map(([key, label, type, app]) => {
+              const connected = integrations.data?.integrations.some((i) => i.type === type);
+              return (
+                <label key={key} className="flex items-start gap-3 rounded-sm bg-canvas p-3">
+                  <input
+                    type="checkbox"
+                    className="checkbox mt-1"
+                    checked={value[key]}
+                    onChange={(e) => set(key, e.target.checked)}
+                  />
+                  <span className="text-sm">
+                    <span className="font-semibold">{label}</span>
+                    <span className="block text-muted">
+                      {connected ? (
+                        `Sent from your ${app} connection.`
+                      ) : (
+                        <>
+                          Connect {app} under{' '}
+                          <Link
+                            href="/dashboard/integrations"
+                            className="font-semibold text-brand-700"
+                          >
+                            Integrations
+                          </Link>{' '}
+                          first.
+                        </>
+                      )}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {(value.emailEnabled || value.whatsappEnabled) && (
+            <div className="mt-4">
+              <Field
+                id="shareInfo"
+                label="What the agent may send"
+                help="Links, prices, opening hours, an address, a brochure in a few paragraphs. The agent only sends what is here or what was said on the call, and confirms the email address before sending."
+              >
+                <textarea
+                  id="shareInfo"
+                  className="textarea min-h-[120px]"
+                  maxLength={10000}
+                  value={value.shareInfo}
+                  onChange={(e) => set('shareInfo', e.target.value)}
+                  placeholder={
+                    'Price list: https://northwind.example/prices\nBook a survey: https://northwind.example/book\nShowroom: 12 High Street, Leeds, open Mon–Sat 9–5'
+                  }
                 />
               </Field>
             </div>

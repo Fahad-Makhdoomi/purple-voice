@@ -9,6 +9,11 @@ import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import { AgentForm, EMPTY_AGENT, type AgentDraft } from '@/components/dashboard/AgentForm';
 import {
+  AgentNumbers,
+  type AgentCampaign,
+  type WorkspaceNumber,
+} from '@/components/dashboard/AgentNumbers';
+import {
   ErrorNote,
   Loading,
   Modal,
@@ -26,6 +31,7 @@ interface AgentResponse {
     id: string;
     status: 'DRAFT' | 'ACTIVE' | 'PAUSED';
     inboundNumbers: Array<{ id: string; e164: string }>;
+    campaigns: AgentCampaign[];
   };
   readiness: Array<{ key: string; label: string; ok: boolean; blocking: boolean }>;
   outcomes: Array<{ outcome: string | null; _count: { _all: number } }>;
@@ -38,9 +44,7 @@ export default function AgentPage() {
   const router = useRouter();
   const { reload: reloadWorkspace } = useWorkspace();
   const { data, reload } = useApi<AgentResponse>(`/app/agents/${id}`);
-  const numbers = useApi<{
-    numbers: Array<{ id: string; e164: string; friendlyName: string | null }>;
-  }>('/app/telephony/numbers');
+  const numbers = useApi<{ numbers: WorkspaceNumber[] }>('/app/telephony/numbers');
   const [draft, setDraft] = useState<AgentDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testOpen, setTestOpen] = useState(false);
@@ -178,6 +182,18 @@ export default function AgentPage() {
                 . Our team sets up the AI voice for you.
               </p>
             </Section>
+
+            {numbers.data && (
+              <AgentNumbers
+                agentId={id}
+                agentName={agent.name}
+                numbers={numbers.data.numbers}
+                campaigns={agent.campaigns}
+                onChanged={async () => {
+                  await Promise.all([reload(), numbers.reload()]);
+                }}
+              />
+            )}
 
             <Section title="Outcomes so far">
               {data.outcomes.length === 0 ? (

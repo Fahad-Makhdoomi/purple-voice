@@ -17,6 +17,7 @@ import { findApiKey } from '../services/ai-keys';
 import { getAiSettings } from '../services/ai-settings';
 import { applyCallStatus, isTerminal, saveTranscript } from '../services/calls';
 import { busySlots, createEvent } from '../services/google-calendar';
+import { messagingChannels, sendAgentMessage } from '../services/messaging';
 import type { TranscriptLine } from '../services/ai/summarize';
 import { adapterForAccount, type TelephonyAdapter } from '../telephony';
 import { buildInstructions, type PreviousCall } from './prompt';
@@ -38,6 +39,8 @@ type LoadedCall = Call & {
 };
 
 const BUSINESS_HOURS = { start: '09:00', end: '17:00' };
+/** Emails and WhatsApp messages an agent may send on one call (abuse guard). */
+const MAX_MESSAGES_PER_CHANNEL = 3;
 const TRANSCRIPT_FLUSH_MS = 15_000;
 
 /**
@@ -55,6 +58,7 @@ export class CallSession {
   private maxDurationTimer?: NodeJS.Timeout;
   private flushTimer?: NodeJS.Timeout;
   private providerCallId?: string;
+  private sent = { EMAIL: 0, WHATSAPP: 0 };
 
   constructor(
     private readonly callId: string,
@@ -152,7 +156,7 @@ export class CallSession {
   }
 
   private async createEngine(agent: Agent): Promise<VoiceEngine> {
-    const tools = toolsForAgent(agent);
+    const tools = toolsForAgent(agent, await messagingChannels(this.call.workspaceId));
     const { instructions, greeting, opening } = buildInstructions({
       agent,
       workspace: this.call.workspace,
@@ -287,6 +291,16 @@ export class CallSession {
           );
           return 'Transferred.';
         }
+        case 'send_email': {
+          const input = parsed.data as { to: string; subject: string; message: string };
+          return await this.sendMessage(agent, 'EMAIL', input.to, input.message, input.subject);
+        }
+        case 'send_whatsapp': {
+          const input = parsed.data as { to?: string; message: string };
+          const theirs =
+            this.call.direction === 'OUTBOUND' ? this.call.toNumber : this.call.fromNumber;
+          return await this.sendMessage(agent, 'WHATSAPP', input.to || theirs, input.message);
+        }
         case 'end_call': {
           this.note(`Agent ended the call: ${(parsed.data as { reason: string }).reason}`);
           void this.waitForPlayback().then(() => this.hangup());
@@ -298,6 +312,41 @@ export class CallSession {
       return `Error: ${(err as Error).message}`;
     }
     return 'Error: unhandled tool';
+  }
+
+  /** Sends an email or WhatsApp message the caller asked for, and says what happened. */
+  private async sendMessage(
+    agent: Agent,
+    channel: 'EMAIL' | 'WHATSAPP',
+    to: string,
+    message: string,
+    subject?: string,
+  ): Promise<string> {
+    const what = channel === 'EMAIL' ? 'email' : 'WhatsApp message';
+    if (this.sent[channel] >= MAX_MESSAGES_PER_CHANNEL)
+      return `Error: you have already sent ${MAX_MESSAGES_PER_CHANNEL} on this call; offer to have the team follow up instead.`;
+    this.sent[channel]++;
+    const tz = isValidTimeZone(agent.timezone) ? agent.timezone : 'UTC';
+    // Says who sent it and that it is an AI assistant, as the call itself does.
+    const text =
+      channel === 'EMAIL'
+        ? `${message}\n\n—\nSent by ${agent.name}, the AI assistant for ${this.call.workspace.name}, during your call on ${describe(new Date(), tz)}.`
+        : message;
+    const result = await sendAgentMessage({
+      workspaceId: this.call.workspaceId,
+      callId: this.callId,
+      agentId: agent.id,
+      channel,
+      to,
+      subject,
+      text,
+    });
+    this.note(
+      result.ok ? `Sent a ${what} to ${to}` : `Could not send a ${what} to ${to}: ${result.detail}`,
+    );
+    return result.ok
+      ? `The ${what} to ${to} has been sent. Tell them it should arrive in a minute${channel === 'EMAIL' ? ' and to check their spam folder if not' : ''}.`
+      : `Error: the ${what} could not be sent (${result.detail}). Apologise and offer to have the team send it.`;
   }
 
   private async calendar(agent: Agent): Promise<Integration | null> {

@@ -1,6 +1,7 @@
 import type { Agent } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { getAiStatus } from './ai-settings';
+import { messagingChannels } from './messaging';
 
 export interface ReadinessItem {
   key: string;
@@ -22,11 +23,15 @@ export async function agentReadiness(
   agent: Pick<
     Agent,
     'appointmentBookingEnabled' | 'calendarIntegrationId' | 'transferEnabled' | 'transferNumber'
-  > & { id?: string },
+  > &
+    Partial<Pick<Agent, 'emailEnabled' | 'whatsappEnabled'>> & { id?: string },
 ): Promise<ReadinessItem[]> {
-  const [ai, numbers] = await Promise.all([
+  const [ai, numbers, messaging] = await Promise.all([
     getAiStatus(workspaceId),
     agent.id ? prisma.phoneNumber.count({ where: { workspaceId } }) : 0,
+    agent.emailEnabled || agent.whatsappEnabled
+      ? messagingChannels(workspaceId)
+      : { email: false, whatsapp: false },
   ]);
 
   const items: ReadinessItem[] = [
@@ -43,6 +48,22 @@ export async function agentReadiness(
       key: 'calendar',
       label: 'Link a Google Calendar for bookings',
       ok: !!agent.calendarIntegrationId,
+      blocking: false,
+    });
+  }
+  if (agent.emailEnabled) {
+    items.push({
+      key: 'email',
+      label: 'Connect Email (SMTP) under Integrations so the agent can send emails',
+      ok: messaging.email,
+      blocking: false,
+    });
+  }
+  if (agent.whatsappEnabled) {
+    items.push({
+      key: 'whatsapp',
+      label: 'Connect WhatsApp under Integrations so the agent can send messages',
+      ok: messaging.whatsapp,
       blocking: false,
     });
   }
