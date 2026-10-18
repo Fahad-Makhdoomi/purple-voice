@@ -51,7 +51,7 @@ export default async function PricingPage() {
       <PageIntro
         eyebrow="Pricing"
         title="Pay for the minutes you talk, not the seats you fill"
-        lead="Start free with one agent and 100 AI call minutes. Grow on Basic. Move to Pro for a full AI sales floor. Need it built for you? Enterprise."
+        lead="Start with one agent and a free month, then $5 a month. Grow on Basic. Move to Pro for a full AI sales floor. Need it built for you? Enterprise."
       />
 
       <section className="-mt-4 bg-canvas pb-section">

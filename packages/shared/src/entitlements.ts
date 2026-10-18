@@ -17,6 +17,8 @@ export interface Entitlements {
    * subscription (never subscribed, or a paid plan ended).
    */
   free: boolean;
+  /** When the Free trial ends (set while a workspace is on the trial). */
+  trialEndsAt?: string | null;
   includedMinutes: number | null;
   limits: PlanLimits;
   features: PlanFeatures;

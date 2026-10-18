@@ -116,8 +116,8 @@ export function PricingCards({
                             : 'btn-secondary',
                     )}
                   >
-                    {plan.priceMonthlyCents === 0
-                      ? 'Start free'
+                    {plan.code === 'FREE'
+                      ? 'Start free trial'
                       : plan.selfServe
                         ? `Choose ${plan.name}`
                         : 'Talk to sales'}

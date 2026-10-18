@@ -14,14 +14,16 @@
 export const PLAN_CODES = ['FREE', 'BASIC', 'PRO', 'ENTERPRISE'] as const;
 export type PlanCode = (typeof PLAN_CODES)[number];
 
-/** Plans bought through a payment gateway. Free needs no checkout. */
-export const PAID_PLAN_CODES = ['BASIC', 'PRO'] as const;
+/** Plans a subscriber can buy through a payment gateway (Free is $5 a month after its trial). */
+export const PAID_PLAN_CODES = ['FREE', 'BASIC', 'PRO'] as const;
 
 /**
- * The plan every workspace is on when it has no live paid subscription: at
- * sign-up, and after a paid plan ends. See services/entitlements.ts.
+ * The plan new workspaces start on: free for FREE_TRIAL_DAYS, then $5 a month
+ * (bought like any other plan). See services/entitlements.ts.
  */
 export const FREE_PLAN_CODE = 'FREE' satisfies PlanCode;
+/** How long a workspace may use the Free plan before it must subscribe. */
+export const FREE_TRIAL_DAYS = 30;
 
 export interface PlanLimits {
   /** AI call agents. */
@@ -103,8 +105,8 @@ export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
   FREE: {
     code: 'FREE',
     name: 'Free',
-    tagline: 'Try a real AI calling agent on your own number, free.',
-    priceMonthlyCents: 0,
+    tagline: 'Free for your first month, then $5 a month.',
+    priceMonthlyCents: 500,
     includedMinutes: 100,
     limits: {
       agents: 1,
@@ -129,10 +131,10 @@ export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
       'One AI call agent',
       'Connect one phone number',
       '1 calling campaign',
-      '100 free AI call minutes / month',
+      '100 AI call minutes a month',
       'Appointment booking and call summaries',
       'One app integration',
-      'No card needed',
+      'Free for your first month, then $5 a month',
     ],
     featured: false,
     selfServe: true,

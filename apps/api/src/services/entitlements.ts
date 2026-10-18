@@ -56,6 +56,7 @@ const NONE: Entitlements = {
   status: null,
   active: false,
   free: false,
+  trialEndsAt: null,
   includedMinutes: 0,
   limits: ZERO_LIMITS,
   features: NO_FEATURES,
@@ -65,19 +66,27 @@ const NONE: Entitlements = {
 };
 
 /**
- * The Free plan, for a workspace without a live paid subscription. It has no
- * billing period of its own, so its minutes are counted per calendar month
- * (usageWindow). Turning the Free plan off in Admin → Plans takes it away.
+ * The Free plan is a trial: a workspace without a live paid subscription may
+ * use it for FREE_TRIAL_DAYS from sign-up (Workspace.trialEndsAt); after that
+ * it must subscribe. A subscription to Free is the $5 monthly plan and runs on
+ * like any other. Minutes are counted per calendar month.
  */
-async function freeEntitlements(): Promise<Entitlements> {
-  const plan = await prisma.plan.findUnique({ where: { code: FREE_PLAN_CODE } });
-  if (!plan?.active) return NONE;
+async function freeEntitlements(workspaceId: string): Promise<Entitlements> {
+  const [plan, ws] = await Promise.all([
+    prisma.plan.findUnique({ where: { code: FREE_PLAN_CODE } }),
+    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { trialEndsAt: true } }),
+  ]);
+  const trialEndsAt = ws?.trialEndsAt ?? null;
+  const inTrial = !!trialEndsAt && trialEndsAt.getTime() > Date.now();
+  if (!plan?.active || !inTrial)
+    return { ...NONE, trialEndsAt: trialEndsAt?.toISOString() ?? null };
   return {
     planCode: plan.code,
     planName: plan.name,
     status: 'ACTIVE',
     active: true,
     free: true,
+    trialEndsAt: trialEndsAt!.toISOString(),
     includedMinutes: plan.includedMinutes,
     limits: mergeLimits(plan.limits as unknown as PlanLimits),
     features: mergeFeatures(plan.features as unknown as PlanFeatures),
@@ -93,7 +102,7 @@ export async function getEntitlements(workspaceId: string): Promise<Entitlements
     include: { plan: true },
   });
 
-  if (!sub) return freeEntitlements();
+  if (!sub) return freeEntitlements(workspaceId);
 
   const manualLapsed =
     (sub.provider === 'MANUAL' ||
@@ -103,7 +112,7 @@ export async function getEntitlements(workspaceId: string): Promise<Entitlements
   const active = isEntitledStatus(sub.status) && !manualLapsed;
 
   // A paid plan that ended (or a checkout never finished) leaves the workspace on Free.
-  if (!active) return freeEntitlements();
+  if (!active) return freeEntitlements(workspaceId);
 
   return {
     planCode: sub.plan.code,

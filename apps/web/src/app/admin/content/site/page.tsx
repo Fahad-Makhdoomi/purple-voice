@@ -121,7 +121,7 @@ export default function SiteSettingsPage() {
                   className="input"
                   maxLength={160}
                   defaultValue={c.announcement.text}
-                  placeholder="New: 100 free AI call minutes every month"
+                  placeholder="New: your first month is free"
                 />
               </Field>
               <Field id="annLabel" label="Link label" optional>

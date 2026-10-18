@@ -295,6 +295,8 @@ model Workspace {
   name        String
   timezone    String   @default("UTC")
   suspended   Boolean  @default(false)
+  /// Free is a trial: until this date a workspace without a paid subscription may use the Free plan.
+  trialEndsAt DateTime @default(dbgenerated("(now() + '30 days'::interval)"))
   /// The platform's own workspace, where super admins run agents, campaigns
   /// and calls. Never billed; left out of subscriber analytics.
   internal    Boolean  @default(false)

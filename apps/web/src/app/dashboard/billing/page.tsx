@@ -351,8 +351,8 @@ function BillingInner() {
                 <StatusBadge status={entitlements.status} />
               </div>
               <p className="mt-1 text-sm text-muted">
-                {entitlements.free
-                  ? 'Free forever. Call minutes reset on the 1st of every month.'
+                {entitlements.free && !subscription
+                  ? `Free trial until ${formatDate(entitlements.trialEndsAt ?? null)}, then $5 a month. Choose a plan below to keep going.`
                   : `${entitlements.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${formatDate(entitlements.currentPeriodEnd)}${entitlements.cancelAtPeriodEnd ? ', then you move to Free' : ''}`}
               </p>
               <div className="mt-6 space-y-4">
@@ -476,8 +476,9 @@ function BillingInner() {
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {data.plans.map((plan) => {
-          const onPlan = entitlements.active && entitlements.planCode === plan.code;
-          const freePlan = plan.priceMonthlyCents === 0;
+          // On the trial, the Free card is for subscribing, not "your plan".
+          const trialing = entitlements.free && !subscription;
+          const onPlan = entitlements.active && entitlements.planCode === plan.code && !trialing;
           // Same plan through another gateway is a move, not "your plan".
           const isCurrent =
             onPlan && (!gateway || current === gateway.gateway || current === 'MANUAL');
@@ -527,11 +528,7 @@ function BillingInner() {
                   </li>
                 ))}
               </ul>
-              {freePlan ? (
-                <button className="btn btn-secondary mt-6 w-full" disabled>
-                  {onPlan ? 'Your plan' : 'Yours again if a paid plan ends'}
-                </button>
-              ) : plan.selfServe ? (
+              {plan.selfServe ? (
                 <button
                   className={cn('btn mt-6 w-full', isCurrent ? 'btn-secondary' : 'btn-primary')}
                   disabled={

@@ -123,9 +123,8 @@ export async function planCodeForGatewayId(gateway: PaymentGateway, id: string) 
 export async function checkoutOptions(): Promise<CheckoutOption[]> {
   const [rows, plans] = await Promise.all([
     prisma.paymentGatewayConfig.findMany(),
-    // Free needs no checkout, so no gateway sells it.
     prisma.plan.findMany({
-      where: { active: true, selfServe: true, code: { not: 'FREE' } },
+      where: { active: true, selfServe: true },
       orderBy: { sortOrder: 'asc' },
     }),
   ]);
@@ -195,7 +194,7 @@ export async function paymentGatewayViews(): Promise<PaymentGatewayView[]> {
   const [rows, plans] = await Promise.all([
     prisma.paymentGatewayConfig.findMany(),
     prisma.plan.findMany({
-      where: { selfServe: true, code: { not: 'FREE' } },
+      where: { selfServe: true },
       orderBy: { sortOrder: 'asc' },
     }),
   ]);

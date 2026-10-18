@@ -142,7 +142,7 @@ export default async function HomePage() {
             Launch with Purple Voice.
           </h2>
           <p className="mx-auto mt-6 max-w-xl text-lead text-white/65">
-            Start free with 100 AI call minutes a month. Upgrade to Basic or Pro when you need more
+            Start with a free month, then $5 a month. Upgrade to Basic or Pro when you need more
             agents, numbers and campaigns.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
