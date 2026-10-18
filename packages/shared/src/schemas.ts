@@ -610,6 +610,16 @@ export const pageSchema = z.object({
 });
 export const updatePageSchema = pageSchema.partial();
 
+/** Posts in these categories are listed under /resources instead of /blog. */
+export const RESOURCE_CATEGORIES = [
+  'Templates',
+  'Checklists',
+  'Scripts',
+  'Glossary',
+  'Calculators',
+  'Frameworks',
+] as const;
+
 export const POST_SCHEMA_TYPES = [
   'BlogPosting',
   'Article',

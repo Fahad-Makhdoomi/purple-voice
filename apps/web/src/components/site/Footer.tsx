@@ -18,6 +18,7 @@ export async function Footer() {
       title: 'Company',
       links: [
         { href: '/blog', label: 'Blog' },
+        { href: '/resources', label: 'Resources' },
         { href: '/contact', label: 'Contact' },
         { href: '/contact?plan=ENTERPRISE', label: 'Enterprise' },
       ],

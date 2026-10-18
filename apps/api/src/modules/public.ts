@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { contactRequestSchema, paginationSchema } from '@pv/shared';
+import { contactRequestSchema, paginationSchema, RESOURCE_CATEGORIES } from '@pv/shared';
 import { z } from 'zod';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
@@ -60,7 +60,17 @@ publicRouter.get('/posts', async (req, res) => {
     .max(40)
     .optional()
     .parse(req.query.tag || undefined);
-  const where = { ...published(), ...(tag ? { tags: { has: tag } } : {}) };
+  const section = z
+    .enum(['blog', 'resources'])
+    .optional()
+    .parse(req.query.section || undefined);
+  const sectionWhere =
+    section === 'resources'
+      ? { category: { in: [...RESOURCE_CATEGORIES] } }
+      : section === 'blog'
+        ? { OR: [{ category: null }, { category: { notIn: [...RESOURCE_CATEGORIES] } }] }
+        : {};
+  const where = { ...published(), ...sectionWhere, ...(tag ? { tags: { has: tag } } : {}) };
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
       where,
@@ -73,6 +83,7 @@ publicRouter.get('/posts', async (req, res) => {
         excerpt: true,
         coverImageUrl: true,
         tags: true,
+        category: true,
         publishedAt: true,
         author: { select: { name: true } },
       },
@@ -89,10 +100,22 @@ publicRouter.get('/posts/:slug', async (req, res) => {
   });
   if (!post) throw notFound('Post');
   const related = await prisma.post.findMany({
-    where: { ...published(), slug: { not: post.slug }, tags: { hasSome: post.tags } },
+    where: {
+      ...published(),
+      slug: { not: post.slug },
+      ...(post.category ? { category: post.category } : {}),
+      tags: { hasSome: post.tags },
+    },
     orderBy: { publishedAt: 'desc' },
     take: 3,
-    select: { slug: true, title: true, excerpt: true, coverImageUrl: true, publishedAt: true },
+    select: {
+      slug: true,
+      title: true,
+      excerpt: true,
+      coverImageUrl: true,
+      category: true,
+      publishedAt: true,
+    },
   });
   res.json({ post, related });
 });
@@ -143,7 +166,7 @@ publicRouter.get('/sitemap', async (_req, res) => {
     }),
     prisma.post.findMany({
       where: { ...published(), noindex: false },
-      select: { slug: true, updatedAt: true },
+      select: { slug: true, category: true, updatedAt: true },
     }),
   ]);
   res.json({ pages, posts });

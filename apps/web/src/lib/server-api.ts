@@ -67,11 +67,22 @@ export interface PostSummary {
   excerpt: string;
   coverImageUrl: string | null;
   tags: string[];
+  category: string | null;
   publishedAt: string;
   author: { name: string } | null;
 }
-export async function getPosts(page = 1, tag?: string) {
-  const q = new URLSearchParams({ page: String(page), pageSize: '12', ...(tag ? { tag } : {}) });
+export async function getPosts(
+  page = 1,
+  tag?: string,
+  section?: 'blog' | 'resources',
+  pageSize = 12,
+) {
+  const q = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    ...(tag ? { tag } : {}),
+    ...(section ? { section } : {}),
+  });
   return get<{ posts: PostSummary[]; total: number; page: number; pageSize: number }>(
     `/posts?${q}`,
     ['posts'],
@@ -79,13 +90,17 @@ export async function getPosts(page = 1, tag?: string) {
       posts: [],
       total: 0,
       page,
-      pageSize: 12,
+      pageSize,
     },
   );
 }
 
 export interface Post extends PostSummary {
   body: string;
+  faq: Array<{ question: string; answer: string }>;
+  howToSteps: Array<{ name: string; text: string }>;
+  schemaType: string;
+  focusKeyword: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
   ogImageUrl: string | null;
@@ -171,6 +186,6 @@ export async function getAppearance(): Promise<AppearanceSettings> {
 export async function getSitemapEntries() {
   return get<{
     pages: Array<{ slug: string; updatedAt: string }>;
-    posts: Array<{ slug: string; updatedAt: string }>;
+    posts: Array<{ slug: string; category: string | null; updatedAt: string }>;
   }>('/sitemap', ['pages', 'posts'], { pages: [], posts: [] });
 }
