@@ -389,6 +389,290 @@
   }
 }
 
+/* ── Announcement bar (AnnouncementBar.tsx): moves the fixed header and the page down. */
+:root {
+  --pv-announce-h: 36px;
+}
+.site-theme[data-announcement] > header {
+  transform: translateY(var(--pv-announce-h));
+}
+.site-theme[data-announcement] > main {
+  padding-top: var(--pv-announce-h);
+}
+
+/* ── Cookie toaster (CookieConsent.tsx) ──────────────────────────────────────
+   A small dark pill at the bottom of the page, whatever the theme: a cookie
+   tile, one line of text and three text buttons whose underlines sweep on
+   hover. The preferences panel opens above it. */
+
+.cookie-toast {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 20px;
+  pointer-events: none;
+  font-family: var(--pv-font-sans);
+}
+.cookie-toast > * {
+  pointer-events: auto;
+  width: min(100%, 520px);
+  color: rgb(242 238 255);
+  background: rgb(14 10 30 / 0.8);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.06),
+    0 24px 60px -24px rgb(0 0 0 / 0.65);
+  animation: cookie-in 700ms var(--pv-ease) both;
+}
+.cookie-toast.is-leaving > * {
+  animation: cookie-out 380ms var(--pv-ease) both;
+}
+.cookie-toast__inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 24px;
+  padding: 10px 28px 10px 10px;
+}
+.cookie-toast__tile {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.1);
+}
+.cookie-toast__text {
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.cookie-toast__policy {
+  color: rgb(255 255 255 / 0.55);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cookie-toast__actions {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+}
+.cookie-link {
+  position: relative;
+  padding: 2px 0 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.72);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.cookie-link::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 1px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.6;
+  transform-origin: right;
+  transition: transform 450ms var(--pv-ease);
+}
+.cookie-link:hover::after,
+.cookie-link:focus-visible::after {
+  animation: cookie-underline 600ms var(--pv-ease);
+}
+.cookie-link:hover,
+.cookie-link:focus-visible {
+  color: white;
+  outline: none;
+}
+.cookie-link--accent {
+  color: rgb(var(--pv-cta, 196 181 253));
+}
+.cookie-link--accent:hover,
+.cookie-link--accent:focus-visible {
+  color: rgb(var(--pv-cta, 221 211 254));
+  filter: brightness(1.1);
+}
+@keyframes cookie-underline {
+  0% {
+    transform: scaleX(1);
+    transform-origin: right;
+  }
+  45% {
+    transform: scaleX(0);
+    transform-origin: right;
+  }
+  55% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  100% {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+@keyframes cookie-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes cookie-out {
+  to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+    filter: blur(4px);
+  }
+}
+
+.cookie-panel {
+  border-radius: 22px;
+  padding: 18px 20px 14px;
+}
+.cookie-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.cookie-panel__list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+.cookie-panel__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.cookie-panel__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgb(255 255 255 / 0.6);
+}
+.cookie-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 22px;
+  padding-top: 12px;
+}
+
+.cookie-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.cookie-switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.cookie-switch input:disabled {
+  cursor: not-allowed;
+}
+.cookie-switch span {
+  width: 38px;
+  height: 22px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.18);
+  transition: background 250ms var(--pv-ease);
+}
+.cookie-switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: white;
+  transition: transform 300ms var(--pv-ease);
+}
+.cookie-switch input:checked + span {
+  background: rgb(var(--pv-cta, 156 128 250));
+}
+.cookie-switch input:checked + span::after {
+  transform: translateX(16px);
+  background: rgb(20 14 38);
+}
+.cookie-switch input:disabled + span {
+  opacity: 0.55;
+}
+.cookie-switch input:focus-visible + span {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.7);
+}
+
+.cookie-art {
+  width: 34px;
+  height: 34px;
+  overflow: visible;
+}
+.cookie-art__body {
+  transform-origin: 24px 25px;
+  animation: cookie-wobble 4.2s ease-in-out infinite;
+}
+.cookie-art__crumb {
+  animation: cookie-crumb 2.8s ease-in infinite;
+}
+.cookie-art__crumb:nth-of-type(2) {
+  animation-delay: 0.9s;
+}
+.cookie-art__crumb:nth-of-type(3) {
+  animation-delay: 1.8s;
+}
+@keyframes cookie-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  20% {
+    transform: rotate(-9deg) scale(1.04);
+  }
+  40% {
+    transform: rotate(6deg) scale(0.98);
+  }
+  60% {
+    transform: rotate(-3deg) scale(1.02);
+  }
+}
+@keyframes cookie-crumb {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, 26px);
+  }
+}
+
+@media (max-width: 480px) {
+  .cookie-toast__inner {
+    padding-right: 16px;
+    align-items: flex-start;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

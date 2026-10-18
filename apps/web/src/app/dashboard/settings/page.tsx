@@ -6,6 +6,7 @@ import { useWorkspace } from '@/lib/workspace';
 import { PageHeader, Section, useAction } from '@/components/ui';
 import { Field } from '@/components/forms/Field';
 import { PasswordSection } from '@/components/account/PasswordSection';
+import { PrivacySection } from '@/components/account/PrivacySection';
 
 export default function SettingsPage() {
   const { me, reload } = useSession();
@@ -83,6 +84,7 @@ export default function SettingsPage() {
         )}
 
         {!actingAsStaff && <PasswordSection />}
+        {!actingAsStaff && <PrivacySection />}
         {actingAsStaff && (
           <p className="text-sm text-muted">
             Profile settings belong to the customer and aren&apos;t editable while acting as staff.

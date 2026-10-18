@@ -130,6 +130,13 @@ export function ContactForm({
       >
         {state === 'sending' ? 'Sending…' : 'Send message'}
       </button>
+      <p className="text-xs text-muted">
+        We use these details only to reply to you. See our{' '}
+        <a href="/privacy" className="underline">
+          Privacy Policy
+        </a>
+        .
+      </p>
     </form>
   );
 }

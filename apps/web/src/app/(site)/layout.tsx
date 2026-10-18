@@ -1,6 +1,8 @@
 import { Header } from '@/components/site/Header';
 import { Footer } from '@/components/site/Footer';
 import { Analytics } from '@/components/site/Analytics';
+import { CookieConsent } from '@/components/site/CookieConsent';
+import { AnnouncementBar } from '@/components/site/AnnouncementBar';
 import { ThemeMusic } from '@/components/site/ThemeMusic';
 import { getSettings } from '@/lib/server-api';
 import { themeMusic } from '@/lib/theme';
@@ -14,8 +16,11 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   const settings = await getSettings();
   const { theme } = settings.appearance;
   const music = themeMusic(settings.appearance);
+  const { announcement } = settings.content;
+  const announce = announcement.enabled && !!announcement.text;
   return (
-    <div data-theme={theme} className="site-theme">
+    <div data-theme={theme} className="site-theme" data-announcement={announce ? '' : undefined}>
+      {announce && <AnnouncementBar value={announcement} />}
       <noscript>
         <style>
           {'.reveal{opacity:1!important;transform:none!important;filter:none!important}'}
@@ -26,6 +31,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <Footer />
       {music && <ThemeMusic src={music} />}
       <Analytics settings={settings.analytics} />
+      <CookieConsent />
     </div>
   );
 }

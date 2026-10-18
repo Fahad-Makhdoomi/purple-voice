@@ -1,9 +1,17 @@
 import Link from 'next/link';
 import { Logo } from '@/components/brand/Logo';
 import { getFooterPages, getSettings } from '@/lib/server-api';
+import { CookieSettingsButton } from '@/components/site/CookieConsent';
 
 export async function Footer() {
-  const [pages, { seo }] = await Promise.all([getFooterPages(), getSettings()]);
+  const [pages, { seo, content }] = await Promise.all([getFooterPages(), getSettings()]);
+  const social = [
+    ['LinkedIn', content.social.linkedin],
+    ['X', content.social.x],
+    ['YouTube', content.social.youtube],
+    ['Instagram', content.social.instagram],
+    ['Facebook', content.social.facebook],
+  ].filter((s): s is [string, string] => !!s[1]);
   const columns = [
     {
       title: 'Product',
@@ -23,7 +31,14 @@ export async function Footer() {
         { href: '/contact?plan=ENTERPRISE', label: 'Enterprise' },
       ],
     },
-    { title: 'Legal', links: pages.map((p) => ({ href: `/${p.slug}`, label: p.title })) },
+    {
+      title: 'Legal',
+      links: [
+        ...pages.map((p) => ({ href: `/${p.slug}`, label: p.title })),
+        // US state privacy laws: a clear link to opt out of sale or sharing.
+        { href: '/privacy-choices', label: 'Your privacy choices' },
+      ],
+    },
   ];
 
   return (
@@ -35,15 +50,29 @@ export async function Footer() {
       <div className="container relative grid gap-12 py-16 md:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div className="max-w-xs">
           <Logo tone="light" />
-          <p className="mt-4 text-sm leading-relaxed text-white/60">
-            AI voice agents that call, qualify and book — on your own phone numbers.
-          </p>
+          <p className="mt-4 text-sm leading-relaxed text-white/60">{content.footerTagline}</p>
           <a
             href={`mailto:${seo.contactEmail}`}
             className="mt-4 inline-block text-sm font-semibold text-brand-300 hover:text-white"
           >
             {seo.contactEmail}
           </a>
+          {social.length > 0 && (
+            <ul className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+              {social.map(([label, href]) => (
+                <li key={label}>
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/60 transition hover:text-white"
+                  >
+                    {label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {columns.map((col) => (
           <div key={col.title}>
@@ -69,7 +98,10 @@ export async function Footer() {
         <p>
           © {new Date().getFullYear()} {seo.siteName}. All rights reserved.
         </p>
-        <p>Phone number rental and AI usage are billed separately.</p>
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span>Phone number rental and AI usage are billed separately.</span>
+          <CookieSettingsButton className="underline underline-offset-2 transition hover:text-white" />
+        </p>
       </div>
     </footer>
   );

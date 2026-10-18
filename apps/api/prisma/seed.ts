@@ -2,7 +2,7 @@
  * Seeds what a fresh install needs:
  *   - the plans (from @pv/shared), without overwriting later admin edits
  *   - a super admin (SEED_SUPER_ADMIN_EMAIL / SEED_SUPER_ADMIN_PASSWORD)
- *   - starter FAQs, legal pages and two blog posts so the site isn't empty
+ *   - starter FAQs, the legal pages (prisma/legal-pages.ts) and two blog posts
  *   - outside production, a demo subscriber with sample calls (SEED_DEMO=false to skip)
  *
  * Safe to run repeatedly.
@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { DEFAULT_LLM_MODEL, DEFAULT_VOICE, PLAN_LIST } from '@pv/shared';
 import { hashPassword } from '../src/lib/password';
+import { LEGAL_PAGES } from './legal-pages';
 
 const prisma = new PrismaClient();
 const isProd = process.env.NODE_ENV === 'production';
@@ -139,26 +140,20 @@ async function seedContent() {
     console.log('✓ FAQs');
   }
 
-  const pages = [
-    {
-      slug: 'privacy',
-      title: 'Privacy Policy',
-      body: '> Starter text. Have this reviewed by your legal counsel before launch.\n\n## What we collect\nAccount details you give us, the configuration of your agents, call metadata, transcripts and summaries of calls placed through your workspace.\n\n## How we use it\nTo run the service, bill you, and support you. We never sell personal data.\n\n## Your API keys\nKeys for AI and telephony providers are encrypted at rest and used only to run your calls.\n\n## Contact\nWrite to us from the contact page with any privacy question or request.',
-      showInFooter: true,
-    },
-    {
-      slug: 'terms',
-      title: 'Terms of Service',
-      body: '> Starter text. Have this reviewed by your legal counsel before launch.\n\n## Using Purple Voice\nYou are responsible for the calls your agents make, including having consent to call the numbers you upload and complying with local telemarketing law.\n\n## Billing\nPlans renew monthly. Call minutes are counted per billing period and do not roll over. Carrier and AI provider charges are billed by those providers.\n\n## Acceptable use\nNo calls that harass, deceive, or impersonate a real person or organisation.',
-      showInFooter: true,
-    },
-  ];
-  for (const page of pages) {
-    await prisma.page.upsert({
-      where: { slug: page.slug },
-      create: { ...page, status: 'PUBLISHED', publishedAt: new Date() },
-      update: {},
-    });
+  // Legal pages: created once, and the old starter text upgraded, but never
+  // overwriting a page staff have edited (its body no longer matches).
+  for (const page of LEGAL_PAGES) {
+    const existing = await prisma.page.findUnique({ where: { slug: page.slug } });
+    if (!existing) {
+      await prisma.page.create({
+        data: { ...page, showInFooter: true, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+    } else if (existing.body.startsWith('> Starter text.')) {
+      await prisma.page.update({
+        where: { id: existing.id },
+        data: { body: page.body, seoDescription: existing.seoDescription ?? page.seoDescription },
+      });
+    }
   }
 
   const posts = [

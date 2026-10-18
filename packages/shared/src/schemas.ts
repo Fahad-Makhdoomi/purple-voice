@@ -913,6 +913,9 @@ export const legalSettingsSchema = z.object({
   ukRepresentative: z.string().trim().max(400).default(''),
   /** ICO registration (UK data protection fee) number. */
   icoNumber: z.string().trim().max(40).default(''),
+  /** Where the platform is hosted, for the sub-processors list. */
+  hostingProvider: z.string().trim().max(120).default(''),
+  hostingRegion: z.string().trim().max(120).default(''),
   governingLaw: z.string().trim().max(120).default('England and Wales'),
   effectiveDate: z.string().trim().max(40).default('18 October 2026'),
 });

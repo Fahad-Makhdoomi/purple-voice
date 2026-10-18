@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Markdown } from '@/components/site/Markdown';
 import { PageIntro } from '@/components/site/shared/PageIntro';
-import { getPage } from '@/lib/server-api';
+import { getPage, getSettings } from '@/lib/server-api';
+import { fillLegal } from '@/lib/legal';
 import { formatDate } from '@/lib/format';
 
 /** Pages managed in Admin → Content → Pages (privacy, terms, about, landing pages…). */
@@ -30,7 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CmsPage({ params }: Props) {
   const { slug } = await params;
-  const page = await getPage(slug);
+  const [page, { legal, seo }] = await Promise.all([getPage(slug), getSettings()]);
   if (!page) notFound();
   return (
     <>
@@ -40,7 +41,7 @@ export default async function CmsPage({ params }: Props) {
       />
       <section className="bg-surface py-16 sm:py-20">
         <div className="container max-w-narrow">
-          <Markdown>{page.body}</Markdown>
+          <Markdown>{fillLegal(page.body, legal, seo)}</Markdown>
         </div>
       </section>
     </>

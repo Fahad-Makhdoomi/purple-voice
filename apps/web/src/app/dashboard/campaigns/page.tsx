@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { Megaphone, Plus } from 'lucide-react';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
-import { EmptyState, Loading, Meter, PageHeader, StatusBadge } from '@/components/ui';
+import type { CampaignProgress } from '@pv/shared';
+import { EmptyState, Loading, PageHeader, StatusBadge } from '@/components/ui';
+import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/format';
 
 interface CampaignRow {
@@ -19,6 +21,7 @@ interface CampaignRow {
   callWindowStart: string;
   callWindowEnd: string;
   timezone: string;
+  progress: CampaignProgress;
 }
 
 export default function CampaignsPage() {
@@ -45,7 +48,14 @@ export default function CampaignsPage() {
       <PageHeader
         title="Campaigns"
         description="An agent calling a list of contacts toward one goal."
-        actions={action}
+        actions={
+          <>
+            <Link href="/dashboard/campaigns/do-not-call" className="btn btn-ghost">
+              Do-not-call list
+            </Link>
+            {action}
+          </>
+        }
       />
       {!data ? (
         <Loading />
@@ -88,9 +98,38 @@ export default function CampaignsPage() {
                     <StatusBadge status={c.status} />
                   </td>
                   <td>
-                    <Meter value={c.completedCount} max={Math.max(c.contactCount, 1)} />
+                    <div
+                      className="h-2 overflow-hidden rounded-full bg-black/10"
+                      role="progressbar"
+                      aria-valuenow={c.progress.percent}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${c.name} progress`}
+                    >
+                      <div
+                        className={cn(
+                          'h-full rounded-full',
+                          !c.progress.finished
+                            ? 'bg-brand-500'
+                            : c.progress.incomplete
+                              ? 'bg-warning'
+                              : 'bg-success',
+                        )}
+                        style={{ width: `${c.progress.percent}%` }}
+                      />
+                    </div>
                     <p className="num mt-1 text-xs text-muted">
-                      {c.completedCount} / {c.contactCount} contacts
+                      {c.progress.percent}% · {c.progress.dialled} / {c.contactCount} dialled
+                      {c.progress.waitingRetry > 0 && ` · ${c.progress.waitingRetry} to retry`}
+                      {c.progress.finished && c.progress.incomplete && (
+                        <span className="text-warning">
+                          {' '}
+                          · {c.progress.unreached +
+                            c.progress.waitingRetry +
+                            c.progress.notCalled}{' '}
+                          not reached
+                        </span>
+                      )}
                     </p>
                   </td>
                   <td className="text-sm text-ink-soft">

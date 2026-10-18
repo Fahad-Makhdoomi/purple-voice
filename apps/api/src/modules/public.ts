@@ -1,5 +1,14 @@
 import { Router } from 'express';
-import { contactRequestSchema, paginationSchema, RESOURCE_CATEGORIES } from '@pv/shared';
+import {
+  PRIVACY_REGION_LABELS,
+  PRIVACY_REQUEST_LABELS,
+  RESOURCE_CATEGORIES,
+  consentSchema,
+  contactRequestSchema,
+  paginationSchema,
+  privacyRequestSchema,
+} from '@pv/shared';
+import { hmacSha256Hex } from '../lib/crypto';
 import { z } from 'zod';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
@@ -138,16 +147,20 @@ publicRouter.get('/pages/:slug', async (req, res) => {
 });
 
 publicRouter.get('/settings', async (_req, res) => {
-  const [seo, analytics, security, appearance] = await Promise.all([
+  const [seo, analytics, security, appearance, content, legal] = await Promise.all([
     getSetting('seo'),
     getSetting('analytics'),
     getSetting('security'),
     getSetting('appearance'),
+    getSetting('content'),
+    getSetting('legal'),
   ]);
   res.json({
     seo,
     analytics,
     appearance,
+    content,
+    legal,
     captcha: {
       provider: env.captchaEnabled ? env.CAPTCHA_PROVIDER : 'none',
       forms: env.captchaEnabled
@@ -170,6 +183,60 @@ publicRouter.get('/sitemap', async (_req, res) => {
     }),
   ]);
   res.json({ pages, posts });
+});
+
+/**
+ * Records a visitor's cookie choices, so consent can be shown to have been
+ * given (GDPR art. 7(1), UK GDPR, PECR). No account and no raw IP: a random
+ * id from the browser and a keyed hash of the address.
+ */
+publicRouter.post('/consent', formLimiter, async (req, res) => {
+  const input = consentSchema.parse(req.body);
+  await prisma.consentRecord.create({
+    data: {
+      ...input,
+      ipHash: req.ip ? hmacSha256Hex(env.URL_SIGNING_SECRET, req.ip).slice(0, 32) : null,
+      userAgent: req.header('user-agent')?.slice(0, 300) ?? null,
+    },
+  });
+  res.status(201).json({ ok: true });
+});
+
+/**
+ * A privacy rights request (access, deletion, correction, opt-out of sale or
+ * sharing…) from the public site. Lands in Admin → Leads as source
+ * "privacy_request"; GDPR gives a month to answer, CCPA 45 days.
+ */
+publicRouter.post('/privacy-request', formLimiter, async (req, res) => {
+  const input = privacyRequestSchema.parse(req.body);
+  if (input.website) return res.status(201).json({ ok: true });
+  await assertCaptcha(req, 'contact', input.captchaToken);
+  const due = new Date(Date.now() + (input.region.startsWith('US') ? 45 : 30) * 864e5);
+  const message = [
+    `Privacy request: ${PRIVACY_REQUEST_LABELS[input.type]}`,
+    `Where they live: ${PRIVACY_REGION_LABELS[input.region]}`,
+    input.onBehalf ? 'Made by an authorised agent on someone else’s behalf.' : null,
+    `Reply by: ${due.toISOString().slice(0, 10)}. Verify the requester owns ${input.email} first.`,
+    input.details ? `\n${input.details}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const lead = await prisma.lead.create({
+    data: { name: input.name, email: input.email, message, source: 'privacy_request' },
+  });
+  if (env.SUPPORT_NOTIFY_EMAILS) {
+    void sendMail({
+      to: env.SUPPORT_NOTIFY_EMAILS.split(',').map((s) => s.trim()),
+      subject: `Privacy request (${PRIVACY_REQUEST_LABELS[input.type]}) from ${lead.name}`,
+      text: `${lead.name} <${lead.email}>\n\n${message}\n\n${env.appUrl}/admin/leads`,
+    });
+  }
+  void sendMail({
+    to: input.email,
+    subject: 'We received your privacy request',
+    text: `Hi ${input.name},\n\nWe received your request: ${PRIVACY_REQUEST_LABELS[input.type]}. We may email you to confirm it is you, and we will reply by ${due.toISOString().slice(0, 10)} at the latest.\n\nIf you did not send this, you can ignore this email.`,
+  });
+  res.status(201).json({ ok: true });
 });
 
 publicRouter.post('/contact', formLimiter, async (req, res) => {

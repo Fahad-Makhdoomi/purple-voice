@@ -34,6 +34,7 @@ import { buildCampaignDigest, generateCampaignReport } from '../../services/ai/c
 import { describe, isValidTimeZone } from '../../voice/time';
 import { buildInstructions, contactVariables } from '../../voice/prompt';
 import { toolsForAgent } from '../../voice/tools';
+import { applyDoNotCall } from '../../services/do-not-call';
 
 export const campaignsRouter = Router();
 
@@ -414,6 +415,7 @@ campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res
   });
 
   const result = await prisma.campaignContact.createMany({ data: valid, skipDuplicates: true });
+  const blocked = await applyDoNotCall(campaign.id, workspaceId);
   await audit(req, 'campaign.contacts_added', {
     entity: 'Campaign',
     entityId: campaign.id,
@@ -422,6 +424,8 @@ campaignsRouter.post('/:id/contacts', requireActiveSubscription, async (req, res
   res.status(201).json({
     added: result.count,
     duplicates: valid.length - result.count,
+    /** On the workspace's do-not-call list, so they won't be called. */
+    doNotCall: blocked,
     invalid: invalid.slice(0, 100),
     invalidCount: invalid.length,
   });

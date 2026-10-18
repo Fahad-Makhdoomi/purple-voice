@@ -1,7 +1,11 @@
 import 'server-only';
 import {
   PLAN_LIST,
+  contentSettingsSchema,
+  legalSettingsSchema,
   type AppearanceSettings,
+  type ContentSettings,
+  type LegalSettings,
   type PlanCode,
   type SeoSettings,
 } from '@pv/shared';
@@ -149,6 +153,10 @@ export interface PublicSettings {
   seo: SeoSettings;
   analytics: { plausibleDomain?: string | null; ga4MeasurementId?: string | null };
   appearance: AppearanceSettings;
+  /** Site content (Admin → Content → Site settings). */
+  content: ContentSettings;
+  /** Company details the legal pages show. */
+  legal: LegalSettings;
   captcha: {
     provider: 'none' | 'turnstile' | 'recaptcha' | 'hcaptcha';
     forms: Record<string, boolean>;
@@ -166,16 +174,25 @@ export const DEFAULT_SEO: SeoSettings = {
   googleSiteVerification: null,
 };
 export const DEFAULT_APPEARANCE: AppearanceSettings = { theme: 'default', music: true };
+const DEFAULT_CONTENT: ContentSettings = contentSettingsSchema.parse({});
+const DEFAULT_LEGAL: LegalSettings = legalSettingsSchema.parse({});
 
 export async function getSettings(): Promise<PublicSettings> {
   const settings = await get<PublicSettings>('/settings', ['settings'], {
     seo: DEFAULT_SEO,
     analytics: {},
     appearance: DEFAULT_APPEARANCE,
+    content: DEFAULT_CONTENT,
+    legal: DEFAULT_LEGAL,
     captcha: { provider: 'none', forms: {} },
   });
-  // An API from before themes existed sends no `appearance`.
-  return { ...settings, appearance: settings.appearance ?? DEFAULT_APPEARANCE };
+  // An older API may send no `appearance`, `content` or `legal`.
+  return {
+    ...settings,
+    appearance: settings.appearance ?? DEFAULT_APPEARANCE,
+    content: settings.content ?? DEFAULT_CONTENT,
+    legal: settings.legal ?? DEFAULT_LEGAL,
+  };
 }
 
 /** The active website theme (Super admin → Website theme). */

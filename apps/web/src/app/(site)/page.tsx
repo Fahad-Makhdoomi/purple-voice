@@ -32,7 +32,7 @@ const CAPABILITIES = [
 ];
 
 export default async function HomePage() {
-  const [plans, faqs, { seo, appearance }] = await Promise.all([
+  const [plans, faqs, { seo, appearance, content }] = await Promise.all([
     getPlans(),
     getFaqs(),
     getSettings(),
@@ -63,7 +63,7 @@ export default async function HomePage() {
       {/* The particle sculpture is the default theme's; light themes paint their own sky. */}
       {theme === 'default' && <ParticleField />}
       <ScrollProgress />
-      <Hero theme={theme} />
+      <Hero theme={theme} copy={content.hero} />
 
       <section aria-label="What every agent can do" className="py-8 text-white">
         <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">

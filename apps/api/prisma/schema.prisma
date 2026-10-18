@@ -328,6 +328,7 @@ model Workspace {
   tickets            Ticket[]
   auditLogs          AuditLog[]
   messages           CallMessage[]
+  doNotCall          DoNotCallNumber[]
 }
 
 model Plan {
@@ -758,6 +759,21 @@ model Appointment {
   updatedAt        DateTime          @updatedAt
 
   @@index([workspaceId, startsAt])
+}
+
+/// Numbers a workspace must never call again: people who asked on a call,
+/// numbers added by hand or imported. Every campaign checks it before dialling.
+model DoNotCallNumber {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  phone       String
+  /// "call" (asked during a call), "manual" or "import".
+  source      String    @default("manual")
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([workspaceId, phone])
 }
 
 /// An email or WhatsApp message an agent sent during a call.

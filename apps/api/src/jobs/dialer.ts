@@ -4,6 +4,7 @@ import { logger } from '../lib/logger';
 import { HttpError } from '../lib/http-error';
 import { completeCampaignIfDone, startOutboundCall } from '../services/calls';
 import { retryHours, withinWindow } from '../services/campaign-retry';
+import { isOnDoNotCall } from '../services/do-not-call';
 import { utcToZoned, isValidTimeZone } from '../voice/time';
 
 const FRESH_ONLY = Prisma.sql`AND attempts = 0`;
@@ -110,6 +111,14 @@ export async function dialerTick(): Promise<void> {
     }
 
     for (const contact of claimed) {
+      // Added to the do-not-call list after the campaign was loaded: skip, uncounted.
+      if (await isOnDoNotCall(campaign.workspaceId, contact.phone)) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: 'DO_NOT_CALL', attempts: { decrement: 1 } },
+        });
+        continue;
+      }
       try {
         await startOutboundCall({
           workspaceId: campaign.workspaceId,

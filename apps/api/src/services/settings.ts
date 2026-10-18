@@ -4,6 +4,8 @@ import {
   aiSettingsSchema,
   analyticsSettingsSchema,
   appearanceSettingsSchema,
+  contentSettingsSchema,
+  legalSettingsSchema,
   securitySettingsSchema,
   seoSettingsSchema,
   type AnalyticsSettings,
@@ -38,6 +40,9 @@ const DEFAULTS = {
   analytics: { plausibleDomain: null, ga4MeasurementId: null } satisfies AnalyticsSettings,
   appearance: { theme: 'default', music: true } satisfies AppearanceSettings,
   /** The AI layer for subscribers staff haven't configured individually. */
+  // Every field has a schema default, so parsing an empty object fills them in.
+  content: contentSettingsSchema.parse({}),
+  legal: legalSettingsSchema.parse({}),
   ai: {
     voiceEngine: 'GEMINI_LIVE',
     llmProvider: 'GEMINI',
@@ -50,6 +55,8 @@ const SCHEMAS = {
   security: securitySettingsSchema,
   analytics: analyticsSettingsSchema,
   appearance: appearanceSettingsSchema,
+  content: contentSettingsSchema,
+  legal: legalSettingsSchema,
   ai: aiSettingsSchema,
 } as const;
 
@@ -77,7 +84,7 @@ export async function setSetting<K extends SettingKey>(
 }
 
 /** Keys any admin may edit from the CMS. `security`, `appearance` and `ai` are super-admin only. */
-const CMS_SETTING_KEYS = ['seo', 'analytics'] as const;
+const CMS_SETTING_KEYS = ['seo', 'analytics', 'content', 'legal'] as const;
 
 export function isCmsSettingKey(key: string): key is (typeof CMS_SETTING_KEYS)[number] {
   return (CMS_SETTING_KEYS as readonly string[]).includes(key);

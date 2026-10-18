@@ -18,6 +18,7 @@ import { emitEvent } from '../events';
 import { canStartCall, getEntitlements, recordUsage } from './entitlements';
 import { summarizeCall, type TranscriptLine } from './ai/summarize';
 import { dialResultFor, nextRetryAt } from './campaign-retry';
+import { addToDoNotCall } from './do-not-call';
 
 const TERMINAL: CallStatus[] = [
   'COMPLETED',
@@ -233,6 +234,12 @@ export async function finalizeCall(callId: string): Promise<void> {
       where: { id: call.id },
       data: { endedAt, durationSec, billedMinutes, outcome, summary, sentiment },
     });
+
+    // Asked not to be called: no campaign of this workspace calls them again.
+    if (outcome === 'DO_NOT_CALL' && !call.placedById) {
+      const theirs = call.direction === 'OUTBOUND' ? call.toNumber : call.fromNumber;
+      await addToDoNotCall(call.workspaceId, theirs, 'call', `Asked on call ${call.id}`);
+    }
 
     if (call.contact && call.campaign) {
       const result = dialResultFor({ ...call, durationSec }, outcome, transcript);

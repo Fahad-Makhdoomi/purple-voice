@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { TermsPrompt } from '@/components/account/PrivacySection';
 import { WorkspaceContext, type WorkspaceContextValue } from '@/lib/workspace';
 import { AppShell, type NavGroup } from './AppShell';
 import { Loading } from '@/components/ui';
@@ -164,6 +165,7 @@ export function DashboardFrame({ children }: { children: React.ReactNode }) {
     <WorkspaceContext.Provider value={{ ...ctx, reload: load }}>
       <AppShell groups={groups} topbar={topbar} banner={banner}>
         {children}
+        {!acting && <TermsPrompt />}
       </AppShell>
     </WorkspaceContext.Provider>
   );

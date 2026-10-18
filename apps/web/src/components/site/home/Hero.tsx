@@ -1,12 +1,14 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRight, Check } from 'lucide-react';
-import type { SiteTheme } from '@pv/shared';
+import { contentSettingsSchema, type ContentSettings, type SiteTheme } from '@pv/shared';
 import { DashboardMock } from '@/components/site/home/DashboardMock';
 import { Waveform } from '@/components/site/motion';
 import { SunScene } from '@/components/site/SunScene';
 
-const TITLE = 'Turn every lead into a booked meeting.';
+type HeroText = ContentSettings['hero'];
+/** Built-in copy, used until it is edited in Admin → Site settings. */
+const DEFAULT_COPY: HeroText = contentSettingsSchema.parse({}).hero;
 
 const ASSURANCES = [
   'Runs on your own phone numbers',
@@ -18,16 +20,24 @@ const ASSURANCES = [
  * The home hero. Every theme shows the same copy, voice bar and dashboard;
  * what fills the stage between the copy and the dashboard is the theme's.
  */
-export function Hero({ theme = 'default' }: { theme?: SiteTheme }) {
-  if (theme === 'kawaii') return <KawaiiHero />;
-  if (theme === 'minimal') return <MinimalHero />;
-  return <DefaultHero />;
+export function Hero({
+  theme = 'default',
+  copy = DEFAULT_COPY,
+}: {
+  theme?: SiteTheme;
+  copy?: HeroText;
+}) {
+  if (theme === 'kawaii') return <KawaiiHero copy={copy} />;
+  if (theme === 'minimal') return <MinimalHero copy={copy} />;
+  return <DefaultHero copy={copy} />;
 }
 
 function HeroCopy({
+  copy,
   vignette = false,
   wordByWord = false,
 }: {
+  copy: HeroText;
   vignette?: boolean;
   /** Wrap each word so a theme can stagger them in (Minimal does). */
   wordByWord?: boolean;
@@ -41,12 +51,12 @@ function HeroCopy({
         />
       )}
       <p className="mx-auto w-fit animate-rise rounded-pill border border-white/15 bg-white/[0.06] px-4 py-1.5 text-[13px] font-medium text-white/75 backdrop-blur">
-        Now with natural, human-sounding voices
+        {copy.badge}
       </p>
 
       <h1 className="mx-auto mt-7 max-w-5xl animate-rise text-white text-[length:clamp(44px,8.4vw,108px)] font-medium leading-[0.98] tracking-[-0.045em] [animation-delay:60ms]">
         {wordByWord
-          ? TITLE.split(' ').map((word, i) => (
+          ? copy.title.split(' ').map((word, i) => (
               <span key={i}>
                 {i > 0 && ' '}
                 <span className="hero-word" style={{ '--i': i } as React.CSSProperties}>
@@ -54,22 +64,21 @@ function HeroCopy({
                 </span>
               </span>
             ))
-          : TITLE}
+          : copy.title}
       </h1>
       <p className="mx-auto mt-7 max-w-2xl animate-rise text-lead text-white/70 [animation-delay:120ms]">
-        Purple Voice builds AI agents that phone your leads, answer their questions and put
-        appointments straight into your calendar — on your own phone numbers, around the clock.
+        {copy.subtitle}
       </p>
 
       <div className="mt-10 flex animate-rise flex-col items-center justify-center gap-3 [animation-delay:180ms] sm:flex-row">
-        <Link href="/signup?plan=FREE" className="btn btn-white btn-lg min-w-[220px] gap-2">
-          Start free
+        <Link href={copy.primaryHref} className="btn btn-white btn-lg min-w-[220px] gap-2">
+          {copy.primaryLabel}
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white">
             <ArrowUpRight size={14} />
           </span>
         </Link>
-        <Link href="/#demo" className="btn btn-dark btn-lg min-w-[200px]">
-          Hear a sample call
+        <Link href={copy.secondaryHref} className="btn btn-dark btn-lg min-w-[200px]">
+          {copy.secondaryLabel}
         </Link>
       </div>
       <ul className="mt-7 flex animate-rise flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[13px] text-white/55 [animation-delay:240ms]">
@@ -103,10 +112,10 @@ function VoiceBar() {
  * sculpture (drawn once for the whole page), a live voice bar and the
  * product dashboard tilting up out of the page.
  */
-function DefaultHero() {
+function DefaultHero({ copy }: { copy: HeroText }) {
   return (
     <section className="relative pb-10 text-center text-white sm:pb-16">
-      <HeroCopy vignette />
+      <HeroCopy copy={copy} vignette />
 
       {/* Breathing room for the sculpture, with a live voice bar in front of it. */}
       <div
@@ -128,10 +137,10 @@ function DefaultHero() {
  * (1.3 MB) that feathers into the page above and below. The poster paints
  * first and is all that shows under reduced motion.
  */
-function KawaiiHero() {
+function KawaiiHero({ copy }: { copy: HeroText }) {
   return (
     <section className="kawaii-hero relative isolate pb-10 text-center text-white sm:pb-16">
-      <HeroCopy />
+      <HeroCopy copy={copy} />
 
       <div className="relative -mt-6 h-[400px] sm:-mt-10 sm:h-[560px]" aria-hidden="true">
         <div className="absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,transparent,black_26%,black_74%,transparent)]">
@@ -170,10 +179,10 @@ function KawaiiHero() {
  * vapour trail climbing into it (SunScene, pure CSS). The headline's words
  * rise in one by one.
  */
-function MinimalHero() {
+function MinimalHero({ copy }: { copy: HeroText }) {
   return (
     <section className="relative pb-10 text-center text-white sm:pb-16">
-      <HeroCopy wordByWord />
+      <HeroCopy copy={copy} wordByWord />
 
       <div className="relative mt-4 h-[340px] sm:mt-6 sm:h-[480px]" aria-hidden="true">
         <SunScene />

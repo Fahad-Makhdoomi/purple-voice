@@ -17,6 +17,10 @@ export interface Me {
     googleLinked: boolean;
     /** False for accounts created with Google that have never set a password. */
     hasPassword: boolean;
+    marketingOptIn?: boolean;
+    termsAcceptedAt?: string | null;
+    /** The Terms or Privacy Policy changed since the user last accepted them. */
+    needsTermsAcceptance?: boolean;
   };
   workspace: { id: string; name: string; timezone: string } | null;
   entitlements: Entitlements | null;
