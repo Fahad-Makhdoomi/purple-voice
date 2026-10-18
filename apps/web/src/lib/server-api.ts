@@ -105,6 +105,14 @@ export interface Post extends PostSummary {
   howToSteps: Array<{ name: string; text: string }>;
   schemaType: string;
   focusKeyword: string | null;
+  secondaryKeywords?: string[];
+  canonicalUrl?: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  nofollow?: boolean;
+  authorName?: string | null;
+  authorBio?: string | null;
+  showToc?: boolean;
   seoTitle: string | null;
   seoDescription: string | null;
   ogImageUrl: string | null;
@@ -115,6 +123,15 @@ export async function getPost(slug: string) {
   return get<{ post: Post; related: PostSummary[] } | null>(
     `/posts/${encodeURIComponent(slug)}`,
     ['posts', `post:${slug}`],
+    null,
+  );
+}
+
+/** Where a moved address now lives, if it moved (Admin → SEO → Redirects). */
+export async function getRedirect(path: string) {
+  return get<{ toPath: string; permanent: boolean } | null>(
+    `/redirect?path=${encodeURIComponent(path)}`,
+    ['pages', 'posts', 'redirects'],
     null,
   );
 }

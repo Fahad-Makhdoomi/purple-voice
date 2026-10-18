@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { applyCallStatus, finalizeCall } from '../services/calls';
 import { applySubscriptionChange } from '../services/subscriptions';
+import { revalidate } from '../services/revalidate';
 
 const MIN = 60_000;
 
@@ -44,6 +45,18 @@ export async function maintenanceTick(): Promise<void> {
     where: { status: 'CALLING', lastAttemptAt: { lt: new Date(now - 2 * 60 * MIN) } },
     data: { status: 'PENDING' },
   });
+
+  // Scheduled blog posts that just went live: refresh the cached blog pages now,
+  // rather than when their cache would expire.
+  const due = await prisma.post.findMany({
+    where: {
+      status: 'PUBLISHED',
+      publishedAt: { gt: new Date(now - 2 * MIN), lte: new Date(now) },
+      createdAt: { lt: new Date(now - 2 * MIN) },
+    },
+    select: { slug: true },
+  });
+  if (due.length) revalidate(['posts', ...due.map((p) => `post:${p.slug}`)]);
 
   // Manual subscriptions past their end (plus grace) become canceled, so analytics see the churn.
   const lapsed = await prisma.subscription.findMany({

@@ -12,8 +12,25 @@ import {
   type SeoFields,
 } from '@/components/admin/ContentEditor';
 import { MediaPickerModal } from '@/components/admin/MediaLibrary';
+import { RESOURCE_CATEGORIES } from '@pv/shared';
+import {
+  AdvancedSeo,
+  EMPTY_ADVANCED_SEO,
+  FaqEditor,
+  HowToEditor,
+  SeoScore,
+  useSeoReport,
+  type AdvancedSeoFields,
+} from '@/components/admin/PostSeo';
 
-interface PostDraft extends SeoFields {
+/** A Date as the value of a datetime-local input, in the browser's time zone. */
+const toLocalInput = (iso: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
+
+interface PostDraft extends SeoFields, AdvancedSeoFields {
   slug: string;
   title: string;
   excerpt: string;
@@ -37,6 +54,7 @@ const EMPTY: PostDraft = {
   seoDescription: null,
   ogImageUrl: null,
   noindex: false,
+  ...EMPTY_ADVANCED_SEO,
 };
 
 export default function PostEditor() {
@@ -54,19 +72,37 @@ export default function PostEditor() {
     api<{ post: PostDraft }>(`/admin/cms/posts/${id}`).then(({ post }) =>
       setDraft(
         Object.fromEntries(
-          Object.keys(EMPTY).map((k) => [k, post[k as keyof PostDraft]]),
+          Object.keys(EMPTY).map((k) => [
+            k,
+            post[k as keyof PostDraft] ?? EMPTY[k as keyof PostDraft],
+          ]),
         ) as unknown as PostDraft,
       ),
     );
   }, [id, isNew]);
 
+  // Hooks run on every render, so the report is computed from an empty draft while loading.
+  const report = useSeoReport(draft ?? EMPTY);
   if (!draft) return <Loading />;
   const set = (patch: Partial<PostDraft>) => setDraft({ ...draft, ...patch });
   const folder = `blog/${draft.slug || 'drafts'}`;
+  const base =
+    draft.category && (RESOURCE_CATEGORIES as readonly string[]).includes(draft.category)
+      ? '/resources'
+      : '/blog';
+  const scheduled = !!draft.publishedAt && new Date(draft.publishedAt).getTime() > Date.now();
 
   async function save(status?: 'DRAFT' | 'PUBLISHED') {
     setError(null);
-    const body = { ...draft!, status: status ?? draft!.status };
+    const body = {
+      ...draft!,
+      status: status ?? draft!.status,
+      // Half-filled questions and steps are dropped rather than refused.
+      faq: draft!.faq.filter((f) => f.question.trim().length >= 3 && f.answer.trim()),
+      howToSteps: draft!.howToSteps.filter(
+        (s) => s.name.trim().length >= 2 && s.text.trim().length >= 2,
+      ),
+    };
     try {
       if (isNew) {
         const { post } = await api<{ post: { id: string } }>('/admin/cms/posts', { body });
@@ -109,7 +145,7 @@ export default function PostEditor() {
             )}
             {draft.status === 'PUBLISHED' && !isNew && (
               <a
-                href={`/blog/${draft.slug}`}
+                href={`${base}/${draft.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-secondary"
@@ -121,7 +157,7 @@ export default function PostEditor() {
               Save draft
             </button>
             <button className="btn btn-primary" onClick={() => save('PUBLISHED')}>
-              Publish
+              {scheduled ? 'Schedule' : 'Publish'}
             </button>
           </>
         }
@@ -148,7 +184,11 @@ export default function PostEditor() {
                   }
                 />
               </Field>
-              <Field id="slug" label="URL slug" help={`/blog/${draft.slug || 'your-post'}`}>
+              <Field
+                id="slug"
+                label="URL slug"
+                help={`${base}/${draft.slug || 'your-post'}. Changing it later redirects the old address.`}
+              >
                 <input
                   id="slug"
                   className="input font-mono"
@@ -194,8 +234,61 @@ export default function PostEditor() {
           <Section>
             <MarkdownEditor value={draft.body} onChange={(body) => set({ body })} folder={folder} />
           </Section>
+          <Section
+            title="Advanced SEO"
+            description="Keywords, the social card, canonical address and how search engines classify the post."
+          >
+            <AdvancedSeo
+              value={draft}
+              onChange={set}
+              title={draft.seoTitle || draft.title}
+              description={draft.seoDescription || draft.excerpt}
+              image={draft.ogImageUrl || draft.coverImageUrl}
+              path={`${base}/${draft.slug}`}
+            />
+          </Section>
+          <Section
+            title="FAQs"
+            description="Shown under the post and marked up as FAQPage, which can earn rich results."
+          >
+            <FaqEditor items={draft.faq} onChange={(faq) => set({ faq })} />
+          </Section>
+          {draft.schemaType === 'HowTo' && (
+            <Section title="How-to steps" description="Marked up as HowTo structured data.">
+              <HowToEditor
+                items={draft.howToSteps}
+                onChange={(howToSteps) => set({ howToSteps })}
+              />
+            </Section>
+          )}
         </div>
         <div className="space-y-5">
+          <Section title="SEO score">
+            <SeoScore report={report} />
+          </Section>
+          <Section title="Publishing">
+            <Field
+              id="publishedAt"
+              label="Publish date"
+              help={
+                scheduled
+                  ? 'Scheduled: it goes live by itself at this time.'
+                  : 'Pick a future time and press Schedule to publish it later.'
+              }
+            >
+              <input
+                id="publishedAt"
+                type="datetime-local"
+                className="input"
+                value={toLocalInput(draft.publishedAt)}
+                onChange={(e) =>
+                  set({
+                    publishedAt: e.target.value ? new Date(e.target.value).toISOString() : null,
+                  })
+                }
+              />
+            </Field>
+          </Section>
           <Section title="Cover image">
             {draft.coverImageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element

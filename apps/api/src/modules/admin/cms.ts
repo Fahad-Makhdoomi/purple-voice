@@ -3,9 +3,11 @@ import multer from 'multer';
 import {
   faqSchema,
   mediaUpdateSchema,
+  RESOURCE_CATEGORIES,
   pageSchema,
   paginationSchema,
   postSchema,
+  redirectSchema,
   seoSuggestSchema,
   updateFaqSchema,
   updatePageSchema,
@@ -25,6 +27,26 @@ import { findPlatformApiKey } from '../../services/ai-keys';
 
 /** Website content: pages, blog, FAQs, SEO/analytics settings and the media library. */
 export const cmsRouter = Router();
+
+/** Where a post lives: resource categories are listed under /resources. */
+const postPath = (p: { slug: string; category: string | null }) =>
+  `${p.category && (RESOURCE_CATEGORIES as readonly string[]).includes(p.category) ? '/resources' : '/blog'}/${p.slug}`;
+
+/**
+ * Keeps an old address working after a slug (or a post's section) changes:
+ * a permanent redirect, and any redirect that pointed at the old address
+ * now points at the new one, so there are never chains.
+ */
+async function recordMove(from: string, to: string) {
+  if (from === to) return;
+  await prisma.redirect.updateMany({ where: { toPath: from }, data: { toPath: to } });
+  await prisma.redirect.deleteMany({ where: { fromPath: to } });
+  await prisma.redirect.upsert({
+    where: { fromPath: from },
+    create: { fromPath: from, toPath: to },
+    update: { toPath: to, permanent: true },
+  });
+}
 
 const clean = <T extends Record<string, unknown>>(data: T) =>
   Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v === '' ? null : v])) as T;
@@ -63,6 +85,7 @@ cmsRouter.patch('/pages/:id', async (req, res) => {
       publishedAt: input.status === 'PUBLISHED' && !before.publishedAt ? new Date() : undefined,
     },
   });
+  await recordMove(`/${before.slug}`, `/${page.slug}`);
   await audit(req, 'cms.page_updated', { entity: 'Page', entityId: page.id });
   revalidate(['pages', `page:${before.slug}`, `page:${page.slug}`]);
   res.json({ page });
@@ -136,6 +159,7 @@ cmsRouter.patch('/posts/:id', async (req, res) => {
           : input.publishedAt,
     },
   });
+  await recordMove(postPath(before), postPath(post));
   await audit(req, 'cms.post_updated', { entity: 'Post', entityId: post.id });
   revalidate(['posts', `post:${before.slug}`, `post:${post.slug}`]);
   res.json({ post });
@@ -145,6 +169,32 @@ cmsRouter.delete('/posts/:id', async (req, res) => {
   const post = await prisma.post.delete({ where: { id: req.params.id } });
   await audit(req, 'cms.post_deleted', { entity: 'Post', entityId: post.id });
   revalidate(['posts', `post:${post.slug}`]);
+  res.json({ ok: true });
+});
+
+// ── Redirects ───────────────────────────────────────────────────────────────
+
+cmsRouter.get('/redirects', async (_req, res) => {
+  const redirects = await prisma.redirect.findMany({ orderBy: { createdAt: 'desc' }, take: 500 });
+  res.json({ redirects });
+});
+
+cmsRouter.post('/redirects', async (req, res) => {
+  const input = redirectSchema.parse(req.body);
+  if (input.fromPath === input.toPath) throw badRequest('A page cannot redirect to itself');
+  const redirect = await prisma.redirect.upsert({
+    where: { fromPath: input.fromPath },
+    create: input,
+    update: { toPath: input.toPath, permanent: input.permanent },
+  });
+  await audit(req, 'cms.redirect_saved', { entity: 'Redirect', entityId: redirect.id });
+  revalidate(['redirects']);
+  res.status(201).json({ redirect });
+});
+
+cmsRouter.delete('/redirects/:id', async (req, res) => {
+  await prisma.redirect.delete({ where: { id: req.params.id } });
+  revalidate(['redirects']);
   res.json({ ok: true });
 });
 

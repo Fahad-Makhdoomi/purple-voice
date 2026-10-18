@@ -170,6 +170,21 @@ publicRouter.get('/settings', async (_req, res) => {
   });
 });
 
+/** Where a moved address now lives (pages and posts whose slug changed, or set by staff). */
+publicRouter.get('/redirect', async (req, res) => {
+  const path = z
+    .string()
+    .max(500)
+    .regex(/^\/[^\s]*$/)
+    .parse(req.query.path);
+  const redirect = await prisma.redirect.findUnique({ where: { fromPath: path } });
+  if (!redirect) throw notFound('Redirect');
+  void prisma.redirect
+    .update({ where: { id: redirect.id }, data: { hits: { increment: 1 }, lastHitAt: new Date() } })
+    .catch(() => undefined);
+  res.json({ toPath: redirect.toPath, permanent: redirect.permanent });
+});
+
 /** Everything the sitemap needs in one request. */
 publicRouter.get('/sitemap', async (_req, res) => {
   const [pages, posts] = await Promise.all([

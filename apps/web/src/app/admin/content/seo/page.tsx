@@ -3,6 +3,8 @@
 import { useApi } from '@/lib/use-api';
 import { api } from '@/lib/api';
 import { Loading, PageHeader, Section, useAction } from '@/components/ui';
+import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Field } from '@/components/forms/Field';
 import type { AnalyticsSettings, SeoSettings } from '@pv/shared';
 
@@ -179,7 +181,93 @@ export default function SeoSettingsPage() {
             </div>
           </form>
         </Section>
+        <RedirectsSection />
       </div>
     </>
+  );
+}
+
+interface RedirectRow {
+  id: string;
+  fromPath: string;
+  toPath: string;
+  permanent: boolean;
+  hits: number;
+}
+
+/** Moved addresses. Slug changes add one automatically; add your own for old URLs. */
+function RedirectsSection() {
+  const list = useApi<{ redirects: RedirectRow[] }>('/admin/cms/redirects');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const { busy, run } = useAction();
+  return (
+    <Section
+      title="Redirects"
+      description="Old addresses that now live somewhere else, so links and search rankings follow. Changing a page or post's URL adds one automatically (301)."
+    >
+      <form
+        className="mb-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => {
+            await api('/admin/cms/redirects', { body: { fromPath: from, toPath: to } });
+            setFrom('');
+            setTo('');
+            await list.reload();
+          }, 'Redirect saved');
+        }}
+      >
+        <input
+          className="input font-mono text-sm"
+          aria-label="From path"
+          placeholder="/old-page"
+          value={from}
+          onChange={(e) => setFrom(e.target.value.trim())}
+          required
+        />
+        <input
+          className="input font-mono text-sm"
+          aria-label="To path or URL"
+          placeholder="/new-page"
+          value={to}
+          onChange={(e) => setTo(e.target.value.trim())}
+          required
+        />
+        <button className="btn btn-secondary" disabled={busy}>
+          Add redirect
+        </button>
+      </form>
+      {!list.data ? (
+        <Loading />
+      ) : list.data.redirects.length === 0 ? (
+        <p className="text-sm text-muted">No redirects yet.</p>
+      ) : (
+        <ul className="divide-y divide-line text-sm">
+          {list.data.redirects.map((r) => (
+            <li key={r.id} className="flex items-center gap-3 py-2.5">
+              <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                {r.fromPath} → {r.toPath}
+              </span>
+              <span className="num text-xs text-muted">{r.hits} hits</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon h-8 w-8 text-danger"
+                aria-label={`Remove redirect from ${r.fromPath}`}
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await api(`/admin/cms/redirects/${r.id}`, { method: 'DELETE' });
+                    await list.reload();
+                  })
+                }
+              >
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
