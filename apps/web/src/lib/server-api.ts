@@ -1,5 +1,10 @@
 import 'server-only';
-import { PLAN_LIST, type AppearanceSettings, type SeoSettings } from '@pv/shared';
+import {
+  PLAN_LIST,
+  type AppearanceSettings,
+  type PlanCode,
+  type SeoSettings,
+} from '@pv/shared';
 
 /**
  * Server-side reads for the public website. Responses are cached by Next
@@ -24,7 +29,7 @@ async function get<T>(path: string, tags: string[], fallback: T, revalidate = HO
 }
 
 export interface PublicPlan {
-  code: 'BASIC' | 'PRO' | 'ENTERPRISE';
+  code: PlanCode;
   name: string;
   tagline: string;
   priceMonthlyCents: number | null;

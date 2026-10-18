@@ -91,6 +91,56 @@ export const CONTACT_STATUSES = [
 ] as const;
 export type ContactStatus = (typeof CONTACT_STATUSES)[number];
 
+/**
+ * Whether a campaign call reached the person, and if not, why. SILENT means
+ * the line connected but nobody spoke, which is usually a voicemail box.
+ */
+export const DIAL_RESULTS = [
+  'REACHED',
+  'NO_ANSWER',
+  'BUSY',
+  'VOICEMAIL',
+  'FAILED',
+  'SILENT',
+] as const;
+export type DialResult = (typeof DIAL_RESULTS)[number];
+
+/** Results a campaign can call again. Reached people are never re-dialled automatically. */
+export const RETRYABLE_RESULTS = ['NO_ANSWER', 'BUSY', 'VOICEMAIL', 'SILENT', 'FAILED'] as const;
+export type RetryableResult = (typeof RETRYABLE_RESULTS)[number];
+
+export const DIAL_RESULT_LABELS: Record<DialResult, string> = {
+  REACHED: 'Reached',
+  NO_ANSWER: 'No answer',
+  BUSY: 'Line busy',
+  VOICEMAIL: 'Voicemail',
+  FAILED: "Couldn't connect",
+  SILENT: 'Picked up, nobody spoke',
+};
+
+/** When a campaign calls unanswered numbers again. */
+export const RETRY_STRATEGIES = ['END_OF_LIST', 'AFTER_DELAY', 'NEXT_DAY'] as const;
+export type RetryStrategy = (typeof RETRY_STRATEGIES)[number];
+
+export const RETRY_STRATEGY_INFO: Record<RetryStrategy, { label: string; description: string }> = {
+  END_OF_LIST: {
+    label: 'After the whole list',
+    description:
+      'Call everyone once first, then go round again for the numbers that did not pick up.',
+  },
+  AFTER_DELAY: {
+    label: 'After a set time',
+    description: 'Call back once the wait below has passed, ahead of numbers not tried yet.',
+  },
+  NEXT_DAY: {
+    label: 'Next calling day',
+    description: 'Try again when calling opens on the next calling day.',
+  },
+};
+
+/** Retries a campaign may make per number, on top of the first call. */
+export const MAX_CAMPAIGN_RETRIES = 5;
+
 export const CALL_DIRECTIONS = ['INBOUND', 'OUTBOUND'] as const;
 export type CallDirection = (typeof CALL_DIRECTIONS)[number];
 
@@ -146,6 +196,8 @@ export const INTEGRATION_TYPES = [
   'HUBSPOT',
   'ZAPIER',
   'CALENDLY',
+  'SMTP',
+  'WHATSAPP',
 ] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
@@ -155,7 +207,12 @@ export const INTEGRATION_LABELS: Record<IntegrationType, string> = {
   HUBSPOT: 'HubSpot',
   ZAPIER: 'Zapier',
   CALENDLY: 'Calendly',
+  SMTP: 'Email (SMTP)',
+  WHATSAPP: 'WhatsApp',
 };
+
+export const MESSAGE_CHANNELS = ['EMAIL', 'WHATSAPP'] as const;
+export type MessageChannel = (typeof MESSAGE_CHANNELS)[number];
 
 /** Events a workspace can subscribe a webhook or automation to. */
 export const WEBHOOK_EVENTS = [

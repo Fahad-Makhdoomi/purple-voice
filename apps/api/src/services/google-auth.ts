@@ -1,4 +1,5 @@
 import type { User } from '@prisma/client';
+import { LEGAL_VERSION } from '@pv/shared';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { safeEqual } from '../lib/crypto';
@@ -212,6 +213,9 @@ export async function resolveGoogleAccount(identity: GoogleIdentity): Promise<Go
         role: 'SUBSCRIBER',
         workspaceId: workspace.id,
         lastLoginAt: now,
+        // The Google buttons say that continuing accepts the Terms and Privacy Policy.
+        termsAcceptedAt: now,
+        termsVersion: LEGAL_VERSION,
       },
     });
   });

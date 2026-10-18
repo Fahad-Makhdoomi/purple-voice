@@ -1,5 +1,5 @@
 import { FOLLOW_UP_SEGMENTS, followUpSegmentOf, type FollowUpSegment } from '@pv/shared';
-import type { CallOutcome, CallStatus, ContactStatus } from '@prisma/client';
+import type { CallOutcome, CallStatus, ContactStatus, DialResult } from '@prisma/client';
 import { isValidTimeZone, utcToZoned } from '../voice/time';
 
 export interface AnalyticsContact {
@@ -7,7 +7,14 @@ export interface AnalyticsContact {
   status: ContactStatus;
   attempts: number;
   lastOutcome: CallOutcome | null;
+  lastResult?: DialResult | null;
+  phone?: string;
+  name?: string | null;
+  lastAttemptAt?: Date | null;
 }
+
+/** Why a number on the list was never reached (or not yet). */
+export type NotReachedReason = Exclude<DialResult, 'REACHED'> | 'NOT_CALLED';
 
 export interface AnalyticsCall {
   contactId: string | null;
@@ -50,6 +57,25 @@ export interface CampaignAnalytics {
   byDay: Array<{ date: string; calls: number; answered: number }>;
   durationBuckets: Array<{ label: string; calls: number }>;
   segments: Record<FollowUpSegment, number>;
+  /**
+   * Numbers the campaign did not get through to: out of retries, still
+   * waiting for one, or never called (the campaign ended first).
+   */
+  notReached: {
+    total: number;
+    byReason: Record<NotReachedReason, number>;
+    /** Still due another try. */
+    waitingRetry: number;
+    /** A sample to act on, most recently tried first. */
+    sample: Array<{
+      id: string;
+      phone: string;
+      name: string | null;
+      reason: NotReachedReason;
+      attempts: number;
+      lastAttemptAt: string | null;
+    }>;
+  };
 }
 
 const pct = (n: number, d: number): number | null => (d ? Math.round((n / d) * 1000) / 10 : null);
@@ -157,6 +183,36 @@ export function computeCampaignAnalytics(
       positive++;
   }
 
+  const notReachedRows = contacts
+    .filter(
+      (c) =>
+        c.status === 'NO_ANSWER' ||
+        c.status === 'FAILED' ||
+        c.status === 'PENDING' ||
+        c.status === 'CALLING',
+    )
+    .map((c) => ({
+      c,
+      reason: (c.attempts === 0
+        ? 'NOT_CALLED'
+        : c.lastResult && c.lastResult !== 'REACHED'
+          ? c.lastResult
+          : c.status === 'FAILED'
+            ? 'FAILED'
+            : c.lastOutcome === 'VOICEMAIL'
+              ? 'VOICEMAIL'
+              : 'NO_ANSWER') as NotReachedReason,
+    }));
+  const byReason: Record<NotReachedReason, number> = {
+    NO_ANSWER: 0,
+    BUSY: 0,
+    VOICEMAIL: 0,
+    SILENT: 0,
+    FAILED: 0,
+    NOT_CALLED: 0,
+  };
+  for (const r of notReachedRows) byReason[r.reason]++;
+
   const reached = reachedContacts.size;
   return {
     totals: {
@@ -193,5 +249,22 @@ export function computeCampaignAnalytics(
     byDay: [...days.entries()].sort().map(([date, v]) => ({ date, ...v })),
     durationBuckets: buckets,
     segments,
+    notReached: {
+      total: notReachedRows.length,
+      byReason,
+      waitingRetry: notReachedRows.filter((r) => r.c.status === 'PENDING' && r.c.attempts > 0)
+        .length,
+      sample: notReachedRows
+        .sort((a, b) => (b.c.lastAttemptAt?.getTime() ?? 0) - (a.c.lastAttemptAt?.getTime() ?? 0))
+        .slice(0, 50)
+        .map((r) => ({
+          id: r.c.id,
+          phone: r.c.phone ?? '',
+          name: r.c.name ?? null,
+          reason: r.reason,
+          attempts: r.c.attempts,
+          lastAttemptAt: r.c.lastAttemptAt?.toISOString() ?? null,
+        })),
+    },
   };
 }

@@ -164,6 +164,7 @@ describe('campaign analytics', () => {
         callWindowEnd: '18:00',
         maxAttempts: 2,
         retryDelayMinutes: 240,
+        retryStrategy: 'END_OF_LIST',
         startedAt: at('2026-10-12T00:00:00Z'),
         completedAt: at('2026-10-14T00:00:00Z'),
       },

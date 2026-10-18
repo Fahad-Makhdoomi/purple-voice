@@ -4,6 +4,7 @@ import {
   aiSettingsSchema,
   credentialProviderParamSchema,
   CREDENTIAL_PROVIDERS,
+  PLAN_CODES,
   paginationSchema,
   paymentGatewayParamSchema,
   paymentGatewaySchema,
@@ -185,7 +186,7 @@ superRouter.get('/plans', async (_req, res) => {
 });
 
 superRouter.patch('/plans/:code', async (req, res) => {
-  const code = z.enum(['BASIC', 'PRO', 'ENTERPRISE']).parse(req.params.code);
+  const code = z.enum(PLAN_CODES).parse(req.params.code);
   const input = planUpdateSchema.parse(req.body);
   const current = await prisma.plan.findUnique({ where: { code } });
   if (!current) throw notFound('Plan');

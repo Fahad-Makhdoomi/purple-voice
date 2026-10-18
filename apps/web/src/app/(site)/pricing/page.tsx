@@ -14,7 +14,7 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'Basic at $19/month with 1,000 call minutes, Pro at $299/month with 20,000 minutes, or a custom Enterprise build.',
+    'Free with 100 AI call minutes a month, Basic at $19/month with 1,000 call minutes, Pro at $299/month with 20,000 minutes, or a custom Enterprise build.',
   alternates: { canonical: '/pricing' },
 };
 
@@ -51,7 +51,7 @@ export default async function PricingPage() {
       <PageIntro
         eyebrow="Pricing"
         title="Pay for the minutes you talk, not the seats you fill"
-        lead="Start with one agent on Basic. Move to Pro for a full AI sales floor. Need it built for you? Enterprise."
+        lead="Start free with one agent and 100 AI call minutes. Grow on Basic. Move to Pro for a full AI sales floor. Need it built for you? Enterprise."
       />
 
       <section className="-mt-4 bg-canvas pb-section">

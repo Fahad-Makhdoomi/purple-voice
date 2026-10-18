@@ -123,8 +123,9 @@ export async function planCodeForGatewayId(gateway: PaymentGateway, id: string) 
 export async function checkoutOptions(): Promise<CheckoutOption[]> {
   const [rows, plans] = await Promise.all([
     prisma.paymentGatewayConfig.findMany(),
+    // Free needs no checkout, so no gateway sells it.
     prisma.plan.findMany({
-      where: { active: true, selfServe: true },
+      where: { active: true, selfServe: true, code: { not: 'FREE' } },
       orderBy: { sortOrder: 'asc' },
     }),
   ]);
@@ -193,7 +194,10 @@ export const WEBHOOK_EVENTS: Record<PaymentGateway, string[]> = {
 export async function paymentGatewayViews(): Promise<PaymentGatewayView[]> {
   const [rows, plans] = await Promise.all([
     prisma.paymentGatewayConfig.findMany(),
-    prisma.plan.findMany({ where: { selfServe: true }, orderBy: { sortOrder: 'asc' } }),
+    prisma.plan.findMany({
+      where: { selfServe: true, code: { not: 'FREE' } },
+      orderBy: { sortOrder: 'asc' },
+    }),
   ]);
   return PAYMENT_GATEWAYS.map((gateway) => {
     const row = rows.find((r) => r.gateway === gateway);

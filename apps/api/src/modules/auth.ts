@@ -1,7 +1,10 @@
 import { Router, type CookieOptions, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
+  LEGAL_VERSION,
+  acceptTermsSchema,
   changePasswordSchema,
+  deleteAccountSchema,
   forgotPasswordSchema,
   homePathForRole,
   isStaff,
@@ -124,6 +127,9 @@ authRouter.post('/register', authLimiter, async (req, res) => {
         passwordHash,
         role: 'SUBSCRIBER',
         workspaceId: workspace.id,
+        termsAcceptedAt: new Date(),
+        termsVersion: LEGAL_VERSION,
+        marketingOptIn: input.marketingOptIn,
       },
     });
   });
@@ -217,6 +223,10 @@ authRouter.get('/me', authenticate, async (req, res) => {
       ...publicUser(user),
       googleLinked: !!user.googleId,
       hasPassword: hasUsablePassword(user.passwordHash),
+      marketingOptIn: user.marketingOptIn,
+      termsAcceptedAt: user.termsAcceptedAt,
+      // Subscribers re-accept when the Terms or Privacy Policy change.
+      needsTermsAcceptance: user.role === 'SUBSCRIBER' && user.termsVersion !== LEGAL_VERSION,
     },
     workspace: user.workspace
       ? { id: user.workspace.id, name: user.workspace.name, timezone: user.workspace.timezone }
@@ -231,7 +241,7 @@ authRouter.patch('/me', authenticate, async (req, res) => {
   const input = updateProfileSchema.parse(req.body);
   const user = await prisma.user.update({
     where: { id: req.user!.id },
-    data: { name: input.name, timezone: input.timezone },
+    data: { name: input.name, timezone: input.timezone, marketingOptIn: input.marketingOptIn },
   });
   if (input.company && user.workspaceId && user.role === 'SUBSCRIBER') {
     await prisma.workspace.update({
@@ -268,6 +278,164 @@ authRouter.post('/change-password', authenticate, async (req, res) => {
     data: { revokedAt: new Date() },
   });
   await audit(req, firstPassword ? 'auth.password_set' : 'auth.password_changed');
+  res.json({ ok: true });
+});
+
+// ── Privacy rights: terms, data export, account deletion ───────────────────
+
+authRouter.post('/accept-terms', authenticate, async (req, res) => {
+  const { version } = acceptTermsSchema.parse(req.body);
+  await prisma.user.update({
+    where: { id: req.user!.id },
+    data: { termsAcceptedAt: new Date(), termsVersion: version },
+  });
+  await audit(req, 'auth.terms_accepted', { meta: { version } });
+  res.json({ ok: true });
+});
+
+/**
+ * Everything we hold about the signed-in user and their workspace, as JSON
+ * (GDPR art. 15 and 20, UK GDPR, CCPA right to know). Secrets — carrier
+ * tokens, API keys, OAuth tokens — are never included, only that they exist.
+ */
+authRouter.get('/me/export', authenticate, async (req, res) => {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
+  const wid = user.workspaceId;
+  const scope = { where: { workspaceId: wid ?? '__none__' } };
+  const [
+    workspace,
+    subscription,
+    payments,
+    agents,
+    numbers,
+    campaigns,
+    contacts,
+    calls,
+    appointments,
+    integrations,
+    messages,
+    tickets,
+    sessions,
+  ] = await Promise.all([
+    wid ? prisma.workspace.findUnique({ where: { id: wid } }) : null,
+    wid
+      ? prisma.subscription.findUnique({
+          where: { workspaceId: wid },
+          select: {
+            status: true,
+            provider: true,
+            currentPeriodStart: true,
+            currentPeriodEnd: true,
+            cancelAtPeriodEnd: true,
+            createdAt: true,
+            plan: { select: { code: true, name: true } },
+          },
+        })
+      : null,
+    prisma.payment.findMany(scope),
+    prisma.agent.findMany(scope),
+    prisma.phoneNumber.findMany({
+      ...scope,
+      select: { e164: true, friendlyName: true, inboundAgentId: true, createdAt: true },
+    }),
+    prisma.campaign.findMany(scope),
+    prisma.campaignContact.findMany(scope),
+    prisma.call.findMany({ ...scope, orderBy: { createdAt: 'desc' }, take: 20000 }),
+    prisma.appointment.findMany(scope),
+    prisma.integration.findMany({
+      ...scope,
+      select: { type: true, accountLabel: true, connectedAt: true },
+    }),
+    prisma.callMessage.findMany(scope),
+    prisma.ticket.findMany({ ...scope, include: { messages: true } }),
+    prisma.session.findMany({
+      where: { userId: user.id },
+      select: { createdAt: true, expiresAt: true, revokedAt: true, userAgent: true, ip: true },
+    }),
+  ]);
+  await audit(req, 'privacy.data_exported');
+  res
+    .type('application/json')
+    .setHeader(
+      'Content-Disposition',
+      `attachment; filename="purple-voice-data-${new Date().toISOString().slice(0, 10)}.json"`,
+    )
+    .send(
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          account: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            timezone: user.timezone,
+            googleLinked: !!user.googleId,
+            marketingOptIn: user.marketingOptIn,
+            termsAcceptedAt: user.termsAcceptedAt,
+            termsVersion: user.termsVersion,
+            createdAt: user.createdAt,
+            lastLoginAt: user.lastLoginAt,
+          },
+          sessions,
+          workspace,
+          subscription,
+          payments,
+          agents,
+          phoneNumbers: numbers,
+          campaigns,
+          contacts,
+          calls,
+          appointments,
+          integrations,
+          messagesSentByAgents: messages,
+          supportTickets: tickets,
+        },
+        null,
+        2,
+      ),
+    );
+});
+
+/**
+ * Erases the subscriber's account and workspace for good: agents, numbers,
+ * campaigns, contacts, calls, transcripts, appointments, integrations and
+ * keys (GDPR art. 17, UK GDPR, CCPA right to delete). Payment records the
+ * law makes us keep stay with the payment gateway.
+ */
+authRouter.delete('/me', authenticate, async (req, res) => {
+  const input = deleteAccountSchema.parse(req.body);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
+  if (user.role !== 'SUBSCRIBER' || !user.workspaceId)
+    throw forbidden('Staff accounts are removed by a super admin.');
+  if (hasUsablePassword(user.passwordHash)) {
+    if (!input.password || !(await verifyPassword(input.password, user.passwordHash)))
+      throw badRequest('Password is incorrect');
+  }
+  const workspaceId = user.workspaceId;
+  const sub = await prisma.subscription.findUnique({ where: { workspaceId } });
+  if (
+    sub &&
+    sub.provider !== 'MANUAL' &&
+    ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(sub.status) &&
+    !sub.cancelAtPeriodEnd
+  ) {
+    throw badRequest('Cancel your paid plan on the Billing page first, then delete your account.');
+  }
+  const live = await prisma.call.count({
+    where: { workspaceId, status: { in: ['QUEUED', 'RINGING', 'IN_PROGRESS'] } },
+  });
+  if (live) throw badRequest('A call is in progress. Try again once it has ended.');
+
+  await audit(req, 'privacy.account_deleted', { meta: { email: sha256(user.email) } });
+  // Everything customer-owned cascades from the workspace, the user included.
+  await prisma.workspace.delete({ where: { id: workspaceId } });
+  clearSession(res);
+  void sendMail({
+    to: user.email,
+    subject: 'Your Purple Voice account has been deleted',
+    text: `Hi ${user.name},\n\nAs you asked, your Purple Voice account and workspace have been deleted, with your agents, campaigns, contacts, call transcripts and settings. Nightly backups that still hold it are deleted within 14 days.\n\nIf you didn't ask for this, reply to this email straight away.`,
+  });
   res.json({ ok: true });
 });
 

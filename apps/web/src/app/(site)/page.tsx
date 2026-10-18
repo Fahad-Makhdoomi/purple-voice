@@ -142,11 +142,11 @@ export default async function HomePage() {
             Launch with Purple Voice.
           </h2>
           <p className="mx-auto mt-6 max-w-xl text-lead text-white/65">
-            Start on Basic for $19 a month. Upgrade to Pro when you need more agents, numbers and
-            campaigns.
+            Start free with 100 AI call minutes a month. Upgrade to Basic or Pro when you need more
+            agents, numbers and campaigns.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link href="/signup?plan=BASIC" className="btn btn-white btn-lg gap-2">
+            <Link href="/signup?plan=FREE" className="btn btn-white btn-lg gap-2">
               Get started
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white">
                 <ArrowUpRight size={14} />

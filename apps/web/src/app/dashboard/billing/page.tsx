@@ -351,8 +351,9 @@ function BillingInner() {
                 <StatusBadge status={entitlements.status} />
               </div>
               <p className="mt-1 text-sm text-muted">
-                {entitlements.cancelAtPeriodEnd ? 'Ends' : 'Renews'}{' '}
-                {formatDate(entitlements.currentPeriodEnd)}
+                {entitlements.free
+                  ? 'Free forever. Call minutes reset on the 1st of every month.'
+                  : `${entitlements.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${formatDate(entitlements.currentPeriodEnd)}${entitlements.cancelAtPeriodEnd ? ', then you move to Free' : ''}`}
               </p>
               <div className="mt-6 space-y-4">
                 <Meter
@@ -473,9 +474,10 @@ function BillingInner() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {data.plans.map((plan) => {
           const onPlan = entitlements.active && entitlements.planCode === plan.code;
+          const freePlan = plan.priceMonthlyCents === 0;
           // Same plan through another gateway is a move, not "your plan".
           const isCurrent =
             onPlan && (!gateway || current === gateway.gateway || current === 'MANUAL');
@@ -525,7 +527,11 @@ function BillingInner() {
                   </li>
                 ))}
               </ul>
-              {plan.selfServe ? (
+              {freePlan ? (
+                <button className="btn btn-secondary mt-6 w-full" disabled>
+                  {onPlan ? 'Your plan' : 'Yours again if a paid plan ends'}
+                </button>
+              ) : plan.selfServe ? (
                 <button
                   className={cn('btn mt-6 w-full', isCurrent ? 'btn-secondary' : 'btn-primary')}
                   disabled={
@@ -540,7 +546,7 @@ function BillingInner() {
                     ? 'Your plan'
                     : onPlan && gateway
                       ? `Pay with ${gateway.label} instead`
-                      : entitlements.active
+                      : entitlements.active && !entitlements.free
                         ? `Switch to ${plan.name}`
                         : `Choose ${plan.name}`}
                 </button>

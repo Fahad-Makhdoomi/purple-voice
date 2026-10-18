@@ -26,6 +26,8 @@ enum Role {
 }
 
 enum PlanCode {
+  /// Free tier: what every workspace gets without a paid plan.
+  FREE
   BASIC
   PRO
   ENTERPRISE
@@ -113,6 +115,32 @@ enum CampaignStatus {
   CANCELED
 }
 
+/// How a campaign call went for the contact, as far as reaching them goes.
+/// SILENT: the line connected but nobody spoke (often a voicemail box).
+enum DialResult {
+  REACHED
+  NO_ANSWER
+  BUSY
+  VOICEMAIL
+  FAILED
+  SILENT
+}
+
+/// When a campaign calls unanswered numbers again.
+/// END_OF_LIST: once everyone on the list has had a call (round by round).
+/// AFTER_DELAY: a set time after the missed call, before untried numbers.
+/// NEXT_DAY: at the start of the next calling day.
+enum RetryStrategy {
+  END_OF_LIST
+  AFTER_DELAY
+  NEXT_DAY
+}
+
+enum MessageChannel {
+  EMAIL
+  WHATSAPP
+}
+
 enum ContactStatus {
   PENDING
   CALLING
@@ -164,6 +192,10 @@ enum IntegrationType {
   HUBSPOT
   ZAPIER
   CALENDLY
+  /// The workspace's own mail server; agents email information during calls.
+  SMTP
+  /// WhatsApp Business (Meta Cloud API or Twilio); agents send messages during calls.
+  WHATSAPP
 }
 
 enum DeliveryStatus {
@@ -193,20 +225,25 @@ enum ContentStatus {
 // ─── Identity ────────────────────────────────────────────────────────────────
 
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  name         String
-  passwordHash String
+  id              String     @id @default(cuid())
+  email           String     @unique
+  name            String
+  passwordHash    String
   /// Google account id ("sub") once the user has signed in with Google.
-  googleId     String?    @unique
-  role         Role       @default(SUBSCRIBER)
-  workspaceId  String?
-  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  timezone     String     @default("UTC")
-  suspended    Boolean    @default(false)
-  lastLoginAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  googleId        String?    @unique
+  role            Role       @default(SUBSCRIBER)
+  workspaceId     String?
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timezone        String     @default("UTC")
+  suspended       Boolean    @default(false)
+  lastLoginAt     DateTime?
+  /// When the user accepted the Terms and Privacy Policy, and which version.
+  termsAcceptedAt DateTime?
+  termsVersion    String?
+  /// Opted in to product news by email (never pre-ticked).
+  marketingOptIn  Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   sessions        Session[]
   passwordResets  PasswordReset[]
@@ -290,6 +327,7 @@ model Workspace {
   automations        Automation[]
   tickets            Ticket[]
   auditLogs          AuditLog[]
+  messages           CallMessage[]
 }
 
 model Plan {
@@ -543,52 +581,69 @@ model Agent {
   callbackGreeting          String      @default("")
   callbackInstructions      String      @default("")
   noiseFilter               NoiseFilter @default(STANDARD)
+  /// Send information by email during a call (Integrations → Email (SMTP)).
+  emailEnabled              Boolean     @default(false)
+  /// Send information on WhatsApp during a call (Integrations → WhatsApp).
+  whatsappEnabled           Boolean     @default(false)
+  /// What the agent may send when asked: links, prices, brochure text, address.
+  shareInfo                 String      @default("")
   createdAt                 DateTime    @default(now())
   updatedAt                 DateTime    @updatedAt
 
   inboundNumbers PhoneNumber[] @relation("InboundAgent")
   campaigns      Campaign[]
   calls          Call[]
+  messages       CallMessage[]
 
   @@index([workspaceId])
 }
 
 model Campaign {
-  id                String         @id @default(cuid())
-  workspaceId       String
-  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  name              String
-  agentId           String
-  agent             Agent          @relation(fields: [agentId], references: [id], onDelete: Restrict)
-  phoneNumberId     String
-  phoneNumber       PhoneNumber    @relation(fields: [phoneNumberId], references: [id], onDelete: Restrict)
-  goal              String         @default("")
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name               String
+  agentId            String
+  agent              Agent          @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  phoneNumberId      String
+  phoneNumber        PhoneNumber    @relation(fields: [phoneNumberId], references: [id], onDelete: Restrict)
+  goal               String         @default("")
   /// How the agent tailors each call to the contact's details (name, business, CSV columns).
-  personalization   String         @default("")
-  status            CampaignStatus @default(DRAFT)
-  timezone          String         @default("UTC")
-  callWindowStart   String         @default("09:00")
-  callWindowEnd     String         @default("18:00")
+  personalization    String         @default("")
+  status             CampaignStatus @default(DRAFT)
+  timezone           String         @default("UTC")
+  callWindowStart    String         @default("09:00")
+  callWindowEnd      String         @default("18:00")
   /// 0 = Sunday … 6 = Saturday.
-  callDays          Int[]          @default([1, 2, 3, 4, 5])
-  maxAttempts       Int            @default(2)
-  retryDelayMinutes Int            @default(240)
-  concurrency       Int            @default(1)
+  callDays           Int[]          @default([1, 2, 3, 4, 5])
+  /// Calls per contact in all: the first call plus up to 5 retries.
+  maxAttempts        Int            @default(2)
+  /// Least time before the same number is called again.
+  retryDelayMinutes  Int            @default(240)
+  retryStrategy      RetryStrategy  @default(END_OF_LIST)
+  /// Which results are worth another call.
+  retryOn            DialResult[]   @default([NO_ANSWER, BUSY, VOICEMAIL, SILENT, FAILED])
+  /// Optional hours (campaign time zone) for retries only, e.g. evenings.
+  retryWindowStart   String?
+  retryWindowEnd     String?
+  /// When the subscriber confirmed they have consent to call this list.
+  consentConfirmedAt DateTime?
+  concurrency        Int            @default(1)
   /// Pause before the next call starts, after the last one started or ended.
-  callDelaySeconds  Int            @default(20)
-  startedAt         DateTime?
-  completedAt       DateTime?
+  callDelaySeconds   Int            @default(20)
+  startedAt          DateTime?
+  completedAt        DateTime?
   /// The campaign this one follows up on (re-calls, appointment confirmations).
-  parentCampaignId  String?
-  parentCampaign    Campaign?      @relation("FollowUps", fields: [parentCampaignId], references: [id], onDelete: SetNull)
-  followUps         Campaign[]     @relation("FollowUps")
+  parentCampaignId   String?
+  parentCampaign     Campaign?      @relation("FollowUps", fields: [parentCampaignId], references: [id], onDelete: SetNull)
+  followUps          Campaign[]     @relation("FollowUps")
   /// Which groups of the parent's contacts this follow-up was built from.
-  followUpSegments  String[]       @default([])
+  followUpSegments   String[]       @default([])
   /// AI analysis of the finished campaign (services/ai/campaign-report.ts).
-  aiReport          Json?
-  aiReportAt        DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  aiReport           Json?
+  aiReportAt         DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   contacts CampaignContact[]
   calls    Call[]
@@ -616,6 +671,8 @@ model CampaignContact {
   lastAttemptAt DateTime?
   nextAttemptAt DateTime?
   lastOutcome   CallOutcome?
+  /// Whether the last call reached them, and if not, why.
+  lastResult    DialResult?
   /// Labels added by hand or in the CSV ("vip", "webinar"); follow-up campaigns can target them.
   tags          String[]      @default([])
   createdAt     DateTime      @default(now())
@@ -672,6 +729,7 @@ model Call {
   updatedAt      DateTime          @updatedAt
 
   appointments Appointment[]
+  messages     CallMessage[]
 
   @@unique([provider, providerCallId])
   @@index([workspaceId, createdAt])
@@ -700,6 +758,29 @@ model Appointment {
   updatedAt        DateTime          @updatedAt
 
   @@index([workspaceId, startsAt])
+}
+
+/// An email or WhatsApp message an agent sent during a call.
+model CallMessage {
+  id                String         @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  callId            String?
+  call              Call?          @relation(fields: [callId], references: [id], onDelete: SetNull)
+  agentId           String?
+  agent             Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  channel           MessageChannel
+  to                String
+  subject           String?
+  body              String
+  /// "sent" or "failed".
+  status            String
+  error             String?
+  providerMessageId String?
+  createdAt         DateTime       @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([callId])
 }
 
 // ─── Integrations & developer tools ─────────────────────────────────────────
@@ -828,11 +909,20 @@ model Page {
   slug           String        @unique
   title          String
   body           String        @default("")
+  /// "markdown" (body) or "builder" (blocks).
+  layout         String        @default("markdown")
+  /// Page-builder sections (PageBlock[] from @pv/shared), used when layout is "builder".
+  blocks         Json          @default("[]")
   status         ContentStatus @default(DRAFT)
   showInFooter   Boolean       @default(false)
+  /// Linked from the site header, in navOrder, labelled navLabel (or the title).
+  showInHeader   Boolean       @default(false)
+  navLabel       String?
+  navOrder       Int           @default(0)
   seoTitle       String?
   seoDescription String?
   ogImageUrl     String?
+  canonicalUrl   String?
   noindex        Boolean       @default(false)
   publishedAt    DateTime?
   createdAt      DateTime      @default(now())
@@ -840,25 +930,75 @@ model Page {
 }
 
 model Post {
-  id             String        @id @default(cuid())
-  slug           String        @unique
-  title          String
-  excerpt        String        @default("")
-  body           String        @default("")
-  coverImageUrl  String?
-  tags           String[]
-  status         ContentStatus @default(DRAFT)
-  authorId       String?
-  author         User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  seoTitle       String?
-  seoDescription String?
-  ogImageUrl     String?
-  noindex        Boolean       @default(false)
-  publishedAt    DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  slug              String        @unique
+  title             String
+  excerpt           String        @default("")
+  body              String        @default("")
+  coverImageUrl     String?
+  tags              String[]
+  status            ContentStatus @default(DRAFT)
+  authorId          String?
+  author            User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  seoTitle          String?
+  seoDescription    String?
+  ogImageUrl        String?
+  noindex           Boolean       @default(false)
+  /// Advanced SEO (Admin → Blog → SEO).
+  focusKeyword      String?
+  secondaryKeywords String[]      @default([])
+  canonicalUrl      String?
+  ogTitle           String?
+  ogDescription     String?
+  /// Ask search engines not to follow the post's links.
+  nofollow          Boolean       @default(false)
+  /// schema.org type: BlogPosting, Article, NewsArticle, TechArticle or HowTo.
+  schemaType        String        @default("BlogPosting")
+  /// [{ question, answer }]: shown under the post and marked up as FAQPage.
+  faq               Json          @default("[]")
+  /// HowTo steps: [{ name, text }].
+  howToSteps        Json          @default("[]")
+  category          String?
+  /// Byline shown instead of the staff account's name, with a short bio.
+  authorName        String?
+  authorBio         String?
+  showToc           Boolean       @default(true)
+  publishedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([status, publishedAt])
+}
+
+/// Old URLs that moved, so links and search rankings follow (created when a
+/// slug changes, editable in Admin → SEO).
+model Redirect {
+  id        String    @id @default(cuid())
+  fromPath  String    @unique
+  toPath    String
+  permanent Boolean   @default(true)
+  hits      Int       @default(0)
+  lastHitAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+/// A visitor's cookie choices (GDPR / UK GDPR / PECR accountability). No
+/// account, no raw IP: a random id from the browser and a salted IP hash.
+model ConsentRecord {
+  id            String   @id @default(cuid())
+  consentId     String
+  analytics     Boolean
+  marketing     Boolean
+  preferences   Boolean
+  /// The browser sent Global Privacy Control (treated as an opt-out of sale/share).
+  gpc           Boolean  @default(false)
+  policyVersion String
+  ipHash        String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([consentId])
+  @@index([createdAt])
 }
 
 model Faq {

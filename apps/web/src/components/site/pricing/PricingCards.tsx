@@ -24,7 +24,12 @@ export function PricingCards({
 }) {
   const Heading = headingLevel;
   return (
-    <div className="grid gap-5 lg:grid-cols-3">
+    <div
+      className={cn(
+        'grid gap-5',
+        plans.length > 3 ? 'md:grid-cols-2 xl:grid-cols-4' : 'lg:grid-cols-3',
+      )}
+    >
       {plans.map((plan, idx) => {
         const featured = plan.featured;
         const href = plan.selfServe ? `/signup?plan=${plan.code}` : `/contact?plan=${plan.code}`;
@@ -111,7 +116,11 @@ export function PricingCards({
                             : 'btn-secondary',
                     )}
                   >
-                    {plan.selfServe ? `Choose ${plan.name}` : 'Talk to sales'}
+                    {plan.priceMonthlyCents === 0
+                      ? 'Start free'
+                      : plan.selfServe
+                        ? `Choose ${plan.name}`
+                        : 'Talk to sales'}
                     {tone === 'dark' && <ArrowUpRight size={16} aria-hidden="true" />}
                   </Link>
                   <ul className="mt-8 space-y-3">

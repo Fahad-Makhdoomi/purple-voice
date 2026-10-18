@@ -1,9 +1,24 @@
-import type { Campaign } from '@prisma/client';
+import { Prisma, type Campaign, type RetryStrategy } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { HttpError } from '../lib/http-error';
 import { completeCampaignIfDone, startOutboundCall } from '../services/calls';
+import { retryHours, withinWindow } from '../services/campaign-retry';
 import { utcToZoned, isValidTimeZone } from '../voice/time';
+
+const FRESH_ONLY = Prisma.sql`AND attempts = 0`;
+const RETRIES_ONLY = Prisma.sql`AND attempts > 0`;
+
+/**
+ * Who is called next. END_OF_LIST and NEXT_DAY go round the list in rounds:
+ * everyone's first call, then every first retry, and so on. AFTER_DELAY
+ * calls back a due retry before starting on numbers not tried yet.
+ */
+export function dialOrder(strategy: RetryStrategy): Prisma.Sql {
+  return strategy === 'AFTER_DELAY'
+    ? Prisma.sql`ORDER BY (attempts = 0), "nextAttemptAt" NULLS LAST, "createdAt"`
+    : Prisma.sql`ORDER BY attempts, "nextAttemptAt" NULLS FIRST, "createdAt"`;
+}
 
 /** Whether "now" falls inside the campaign's calling days and hours, in its own time zone. */
 export function withinCallWindow(
@@ -50,7 +65,13 @@ export async function dialerTick(): Promise<void> {
   });
 
   for (const campaign of campaigns) {
-    if (campaign.agent.status !== 'ACTIVE' || !withinCallWindow(campaign)) continue;
+    if (campaign.agent.status !== 'ACTIVE') continue;
+    // New numbers are called in the call window; retries in the retry hours
+    // (the call window too, unless the campaign has its own retry hours).
+    const freshOk = withinCallWindow(campaign);
+    const hours = retryHours(campaign);
+    const retryOk = withinWindow(campaign.callDays, hours.start, hours.end, campaign.timezone);
+    if (!freshOk && !retryOk) continue;
 
     const [live, last, ended] = await Promise.all([
       prisma.call.count({
@@ -67,6 +88,7 @@ export async function dialerTick(): Promise<void> {
     if (secondsUntilNextCall(campaign.callDelaySeconds, last, ended._max.endedAt) > 0) continue;
     const slots = 1;
 
+    const which = freshOk && retryOk ? Prisma.empty : freshOk ? FRESH_ONLY : RETRIES_ONLY;
     const claimed = await prisma.$queryRaw<Array<{ id: string; phone: string }>>`
       UPDATE "CampaignContact"
       SET status = 'CALLING', attempts = attempts + 1, "lastAttemptAt" = now(), "updatedAt" = now()
@@ -75,7 +97,8 @@ export async function dialerTick(): Promise<void> {
         WHERE "campaignId" = ${campaign.id}
           AND status = 'PENDING'
           AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= now())
-        ORDER BY "nextAttemptAt" NULLS FIRST, "createdAt"
+          ${which}
+        ${dialOrder(campaign.retryStrategy)}
         LIMIT ${slots}
         FOR UPDATE SKIP LOCKED
       )

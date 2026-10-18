@@ -36,6 +36,22 @@ function isPrivateIp(ip: string): boolean {
   );
 }
 
+/**
+ * A host a subscriber asks us to open a connection to (their mail server),
+ * resolved once: returns a public address to connect to, so the name can't
+ * be re-pointed at a private one between the check and the connection.
+ */
+export async function resolvePublicHost(host: string): Promise<string> {
+  const bare = host.replace(/^\[|\]$/g, '');
+  const addresses = net.isIP(bare)
+    ? [bare]
+    : (await dns.lookup(bare, { all: true }).catch(() => [])).map((a) => a.address);
+  if (!addresses.length) throw badRequest(`Could not find the server ${host}`);
+  if (env.isProd && addresses.some(isPrivateIp))
+    throw badRequest('That server is on a private network');
+  return addresses[0]!;
+}
+
 export async function assertPublicUrl(raw: string): Promise<URL> {
   let url: URL;
   try {

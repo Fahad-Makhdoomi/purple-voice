@@ -11,8 +11,17 @@
  * Purple Voice plan.
  */
 
-export const PLAN_CODES = ['BASIC', 'PRO', 'ENTERPRISE'] as const;
+export const PLAN_CODES = ['FREE', 'BASIC', 'PRO', 'ENTERPRISE'] as const;
 export type PlanCode = (typeof PLAN_CODES)[number];
+
+/** Plans bought through a payment gateway. Free needs no checkout. */
+export const PAID_PLAN_CODES = ['BASIC', 'PRO'] as const;
+
+/**
+ * The plan every workspace is on when it has no live paid subscription: at
+ * sign-up, and after a paid plan ends. See services/entitlements.ts.
+ */
+export const FREE_PLAN_CODE = 'FREE' satisfies PlanCode;
 
 export interface PlanLimits {
   /** AI call agents. */
@@ -91,6 +100,43 @@ const ALL_FEATURES: PlanFeatures = Object.fromEntries(
 ) as unknown as PlanFeatures;
 
 export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
+  FREE: {
+    code: 'FREE',
+    name: 'Free',
+    tagline: 'Try a real AI calling agent on your own number, free.',
+    priceMonthlyCents: 0,
+    includedMinutes: 100,
+    limits: {
+      agents: 1,
+      phoneNumbers: 1,
+      campaigns: 1,
+      contactsPerCampaign: 100,
+      // Google Calendar, email or WhatsApp: one of them.
+      integrations: 1,
+      concurrentCalls: 1,
+      webhooks: 0,
+      apiKeys: 0,
+      automations: 0,
+    },
+    features: {
+      ...NO_FEATURES,
+      personalizedPrompts: true,
+      appointmentBooking: true,
+      callSummary: true,
+      googleCalendar: true,
+    },
+    highlights: [
+      'One AI call agent',
+      'Connect one phone number',
+      '1 calling campaign',
+      '100 free AI call minutes / month',
+      'Appointment booking and call summaries',
+      'One app integration',
+      'No card needed',
+    ],
+    featured: false,
+    selfServe: true,
+  },
   BASIC: {
     code: 'BASIC',
     name: 'Basic',
@@ -226,8 +272,13 @@ export const LIMIT_LABELS: Record<LimitKey, string> = {
   automations: 'Automations',
 };
 
+export function isFreePlan(plan: { code: string }): boolean {
+  return plan.code === FREE_PLAN_CODE;
+}
+
 export function formatPrice(cents: number | null): string {
   if (cents === null) return 'Custom';
+  if (cents === 0) return 'Free';
   const dollars = cents / 100;
   return `$${Number.isInteger(dollars) ? dollars.toLocaleString('en-US') : dollars.toFixed(2)}`;
 }

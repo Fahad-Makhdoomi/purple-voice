@@ -19,6 +19,7 @@ export interface DigestInput {
     callWindowEnd: string;
     maxAttempts: number;
     retryDelayMinutes: number;
+    retryStrategy: string;
     startedAt: Date | null;
     completedAt: Date | null;
   };
@@ -119,7 +120,7 @@ export function buildCampaignDigest(d: DigestInput): string {
   lines.push(`# Campaign report: ${c.name}`, '');
   lines.push(
     `Status: ${c.status}. Goal: ${c.goal || 'not set'}.`,
-    `Calling window ${c.callWindowStart}–${c.callWindowEnd} (${c.timezone}); up to ${c.maxAttempts} attempts per contact, ${c.retryDelayMinutes} min apart.`,
+    `Calling window ${c.callWindowStart}–${c.callWindowEnd} (${c.timezone}); up to ${c.maxAttempts} attempts per contact (retries ${c.retryStrategy.toLowerCase().replace(/_/g, ' ')}), at least ${c.retryDelayMinutes} min apart.`,
     `Ran ${c.startedAt ? c.startedAt.toISOString().slice(0, 10) : '?'} to ${c.completedAt ? c.completedAt.toISOString().slice(0, 10) : 'now'}.`,
     '',
   );
@@ -151,6 +152,13 @@ export function buildCampaignDigest(d: DigestInput): string {
       (h) =>
         `- ${String(h.hour).padStart(2, '0')}:00 — ${h.calls} calls, ${h.answered} reached a person`,
     ),
+    '',
+    '### Numbers never reached',
+    `${a.notReached.total} in all (${a.notReached.waitingRetry} still waiting for a retry): ` +
+      Object.entries(a.notReached.byReason)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${k.toLowerCase().replace(/_/g, ' ')} ${v}`)
+        .join(', '),
     '',
     '### Attempts needed',
     ...a.attempts.map(

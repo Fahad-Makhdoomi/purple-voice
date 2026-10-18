@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import {
   addContactsSchema,
+  campaignProgress,
   campaignSchema,
+  startCampaignSchema,
   contactSchema,
   FOLLOW_UP_SEGMENT_INFO,
   followUpSchema,
@@ -18,7 +20,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { audit } from '../../lib/audit';
-import { badRequest, notFound } from '../../lib/http-error';
+import { HttpError, badRequest, notFound } from '../../lib/http-error';
 import { contactIdentity, describeColumns, parseCsv, toE164 } from '../../lib/csv';
 import { wsId } from '../../middleware/workspace';
 import {
@@ -77,18 +79,23 @@ campaignsRouter.get('/', async (req, res) => {
     },
   });
   const counts = await prisma.campaignContact.groupBy({
-    by: ['campaignId', 'status'],
+    by: ['campaignId', 'status', 'attempts'],
     where: { workspaceId },
     _count: { _all: true },
   });
   res.json({
     campaigns: campaigns.map((c) => {
-      const mine = counts.filter((x) => x.campaignId === c.id);
-      const total = mine.reduce((n, x) => n + x._count._all, 0);
-      const done = mine
-        .filter((x) => !['PENDING', 'CALLING'].includes(x.status))
-        .reduce((n, x) => n + x._count._all, 0);
-      return { ...c, contactCount: total, completedCount: done };
+      const rows = counts
+        .filter((x) => x.campaignId === c.id)
+        .map((x) => ({ status: x.status, attempts: x.attempts, count: x._count._all }));
+      const progress = campaignProgress(rows, c.maxAttempts, c.status);
+      return {
+        ...c,
+        contactCount: progress.total,
+        completedCount:
+          progress.total - progress.notCalled - progress.waitingRetry - progress.calling,
+        progress,
+      };
     }),
   });
 });
@@ -99,11 +106,13 @@ campaignsRouter.post('/', requireActiveSubscription, async (req, res) => {
   const ent = await entitlementsFor(req);
   await assertWithinLimit(workspaceId, ent, 'campaigns');
   await assertRefs(workspaceId, input.agentId, input.phoneNumberId);
+  const { consentConfirmed, ...fields } = input;
   const campaign = await prisma.campaign.create({
     data: {
-      ...input,
+      ...fields,
       workspaceId,
       concurrency: Math.min(input.concurrency, ent.limits.concurrentCalls),
+      consentConfirmedAt: consentConfirmed ? new Date() : null,
     },
   });
   await audit(req, 'campaign.created', { entity: 'Campaign', entityId: campaign.id });
@@ -125,9 +134,9 @@ campaignsRouter.get('/:id', async (req, res) => {
     },
   });
   if (!campaign) throw notFound('Campaign');
-  const [byStatus, byOutcome, minutes] = await Promise.all([
+  const [byStatus, byOutcome, minutes, nextRetry, waitingByResult] = await Promise.all([
     prisma.campaignContact.groupBy({
-      by: ['status'],
+      by: ['status', 'attempts'],
       where: { campaignId: campaign.id },
       _count: { _all: true },
     }),
@@ -141,11 +150,44 @@ campaignsRouter.get('/:id', async (req, res) => {
       _sum: { billedMinutes: true },
       _count: { _all: true },
     }),
+    prisma.campaignContact.aggregate({
+      where: { campaignId: campaign.id, status: 'PENDING', attempts: { gt: 0 } },
+      _min: { nextAttemptAt: true },
+    }),
+    prisma.campaignContact.groupBy({
+      by: ['lastResult'],
+      where: {
+        campaignId: campaign.id,
+        OR: [
+          { status: { in: ['NO_ANSWER', 'FAILED'] } },
+          { status: 'PENDING', attempts: { gt: 0 } },
+        ],
+      },
+      _count: { _all: true },
+    }),
   ]);
+  const contacts: Record<string, number> = {};
+  for (const s of byStatus) contacts[s.status] = (contacts[s.status] ?? 0) + s._count._all;
+  const progress = campaignProgress(
+    byStatus.map((s) => ({ status: s.status, attempts: s.attempts, count: s._count._all })),
+    campaign.maxAttempts,
+    campaign.status,
+  );
   res.json({
     campaign,
+    progress: {
+      ...progress,
+      /** When the next waiting number is due another call. */
+      nextRetryAt: nextRetry._min.nextAttemptAt,
+      /** Numbers not reached (out of retries, or waiting for one), by why. */
+      notReachedBy: waitingByResult.reduce<Record<string, number>>((acc, r) => {
+        const key = r.lastResult ?? 'NO_ANSWER';
+        acc[key] = (acc[key] ?? 0) + r._count._all;
+        return acc;
+      }, {}),
+    },
     stats: {
-      contacts: Object.fromEntries(byStatus.map((s) => [s.status, s._count._all])),
+      contacts,
       outcomes: Object.fromEntries(byOutcome.map((s) => [s.outcome ?? 'NONE', s._count._all])),
       calls: minutes._count._all,
       minutes: minutes._sum.billedMinutes ?? 0,
@@ -161,6 +203,12 @@ campaignsRouter.patch('/:id', async (req, res) => {
   const start = input.callWindowStart ?? campaign.callWindowStart;
   const end = input.callWindowEnd ?? campaign.callWindowEnd;
   if (start >= end) throw badRequest('Call window must end after it starts');
+  const retryStart =
+    input.retryWindowStart !== undefined ? input.retryWindowStart : campaign.retryWindowStart;
+  const retryEnd =
+    input.retryWindowEnd !== undefined ? input.retryWindowEnd : campaign.retryWindowEnd;
+  if (!!retryStart !== !!retryEnd || (retryStart && retryEnd && retryStart >= retryEnd))
+    throw badRequest('Give both retry times, ending after they start, or leave both empty');
   const ent = await entitlementsFor(req);
   const updated = await prisma.campaign.update({
     where: { id: campaign.id },
@@ -194,8 +242,22 @@ campaignsRouter.get('/:id/contacts', async (req, res) => {
     .optional()
     .parse(req.query.status || undefined);
   const tag = parseTags(String(req.query.tag ?? ''))[0];
+  // Groups that cut across statuses: waiting for a retry, never reached, not called yet.
+  const state = z
+    .enum(['retry', 'unreached', 'not_called'])
+    .optional()
+    .parse(req.query.state || undefined);
+  const byState: Prisma.CampaignContactWhereInput =
+    state === 'retry'
+      ? { status: 'PENDING', attempts: { gt: 0 } }
+      : state === 'unreached'
+        ? { status: { in: ['NO_ANSWER', 'FAILED'] } }
+        : state === 'not_called'
+          ? { status: 'PENDING', attempts: 0 }
+          : {};
   const where: Prisma.CampaignContactWhereInput = {
     campaignId: campaign.id,
+    ...byState,
     ...(status ? { status } : {}),
     ...(tag ? { tags: { has: tag } } : {}),
     ...(q
@@ -378,6 +440,7 @@ campaignsRouter.delete('/:id/contacts/:contactId', async (req, res) => {
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
 campaignsRouter.post('/:id/start', requireActiveSubscription, async (req, res) => {
+  const { consentConfirmed } = startCampaignSchema.parse(req.body ?? {});
   const workspaceId = wsId(req);
   const campaign = await prisma.campaign.findFirst({
     where: { id: String(req.params.id), workspaceId },
@@ -397,10 +460,23 @@ campaignsRouter.post('/:id/start', requireActiveSubscription, async (req, res) =
     where: { campaignId: campaign.id, status: 'PENDING' },
   });
   if (!pending) throw badRequest('Add contacts before starting');
+  // TCPA (US), PECR (UK) and GDPR: the subscriber must have consent, or another
+  // lawful basis, to call the people on the list. Confirmed once per campaign.
+  if (!campaign.consentConfirmedAt && !consentConfirmed) {
+    throw new HttpError(
+      400,
+      'Confirm you have consent to call the people on this list before starting.',
+      'consent_required',
+    );
+  }
 
   const updated = await prisma.campaign.update({
     where: { id: campaign.id },
-    data: { status: 'RUNNING', startedAt: campaign.startedAt ?? new Date() },
+    data: {
+      status: 'RUNNING',
+      startedAt: campaign.startedAt ?? new Date(),
+      consentConfirmedAt: campaign.consentConfirmedAt ?? new Date(),
+    },
   });
   await audit(req, 'campaign.started', { entity: 'Campaign', entityId: campaign.id });
   res.json({ campaign: updated });
@@ -486,7 +562,16 @@ async function loadAnalytics(campaign: { id: string; timezone: string }) {
   const [contacts, calls] = await Promise.all([
     prisma.campaignContact.findMany({
       where: { campaignId: campaign.id },
-      select: { id: true, status: true, attempts: true, lastOutcome: true },
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        status: true,
+        attempts: true,
+        lastOutcome: true,
+        lastResult: true,
+        lastAttemptAt: true,
+      },
     }),
     prisma.call.findMany({
       where: { campaignId: campaign.id },
@@ -599,6 +684,7 @@ campaignsRouter.get('/:id/export', async (req, res) => {
     'tags',
     'status',
     'attempts',
+    'last_result',
     'last_outcome',
     'last_call',
     'notes',
@@ -612,6 +698,7 @@ campaignsRouter.get('/:id/export', async (req, res) => {
       c.tags.join(';'),
       c.status,
       c.attempts,
+      c.lastResult,
       c.lastOutcome,
       c.lastAttemptAt?.toISOString(),
       c.notes,
@@ -715,6 +802,12 @@ campaignsRouter.post('/:id/follow-up', requireActiveSubscription, async (req, re
         callDays: parent.callDays,
         maxAttempts: input.maxAttempts ?? parent.maxAttempts,
         retryDelayMinutes: input.retryDelayMinutes ?? parent.retryDelayMinutes,
+        retryStrategy: parent.retryStrategy,
+        retryOn: parent.retryOn,
+        retryWindowStart: parent.retryWindowStart,
+        retryWindowEnd: parent.retryWindowEnd,
+        // The same people, so the parent's consent confirmation carries over.
+        consentConfirmedAt: parent.consentConfirmedAt,
         concurrency: Math.min(parent.concurrency, ent.limits.concurrentCalls),
         callDelaySeconds: parent.callDelaySeconds,
         parentCampaignId: parent.id,
@@ -804,6 +897,7 @@ campaignsRouter.post('/:id/rerun', requireActiveSubscription, async (req, res) =
           attempts: 0,
           nextAttemptAt: null,
           lastOutcome: null,
+          lastResult: null,
           fields: {
             ...((p.fields as Record<string, unknown> | null) ?? {}),
             previous_outcome: p.lastOutcome

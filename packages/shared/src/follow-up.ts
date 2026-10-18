@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CallOutcome, ContactStatus } from './enums';
+import { MAX_CAMPAIGN_RETRIES, type CallOutcome, type ContactStatus } from './enums';
 
 /**
  * Follow-up campaigns: once a campaign has finished, the people on its list are
@@ -128,7 +128,12 @@ export const followUpSchema = z
     goal: z.string().trim().max(1000).optional(),
     agentId: z.string().min(1).optional(),
     phoneNumberId: z.string().min(1).optional(),
-    maxAttempts: z.number().int().min(1).max(5).optional(),
+    maxAttempts: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_CAMPAIGN_RETRIES + 1)
+      .optional(),
     retryDelayMinutes: z.number().int().min(5).max(10080).optional(),
   })
   .refine((v) => v.segments.length || v.tags.length, {
@@ -194,6 +199,11 @@ export function rerunTargetOf(contact: {
 export const rerunSchema = z.object({
   targets: z.array(z.enum(RERUN_TARGETS)).min(1, 'Choose who to call again'),
   /** Attempts each re-queued contact gets in this batch. */
-  maxAttempts: z.number().int().min(1).max(5).optional(),
+  maxAttempts: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_CAMPAIGN_RETRIES + 1)
+    .optional(),
 });
 export type RerunInput = z.infer<typeof rerunSchema>;

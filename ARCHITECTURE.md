@@ -70,17 +70,23 @@ Defaults live in `packages/shared/src/plans.ts` and are seeded into the `Plan` t
 super admins edit prices, minutes and limits from **Admin → Plans & pricing**
 without a deploy. `null` means unlimited, `0` means the feature is off.
 
-| | Basic $19/mo | Pro $299/mo | Enterprise |
-|---|---|---|---|
-| Call minutes / month | 1,000 | 20,000 | custom |
-| AI agents | 1 | unlimited | unlimited |
-| Phone numbers | 1 | unlimited | unlimited |
-| Campaigns | 1 | unlimited | unlimited |
-| Contacts per campaign | 100 | unlimited | unlimited |
-| App integrations | 2 (Google Calendar + 1) | unlimited | unlimited |
-| Concurrent calls | 2 | 10 | 50 |
-| Prompts, booking, summaries, transfer, Google Calendar | ✓ | ✓ | ✓ |
-| Webhooks, developer API, detailed insights, AI support assistant, priority support, advanced automations | | ✓ | ✓ |
+| | Free | Basic $19/mo | Pro $299/mo | Enterprise |
+|---|---|---|---|---|
+| Call minutes / month | 100 | 1,000 | 20,000 | custom |
+| AI agents | 1 | 1 | unlimited | unlimited |
+| Phone numbers | 1 | 1 | unlimited | unlimited |
+| Campaigns | 1 | 1 | unlimited | unlimited |
+| Contacts per campaign | 100 | 100 | unlimited | unlimited |
+| App integrations | 1 | 2 (Google Calendar + 1) | unlimited | unlimited |
+| Concurrent calls | 1 | 2 | 10 | 50 |
+| Prompts, booking, summaries, Google Calendar | ✓ | ✓ | ✓ | ✓ |
+| Live call transfer | | ✓ | ✓ | ✓ |
+| Webhooks, developer API, detailed insights, AI support assistant, priority support, advanced automations | | | ✓ | ✓ |
+
+**Free** is not a subscription row: `getEntitlements` returns the Free plan for any workspace
+without a live paid subscription (never subscribed, a checkout not finished, or a paid plan
+that ended), with minutes counted per calendar month. Free has no checkout and no MRR;
+switching the Free plan off in Admin → Plans takes it away.
 
 Phone-number rental and AI usage are billed by those providers on the customer's own
 accounts and are never part of a plan.
@@ -351,9 +357,19 @@ next due contact if a concurrency slot is free. The pause (`callDelaySeconds`, a
 least 20 s, set per campaign) runs from the later of the last call's start and the
 last call's end, and only one call starts per pause, so calls stay spaced out even
 with several lines. Contacts are claimed with `UPDATE … WHERE id IN (SELECT … FOR UPDATE
-SKIP LOCKED)`, so nobody is dialled twice. No-answers retry after
-`retryDelayMinutes` up to `maxAttempts`. When minutes run out the campaign pauses.
-Do-not-call outcomes are never retried. A campaign completes when nothing is pending.
+SKIP LOCKED)`, so nobody is dialled twice. When minutes run out the campaign pauses.
+
+**Retries** (`services/campaign-retry.ts`). Each finished call gives the contact a
+`lastResult`: REACHED, NO_ANSWER, BUSY, VOICEMAIL, FAILED or SILENT (connected but the caller
+never spoke). Results in the campaign's `retryOn` are called again, up to 5 retries
+(`maxAttempts` = 1 + retries), at least `retryDelayMinutes` apart, by `retryStrategy`:
+END_OF_LIST (round by round through the list), AFTER_DELAY (due retries before untried
+numbers) or NEXT_DAY (start of the next calling day). Optional retry hours let retries run
+outside the call window. Do-not-call and wrong-number outcomes are never retried. A campaign
+completes when nothing is pending; its progress (`campaignProgress` in @pv/shared) counts
+every call made, is 100% when it completes, and flags numbers never reached, which
+Analytics lists by reason. Starting a campaign needs the subscriber's consent confirmation
+(TCPA, PECR, GDPR), stored as `consentConfirmedAt`.
 
 ---
 

@@ -12,6 +12,11 @@ export interface Entitlements {
   status: SubscriptionStatus | null;
   /** True when the subscription unlocks the product at all. */
   active: boolean;
+  /**
+   * On the Free plan: either chosen, or because the workspace has no live paid
+   * subscription (never subscribed, or a paid plan ended).
+   */
+  free: boolean;
   includedMinutes: number | null;
   limits: PlanLimits;
   features: PlanFeatures;

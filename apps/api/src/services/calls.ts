@@ -1,4 +1,13 @@
-import type { Call, CallOutcome, CallStatus, ContactStatus, Prisma } from '@prisma/client';
+import type {
+  Call,
+  CallOutcome,
+  CallStatus,
+  Campaign,
+  CampaignContact,
+  ContactStatus,
+  DialResult,
+  Prisma,
+} from '@prisma/client';
 import { billableMinutes, TELEPHONY_PROVIDER_LABELS } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
@@ -8,6 +17,7 @@ import { adapterForAccount, adapterForNumber } from '../telephony';
 import { emitEvent } from '../events';
 import { canStartCall, getEntitlements, recordUsage } from './entitlements';
 import { summarizeCall, type TranscriptLine } from './ai/summarize';
+import { dialResultFor, nextRetryAt } from './campaign-retry';
 
 const TERMINAL: CallStatus[] = [
   'COMPLETED',
@@ -140,15 +150,34 @@ export async function forceEndCall(workspaceId: string, callId: string): Promise
   return prisma.call.findUniqueOrThrow({ where: { id: callId } });
 }
 
-function contactStatusFor(
-  call: Pick<Call, 'status'>,
-  outcome: CallOutcome | null,
-): ContactStatus | null {
+/** Where a campaign contact stands once its call is over and no retry is due. */
+export function contactStatusFor(result: DialResult, outcome: CallOutcome | null): ContactStatus {
   if (outcome === 'DO_NOT_CALL') return 'DO_NOT_CALL';
-  if (call.status === 'NO_ANSWER' || call.status === 'BUSY' || outcome === 'VOICEMAIL')
-    return 'NO_ANSWER';
-  if (call.status === 'FAILED' || call.status === 'CANCELED') return 'FAILED';
-  return 'COMPLETED';
+  if (result === 'REACHED') return 'COMPLETED';
+  if (result === 'FAILED') return 'FAILED';
+  return 'NO_ANSWER';
+}
+
+/**
+ * The contact's next state after a campaign call: another try when the call
+ * didn't reach them, the campaign retries that kind of result and attempts
+ * are left; otherwise a final status. Do-not-call is never retried.
+ */
+export function contactAfterCall(
+  contact: Pick<CampaignContact, 'attempts'>,
+  campaign: Parameters<typeof nextRetryAt>[0] & Pick<Campaign, 'maxAttempts' | 'retryOn'>,
+  result: DialResult,
+  outcome: CallOutcome | null,
+  now = new Date(),
+): { status: ContactStatus; nextAttemptAt: Date | null } {
+  const retry =
+    result !== 'REACHED' &&
+    outcome !== 'DO_NOT_CALL' &&
+    outcome !== 'WRONG_NUMBER' &&
+    campaign.retryOn.includes(result) &&
+    contact.attempts < campaign.maxAttempts;
+  if (retry) return { status: 'PENDING', nextAttemptAt: nextRetryAt(campaign, now) };
+  return { status: contactStatusFor(result, outcome), nextAttemptAt: null };
 }
 
 /**
@@ -206,18 +235,11 @@ export async function finalizeCall(callId: string): Promise<void> {
     });
 
     if (call.contact && call.campaign) {
-      const status = contactStatusFor(call, outcome);
-      const retry =
-        status === 'NO_ANSWER' && call.contact.attempts < call.campaign.maxAttempts
-          ? new Date(Date.now() + call.campaign.retryDelayMinutes * 60_000)
-          : null;
+      const result = dialResultFor({ ...call, durationSec }, outcome, transcript);
+      const next = contactAfterCall(call.contact, call.campaign, result, outcome);
       await prisma.campaignContact.update({
         where: { id: call.contact.id },
-        data: {
-          status: retry ? 'PENDING' : (status ?? 'COMPLETED'),
-          nextAttemptAt: retry,
-          lastOutcome: outcome,
-        },
+        data: { ...next, lastOutcome: outcome, lastResult: result },
       });
     }
 

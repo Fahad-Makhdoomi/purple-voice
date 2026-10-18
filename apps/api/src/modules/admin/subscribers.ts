@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import {
   PAYMENT_GATEWAY_LABELS,
+  PLAN_CODES,
+  ENTITLED_SUBSCRIPTION_STATUSES,
   adminSubscriptionSchema,
   adminWorkspaceSchema,
   aiCredentialSchema,
@@ -30,7 +32,7 @@ subscribersRouter.get('/', async (req, res) => {
   const { page, pageSize, q } = paginationSchema.parse(req.query);
   const filters = z
     .object({
-      plan: z.enum(['BASIC', 'PRO', 'ENTERPRISE', 'NONE']).optional(),
+      plan: z.enum([...PLAN_CODES, 'NONE']).optional(),
       status: z
         .enum(['INCOMPLETE', 'TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED', 'UNPAID'])
         .optional(),
@@ -51,9 +53,22 @@ subscribersRouter.get('/', async (req, res) => {
       : {}),
     ...(filters.plan === 'NONE'
       ? { subscription: { is: null } }
-      : filters.plan
-        ? { subscription: { is: { plan: { code: filters.plan } } } }
-        : {}),
+      : filters.plan === 'FREE'
+        ? // On Free: never subscribed, a paid plan that ended, or put on Free by staff.
+          {
+            OR: [
+              { subscription: { is: null } },
+              {
+                subscription: {
+                  is: { status: { notIn: [...ENTITLED_SUBSCRIPTION_STATUSES] } },
+                },
+              },
+              { subscription: { is: { plan: { code: 'FREE' as const } } } },
+            ],
+          }
+        : filters.plan
+          ? { subscription: { is: { plan: { code: filters.plan } } } }
+          : {}),
     ...(filters.status ? { subscription: { is: { status: filters.status } } } : {}),
   };
 

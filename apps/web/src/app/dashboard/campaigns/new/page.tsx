@@ -3,7 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { MIN_CALL_DELAY_SECONDS } from '@pv/shared';
+import {
+  MAX_CAMPAIGN_RETRIES,
+  MIN_CALL_DELAY_SECONDS,
+  RETRY_STRATEGIES,
+  RETRY_STRATEGY_INFO,
+} from '@pv/shared';
 import { api, ApiError } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
@@ -71,7 +76,9 @@ export default function NewCampaignPage() {
           callWindowEnd: f.get('end'),
           callDays: days,
           maxAttempts: Number(f.get('maxAttempts')),
-          retryDelayMinutes: Number(f.get('retryHours')) * 60,
+          retryDelayMinutes: Math.max(5, Math.round(Number(f.get('retryHours')) * 60)),
+          retryStrategy: f.get('retryStrategy'),
+          consentConfirmed: f.get('consent') === 'on',
           concurrency: Number(f.get('concurrency')),
           callDelaySeconds: Number(f.get('callDelaySeconds')),
         },
@@ -192,22 +199,47 @@ export default function NewCampaignPage() {
               required
             />
           </Field>
-          <Field id="maxAttempts" label="Attempts per contact">
-            <select id="maxAttempts" name="maxAttempts" className="select" defaultValue="2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n}>{n}</option>
+          <Field
+            id="nc-attempts"
+            label="Retry numbers that don't pick up"
+            help="No answer, busy, voicemail or a failed call. At most 5 retries per number."
+          >
+            <select id="nc-attempts" name="maxAttempts" className="select" defaultValue={'3'}>
+              {Array.from({ length: MAX_CAMPAIGN_RETRIES + 1 }, (_, n) => (
+                <option key={n} value={n + 1}>
+                  {n === 0 ? 'Never' : `Up to ${n} time${n > 1 ? 's' : ''}`}
+                </option>
               ))}
             </select>
           </Field>
-          <Field id="retryHours" label="Retry after (hours)">
+          <Field id="nc-strategy" label="When to call them again">
+            <select
+              id="nc-strategy"
+              name="retryStrategy"
+              className="select"
+              defaultValue={'END_OF_LIST'}
+            >
+              {RETRY_STRATEGIES.map((s) => (
+                <option key={s} value={s} title={RETRY_STRATEGY_INFO[s].description}>
+                  {RETRY_STRATEGY_INFO[s].label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field
+            id="nc-retry"
+            label="Wait at least (hours)"
+            help="Before the same number is called again."
+          >
             <input
-              id="retryHours"
+              id="nc-retry"
               name="retryHours"
               type="number"
-              min={1}
+              min={0.1}
               max={168}
-              defaultValue={4}
+              step="any"
               className="input"
+              defaultValue={2}
             />
           </Field>
           <Field
@@ -244,6 +276,15 @@ export default function NewCampaignPage() {
         </div>
       </section>
 
+      <label className="card card-pad flex items-start gap-3 text-sm text-ink-soft">
+        <input type="checkbox" name="consent" required className="checkbox mt-0.5" />
+        <span>
+          I confirm the people I will add agreed to be contacted by phone (or I have another lawful
+          basis), that I will screen numbers against do-not-call lists where the law requires it (US
+          National DNC and state lists, UK TPS/CTPS), and that the calling hours above are allowed
+          where they live (US: 8 am–9 pm their time).
+        </span>
+      </label>
       {error && <ErrorNote message={error} />}
       <div className="flex justify-end">
         <button className="btn btn-primary btn-lg" disabled={busy || !days.length}>

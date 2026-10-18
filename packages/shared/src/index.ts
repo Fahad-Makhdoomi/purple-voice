@@ -8,3 +8,6 @@ export * from './payments';
 export * from './dialer';
 export * from './schemas';
 export * from './follow-up';
+export * from './campaign-progress';
+export * from './page-blocks';
+export * from './seo';

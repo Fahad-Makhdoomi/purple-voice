@@ -10,7 +10,7 @@ const TITLE = 'Turn every lead into a booked meeting.';
 
 const ASSURANCES = [
   'Runs on your own phone numbers',
-  'Pay by UPI, card or net banking',
+  '100 free AI call minutes a month',
   'Cancel any time',
 ];
 
@@ -62,8 +62,8 @@ function HeroCopy({
       </p>
 
       <div className="mt-10 flex animate-rise flex-col items-center justify-center gap-3 [animation-delay:180ms] sm:flex-row">
-        <Link href="/signup?plan=BASIC" className="btn btn-white btn-lg min-w-[220px] gap-2">
-          Start for $19 / month
+        <Link href="/signup?plan=FREE" className="btn btn-white btn-lg min-w-[220px] gap-2">
+          Start free
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white">
             <ArrowUpRight size={14} />
           </span>

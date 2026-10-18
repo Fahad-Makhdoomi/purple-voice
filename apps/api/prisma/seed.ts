@@ -1,6 +1,6 @@
 /**
  * Seeds what a fresh install needs:
- *   - the three plans (from @pv/shared), without overwriting later admin edits
+ *   - the plans (from @pv/shared), without overwriting later admin edits
  *   - a super admin (SEED_SUPER_ADMIN_EMAIL / SEED_SUPER_ADMIN_PASSWORD)
  *   - starter FAQs, legal pages and two blog posts so the site isn't empty
  *   - outside production, a demo subscriber with sample calls (SEED_DEMO=false to skip)
@@ -43,7 +43,8 @@ async function seedPlans() {
         featured: plan.featured,
         selfServe: plan.selfServe,
         stripePriceId: stripePriceId ?? null,
-        sortOrder: i,
+        // Free sorts first without renumbering plans an admin may have reordered.
+        sortOrder: plan.code === 'FREE' ? -1 : i,
       },
     });
   }

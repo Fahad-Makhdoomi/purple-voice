@@ -8,7 +8,6 @@ import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import {
   Loading,
-  Meter,
   PageHeader,
   Pagination,
   Section,
@@ -20,7 +19,14 @@ import {
 } from '@/components/ui';
 import { formatNumber, formatRelative, humanize } from '@/lib/format';
 import { Field } from '@/components/forms/Field';
-import { MIN_CALL_DELAY_SECONDS, type FollowUpSegment } from '@pv/shared';
+import {
+  DIAL_RESULT_LABELS,
+  MIN_CALL_DELAY_SECONDS,
+  type CampaignProgress,
+  type DialResult,
+  type FollowUpSegment,
+} from '@pv/shared';
+import { cn } from '@/lib/cn';
 import { ContactModal, type EditableContact } from './contact-modal';
 import { PersonalizationPanel, ScriptModal, UploadPreviewModal } from './personalization';
 import { EditCampaignModal, RerunPanel, type EditableCampaign } from './campaign-tools';
@@ -41,12 +47,18 @@ interface CampaignDetail {
     callDelaySeconds: number;
     maxAttempts: number;
     retryDelayMinutes: number;
+    retryStrategy: string;
+    consentConfirmedAt: string | null;
     agent: { id: string; name: string; status: string };
     phoneNumber: { id: string; e164: string; routingConfigured: boolean };
     aiReport: Report | null;
     aiReportAt: string | null;
     parentCampaign: { id: string; name: string } | null;
     followUps: Array<{ id: string; name: string; status: string; followUpSegments: string[] }>;
+  };
+  progress: CampaignProgress & {
+    nextRetryAt: string | null;
+    notReachedBy: Record<string, number>;
   };
   stats: {
     contacts: Record<string, number>;
@@ -69,7 +81,76 @@ interface Contact extends EditableContact {
 
 type View = 'contacts' | 'analytics' | 'follow-up';
 
-const FILTERS = ['ALL', 'PENDING', 'COMPLETED', 'NO_ANSWER', 'FAILED', 'DO_NOT_CALL'] as const;
+const FILTERS = [
+  'ALL',
+  'PENDING',
+  'RETRY',
+  'COMPLETED',
+  'NO_ANSWER',
+  'FAILED',
+  'DO_NOT_CALL',
+] as const;
+/** Filters that cut across statuses, sent as ?state=. */
+const STATE_FILTERS: Partial<Record<(typeof FILTERS)[number], string>> = {
+  PENDING: 'not_called',
+  RETRY: 'retry',
+};
+const FILTER_LABELS: Partial<Record<(typeof FILTERS)[number], string>> = {
+  PENDING: 'Not called yet',
+  RETRY: 'Waiting for retry',
+  NO_ANSWER: 'Not reached',
+};
+
+/** The campaign's progress bar: violet while running, green when done, amber when done with numbers never reached. */
+function ProgressTile({ p }: { p: CampaignDetail['progress'] }) {
+  const tone = !p.finished ? 'bg-brand-500' : p.incomplete ? 'bg-warning' : 'bg-success';
+  const notReached = Object.entries(p.notReachedBy).filter(([, n]) => n > 0);
+  return (
+    <div className="stat-tile sm:col-span-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-brand-900/70">Campaign progress</p>
+        <p
+          className={cn('num text-3xl font-semibold', p.finished && p.incomplete && 'text-warning')}
+        >
+          {p.percent}%
+        </p>
+      </div>
+      <div
+        className="mt-3 h-2.5 overflow-hidden rounded-full bg-black/10"
+        role="progressbar"
+        aria-valuenow={p.percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Campaign progress"
+      >
+        <div
+          className={cn('h-full rounded-full transition-all', tone)}
+          style={{ width: `${p.percent}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-ink-soft">
+        {p.finished
+          ? p.incomplete
+            ? `Finished. ${formatNumber(p.reached)} reached; ${formatNumber(p.unreached + p.waitingRetry + p.notCalled)} could not be reached — see Analytics.`
+            : `Finished. Every number was dialled${p.maxRetries ? ' and retried where needed' : ''}.`
+          : p.firstPassDone
+            ? `All ${formatNumber(p.total)} numbers dialled once.` +
+              (p.waitingRetry
+                ? ` ${formatNumber(p.waitingRetry)} waiting for retry ${p.retryRound} of ${p.maxRetries}${p.nextRetryAt ? ` (next ${formatRelative(p.nextRetryAt)})` : ''}.`
+                : '')
+            : `${formatNumber(p.dialled)} of ${formatNumber(p.total)} numbers dialled${p.waitingRetry ? `, ${formatNumber(p.waitingRetry)} waiting for a retry` : ''}.`}
+      </p>
+      {notReached.length > 0 && (
+        <p className="mt-1 text-xs text-muted">
+          Not reached:{' '}
+          {notReached
+            .map(([k, n]) => `${DIAL_RESULT_LABELS[k as DialResult]?.toLowerCase() ?? k} ${n}`)
+            .join(' · ')}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** Calls at once and the pause between calls; changes apply from the next call. */
 function PaceEditor({
@@ -150,8 +231,14 @@ export default function CampaignPage() {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('ALL');
   const [page, setPage] = useState(1);
   const [tag, setTag] = useState('');
+  const filterQuery =
+    filter === 'ALL'
+      ? ''
+      : STATE_FILTERS[filter]
+        ? `&state=${STATE_FILTERS[filter]}`
+        : `&status=${filter}`;
   const contacts = useApi<{ contacts: Contact[]; total: number; page: number; pageSize: number }>(
-    `/app/campaigns/${id}/contacts?page=${page}&pageSize=25${filter === 'ALL' ? '' : `&status=${filter}`}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`,
+    `/app/campaigns/${id}/contacts?page=${page}&pageSize=25${filterQuery}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`,
   );
   const tags = useApi<{ tags: Array<{ tag: string; count: number }> }>(`/app/campaigns/${id}/tags`);
   const tagList = tags.data?.tags ?? [];
@@ -166,17 +253,28 @@ export default function CampaignPage() {
   const [followUpSegment, setFollowUpSegment] = useState<FollowUpSegment | undefined>();
 
   if (!data) return <Loading />;
-  const { campaign, stats } = data;
+  const { campaign, stats, progress } = data;
   const finished = ['COMPLETED', 'CANCELED'].includes(campaign.status);
   const activeView: View = view ?? (finished && stats.calls > 0 ? 'analytics' : 'contacts');
   const total = Object.values(stats.contacts).reduce((a, b) => a + b, 0);
-  const done = total - (stats.contacts.PENDING ?? 0) - (stats.contacts.CALLING ?? 0);
   const refresh = async () => {
     await Promise.all([reload(), contacts.reload(), tags.reload()]);
   };
   const lifecycle = (action: 'start' | 'pause' | 'cancel', msg: string) =>
     run(async () => {
-      await api(`/app/campaigns/${id}/${action}`, { method: 'POST' });
+      // TCPA, PECR and GDPR: confirm consent for the list once, before the first call.
+      const needsConsent = action === 'start' && !campaign.consentConfirmedAt;
+      if (
+        needsConsent &&
+        !window.confirm(
+          'Before calling: I confirm the people on this list agreed to be contacted (or I have another lawful basis), that numbers on do-not-call lists (US National DNC, UK TPS/CTPS) have been screened as the law requires, and that calls will only be placed during permitted hours.',
+        )
+      )
+        return;
+      await api(`/app/campaigns/${id}/${action}`, {
+        method: 'POST',
+        body: needsConsent ? { consentConfirmed: true } : undefined,
+      });
       await refresh();
     }, msg);
 
@@ -304,11 +402,7 @@ export default function CampaignPage() {
           value={formatNumber(total)}
           hint={limit === null ? 'No limit on your plan' : `Up to ${limit} on your plan`}
         />
-        <StatTile
-          label="Reached"
-          value={formatNumber(done)}
-          hint={<Meter value={done} max={Math.max(total, 1)} />}
-        />
+        <ProgressTile p={progress} />
         <StatTile
           label="Calls placed"
           value={formatNumber(stats.calls)}
@@ -410,7 +504,15 @@ export default function CampaignPage() {
               options={FILTERS.map((f) => ({
                 value: f,
                 label:
-                  f === 'ALL' ? `All (${total})` : `${humanize(f)} (${stats.contacts[f] ?? 0})`,
+                  f === 'ALL'
+                    ? `All (${total})`
+                    : `${FILTER_LABELS[f] ?? humanize(f)} (${
+                        f === 'PENDING'
+                          ? progress.notCalled
+                          : f === 'RETRY'
+                            ? progress.waitingRetry
+                            : (stats.contacts[f] ?? 0)
+                      })`,
               }))}
             />
           </div>
@@ -490,7 +592,11 @@ export default function CampaignPage() {
                           )}
                         </td>
                         <td>
-                          <StatusBadge status={c.status} />
+                          {c.status === 'PENDING' && c.attempts > 0 ? (
+                            <span className="badge badge-warning">Retry scheduled</span>
+                          ) : (
+                            <StatusBadge status={c.status} />
+                          )}
                         </td>
                         <td className="num">{c.attempts}</td>
                         <td>{c.lastOutcome ? humanize(c.lastOutcome) : '—'}</td>

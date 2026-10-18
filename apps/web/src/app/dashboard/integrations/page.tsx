@@ -102,6 +102,8 @@ function IntegrationsInner() {
                     >
                       Disconnect
                     </button>
+                  ) : a.type === 'SMTP' || a.type === 'WHATSAPP' ? (
+                    <span className="badge badge-neutral">Coming soon</span>
                   ) : a.type === 'GOOGLE_CALENDAR' ? (
                     <button
                       className="btn btn-primary btn-sm"

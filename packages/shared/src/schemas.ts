@@ -14,8 +14,12 @@ import {
   WEBHOOK_EVENTS,
   MIN_CALL_DELAY_SECONDS,
   NOISE_FILTERS,
+  RETRY_STRATEGIES,
+  RETRYABLE_RESULTS,
+  MAX_CAMPAIGN_RETRIES,
 } from './enums';
-import { PLAN_CODES } from './plans';
+import { PAID_PLAN_CODES, PLAN_CODES } from './plans';
+import { pageBlocksSchema } from './page-blocks';
 import { PAYMENT_GATEWAYS } from './payments';
 
 const ROLES_FOR_STAFF = ['ADMIN', 'SUPER_ADMIN'] as const;
@@ -52,12 +56,24 @@ const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24h HH:MM');
 /** Present when the form is captcha-protected; verified server-side. */
 const captchaToken = z.string().max(4000).optional();
 
+/**
+ * Bumped when the Terms or Privacy Policy change materially; users who
+ * accepted an older version are asked again (GDPR: informed, recorded consent).
+ */
+export const LEGAL_VERSION = '2026-10-18';
+
 export const registerSchema = z.object({
   captchaToken,
   name: z.string().trim().min(2).max(120),
   email,
   password,
   company: z.string().trim().max(160).optional(),
+  /** Ticked "I agree to the Terms and Privacy Policy". */
+  acceptTerms: z
+    .boolean()
+    .refine((v) => v, 'Please agree to the Terms of Service and Privacy Policy'),
+  /** Product news by email. Never pre-ticked. */
+  marketingOptIn: z.boolean().default(false),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -78,6 +94,20 @@ export const updateProfileSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   company: z.string().trim().max(160).optional(),
   timezone: z.string().trim().max(64).optional(),
+  marketingOptIn: z.boolean().optional(),
+});
+
+/** Re-accepting the current Terms and Privacy Policy (after they change). */
+export const acceptTermsSchema = z.object({ version: z.literal(LEGAL_VERSION) });
+
+/**
+ * Erasing an account and its workspace for good (GDPR art. 17, UK GDPR, CCPA
+ * right to delete). Needs the password, when the account has one, and the
+ * word DELETE typed out.
+ */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1).max(200).optional(),
+  confirm: z.literal('DELETE', { errorMap: () => ({ message: 'Type DELETE to confirm' }) }),
 });
 
 export const changePasswordSchema = z.object({
@@ -190,9 +220,26 @@ export const agentSchema = z.object({
   callbackGreeting: z.string().trim().max(500).default(''),
   callbackInstructions: z.string().trim().max(10000).default(''),
   noiseFilter: z.enum(NOISE_FILTERS).default('STANDARD'),
+  /** Email information during the call through the workspace's SMTP integration. */
+  emailEnabled: z.boolean().default(false),
+  /** Send information on WhatsApp during the call through the WhatsApp integration. */
+  whatsappEnabled: z.boolean().default(false),
+  /** What the agent may send when asked: links, prices, brochure text, address. */
+  shareInfo: z.string().max(10000).default(''),
 });
 export type AgentInput = z.infer<typeof agentSchema>;
 export const updateAgentSchema = agentSchema.partial();
+
+/**
+ * The numbers an agent answers, set from the agent's own settings. Numbers
+ * left out stop answering through this agent. A number another active agent
+ * answers is only moved when `move` is true.
+ */
+export const agentNumbersSchema = z.object({
+  phoneNumberIds: z.array(z.string().min(1)).max(500),
+  move: z.boolean().default(false),
+});
+export type AgentNumbersInput = z.infer<typeof agentNumbersSchema>;
 
 export const testCallSchema = z.object({
   to: e164,
@@ -207,6 +254,24 @@ const callDelay = z
   .min(MIN_CALL_DELAY_SECONDS, `Wait at least ${MIN_CALL_DELAY_SECONDS} seconds between calls`)
   .max(3600);
 
+/** Calls per contact in all: the first call plus up to MAX_CAMPAIGN_RETRIES retries. */
+const maxAttempts = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_CAMPAIGN_RETRIES + 1, `A number can be retried at most ${MAX_CAMPAIGN_RETRIES} times`);
+const retryDelay = z.number().int().min(5).max(10080);
+const retryOn = z.array(z.enum(RETRYABLE_RESULTS)).max(RETRYABLE_RESULTS.length);
+const retryWindowTime = hhmm.nullable().optional();
+
+const retryWindowOk = (v: { retryWindowStart?: string | null; retryWindowEnd?: string | null }) =>
+  (!v.retryWindowStart && !v.retryWindowEnd) ||
+  (!!v.retryWindowStart && !!v.retryWindowEnd && v.retryWindowStart < v.retryWindowEnd);
+const retryWindowIssue = {
+  message: 'Give both retry times, ending after they start, or leave both empty',
+  path: ['retryWindowEnd'],
+};
+
 export const campaignSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
@@ -220,32 +285,55 @@ export const campaignSchema = z
     callWindowEnd: hhmm.default('18:00'),
     /** 0 = Sunday … 6 = Saturday. */
     callDays: z.array(z.number().int().min(0).max(6)).min(1).default([1, 2, 3, 4, 5]),
-    maxAttempts: z.number().int().min(1).max(5).default(2),
-    retryDelayMinutes: z.number().int().min(5).max(10080).default(240),
+    maxAttempts: maxAttempts.default(3),
+    /** Least time before the same number is called again. */
+    retryDelayMinutes: retryDelay.default(120),
+    /** When numbers that did not pick up are called again. */
+    retryStrategy: z.enum(RETRY_STRATEGIES).default('END_OF_LIST'),
+    /** Which results get another call. */
+    retryOn: retryOn.default([...RETRYABLE_RESULTS]),
+    /** Optional hours for retries only (e.g. evenings), in the campaign time zone. */
+    retryWindowStart: retryWindowTime,
+    retryWindowEnd: retryWindowTime,
     concurrency: z.number().int().min(1).max(50).default(1),
     /** Pause between calls; at least 20 seconds. */
     callDelaySeconds: callDelay.default(MIN_CALL_DELAY_SECONDS),
+    /** The subscriber confirms they have consent to call these people (TCPA, PECR, GDPR). */
+    consentConfirmed: z.boolean().optional(),
   })
   .refine((v) => v.callWindowStart < v.callWindowEnd, {
     message: 'Call window must end after it starts',
     path: ['callWindowEnd'],
-  });
+  })
+  .refine(retryWindowOk, retryWindowIssue);
 export type CampaignInput = z.infer<typeof campaignSchema>;
-export const updateCampaignSchema = z.object({
-  name: z.string().trim().min(2).max(120).optional(),
-  agentId: z.string().min(1).optional(),
-  phoneNumberId: z.string().min(1).optional(),
-  goal: z.string().trim().max(1000).optional(),
-  personalization: z.string().trim().max(2000).optional(),
-  timezone: z.string().trim().max(64).optional(),
-  callWindowStart: hhmm.optional(),
-  callWindowEnd: hhmm.optional(),
-  callDays: z.array(z.number().int().min(0).max(6)).min(1).optional(),
-  maxAttempts: z.number().int().min(1).max(5).optional(),
-  retryDelayMinutes: z.number().int().min(5).max(10080).optional(),
-  concurrency: z.number().int().min(1).max(50).optional(),
-  callDelaySeconds: callDelay.optional(),
-});
+export const updateCampaignSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    agentId: z.string().min(1).optional(),
+    phoneNumberId: z.string().min(1).optional(),
+    goal: z.string().trim().max(1000).optional(),
+    personalization: z.string().trim().max(2000).optional(),
+    timezone: z.string().trim().max(64).optional(),
+    callWindowStart: hhmm.optional(),
+    callWindowEnd: hhmm.optional(),
+    callDays: z.array(z.number().int().min(0).max(6)).min(1).optional(),
+    maxAttempts: maxAttempts.optional(),
+    retryDelayMinutes: retryDelay.optional(),
+    retryStrategy: z.enum(RETRY_STRATEGIES).optional(),
+    retryOn: retryOn.optional(),
+    retryWindowStart: retryWindowTime,
+    retryWindowEnd: retryWindowTime,
+    concurrency: z.number().int().min(1).max(50).optional(),
+    callDelaySeconds: callDelay.optional(),
+  })
+  .refine(
+    (v) => (v.retryWindowStart === undefined && v.retryWindowEnd === undefined) || retryWindowOk(v),
+    retryWindowIssue,
+  );
+
+/** Starting or resuming a campaign; consent is confirmed once per campaign. */
+export const startCampaignSchema = z.object({ consentConfirmed: z.boolean().optional() });
 
 export const contactSchema = z.object({
   phone: e164,
@@ -291,6 +379,79 @@ export const integrationSchema = z.object({
   secret: z.string().trim().min(8).max(2000).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
+
+/** Ports a mail server may be reached on: SMTP, submission (TLS and STARTTLS) and the common alternative. */
+export const SMTP_PORTS = [25, 465, 587, 2525] as const;
+
+/**
+ * The workspace's own mail server, so agents can email people what they asked
+ * for during a call. The password is optional on update (blank keeps it).
+ */
+export const smtpIntegrationSchema = z.object({
+  host: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3)
+    .max(255)
+    .regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, 'Use the server name, e.g. smtp.gmail.com'),
+  port: z
+    .number()
+    .int()
+    .refine((p) => (SMTP_PORTS as readonly number[]).includes(p), 'Use port 465, 587, 2525 or 25'),
+  /** TLS from the first byte (port 465). Otherwise STARTTLS is required. */
+  secure: z.boolean(),
+  username: z.string().trim().max(254).optional().or(z.literal('')),
+  password: z.string().max(500).optional().or(z.literal('')),
+  fromEmail: email,
+  fromName: z.string().trim().max(120).optional().or(z.literal('')),
+  replyTo: email.optional().or(z.literal('')),
+});
+export type SmtpIntegrationInput = z.infer<typeof smtpIntegrationSchema>;
+
+/**
+ * WhatsApp Business. Meta's Cloud API (a phone number id and a permanent
+ * access token) or Twilio (a connected Twilio account and its WhatsApp
+ * sender). Business-initiated messages need an approved template; free text
+ * only reaches people who messaged the business in the last 24 hours.
+ */
+export const whatsappIntegrationSchema = z.discriminatedUnion('provider', [
+  z.object({
+    provider: z.literal('META'),
+    phoneNumberId: z
+      .string()
+      .trim()
+      .regex(/^\d{5,30}$/, 'The phone number ID is digits only'),
+    /** Blank on update keeps the saved token. */
+    accessToken: z.string().trim().max(1000).optional().or(z.literal('')),
+    /** Approved template with one body variable ({{1}}) for the message text. */
+    templateName: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9_]{1,512}$/, 'Template names are lowercase letters, digits and _')
+      .optional()
+      .or(z.literal('')),
+    templateLanguage: z.string().trim().max(15).default('en_US'),
+  }),
+  z.object({
+    provider: z.literal('TWILIO'),
+    /** One of the workspace's connected Twilio accounts. */
+    telephonyAccountId: z.string().min(1),
+    /** The WhatsApp-enabled sender, e.g. +14155238886. */
+    from: e164,
+    /** Approved Content template (HX…) with variable {{1}} for the message text. */
+    contentSid: z
+      .string()
+      .trim()
+      .regex(/^HX[0-9a-fA-F]{32}$/, 'Content SIDs start with HX')
+      .optional()
+      .or(z.literal('')),
+  }),
+]);
+export type WhatsappIntegrationInput = z.infer<typeof whatsappIntegrationSchema>;
+
+/** Sends one test message through an integration. */
+export const integrationTestSchema = z.object({ to: z.string().trim().min(3).max(254) });
 
 export const webhookEndpointSchema = z.object({
   url: z.string().trim().url().max(2000),
@@ -342,7 +503,7 @@ const gstin = z
   .regex(GSTIN_PATTERN, 'Enter a valid 15-character GST number, e.g. 29ABCDE1234F1Z5');
 
 export const checkoutSchema = z.object({
-  planCode: z.enum(['BASIC', 'PRO']),
+  planCode: z.enum(PAID_PLAN_CODES),
   /** Which gateway to pay through; defaults to the first one offered. */
   gateway: z.enum(PAYMENT_GATEWAYS).optional(),
   /** India: GST registration, printed on Razorpay invoices. Empty clears it. */
@@ -402,19 +563,69 @@ const seoFields = {
   seoTitle: z.string().trim().max(70).optional().nullable(),
   seoDescription: z.string().trim().max(170).optional().nullable(),
   ogImageUrl: z.string().trim().url().max(2000).optional().nullable().or(z.literal('')),
+  /** Another URL that is the original of this content (rel=canonical). */
+  canonicalUrl: z.string().trim().url().max(2000).optional().nullable().or(z.literal('')),
   noindex: z.boolean().default(false),
 };
 
+export const PAGE_LAYOUTS = ['markdown', 'builder'] as const;
+
+/** Page slugs the website itself uses; a CMS page can't take them. */
+export const RESERVED_SLUGS = [
+  'admin',
+  'api',
+  'blog',
+  'contact',
+  'dashboard',
+  'faq',
+  'forgot-password',
+  'internal',
+  'login',
+  'pricing',
+  'privacy-choices',
+  'reset-password',
+  'signup',
+  'uploads',
+  'ws',
+] as const;
+
+const pageSlug = slug.refine((s) => !(RESERVED_SLUGS as readonly string[]).includes(s), {
+  message: 'That address is used by the website itself. Pick another.',
+});
+
 export const pageSchema = z.object({
-  slug,
+  slug: pageSlug,
   title: z.string().trim().min(2).max(200),
-  /** Markdown. */
+  /** Markdown, for the "markdown" layout. */
   body: z.string().max(200000).default(''),
+  /** "builder": the page is the blocks below, built in the page builder. */
+  layout: z.enum(PAGE_LAYOUTS).default('markdown'),
+  blocks: pageBlocksSchema.default([]),
   status: z.enum(CONTENT_STATUSES).default('DRAFT'),
   showInFooter: z.boolean().default(false),
+  showInHeader: z.boolean().default(false),
+  navLabel: z.string().trim().max(40).optional().nullable(),
+  navOrder: z.number().int().min(0).max(1000).default(0),
   ...seoFields,
 });
 export const updatePageSchema = pageSchema.partial();
+
+export const POST_SCHEMA_TYPES = [
+  'BlogPosting',
+  'Article',
+  'NewsArticle',
+  'TechArticle',
+  'HowTo',
+] as const;
+
+const faqItem = z.object({
+  question: z.string().trim().min(3).max(300),
+  answer: z.string().trim().min(1).max(3000),
+});
+const howToStep = z.object({
+  name: z.string().trim().min(2).max(200),
+  text: z.string().trim().min(2).max(2000),
+});
 
 export const postSchema = z.object({
   slug,
@@ -425,10 +636,38 @@ export const postSchema = z.object({
   coverImageUrl: z.string().trim().url().max(2000).optional().nullable().or(z.literal('')),
   tags: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
   status: z.enum(CONTENT_STATUSES).default('DRAFT'),
+  /** In the future: published automatically at that time. */
   publishedAt: z.coerce.date().optional().nullable(),
   ...seoFields,
+  focusKeyword: z.string().trim().max(100).optional().nullable(),
+  secondaryKeywords: z.array(z.string().trim().min(1).max(100)).max(10).default([]),
+  ogTitle: z.string().trim().max(95).optional().nullable(),
+  ogDescription: z.string().trim().max(200).optional().nullable(),
+  nofollow: z.boolean().default(false),
+  schemaType: z.enum(POST_SCHEMA_TYPES).default('BlogPosting'),
+  faq: z.array(faqItem).max(30).default([]),
+  howToSteps: z.array(howToStep).max(40).default([]),
+  category: z.string().trim().max(60).optional().nullable(),
+  authorName: z.string().trim().max(120).optional().nullable(),
+  authorBio: z.string().trim().max(600).optional().nullable(),
+  showToc: z.boolean().default(true),
 });
 export const updatePostSchema = postSchema.partial();
+
+/** A moved URL. Paths start with "/"; the target may also be a full https URL. */
+export const redirectSchema = z.object({
+  fromPath: z
+    .string()
+    .trim()
+    .max(500)
+    .regex(/^\/[^\s?#]*$/, 'Start with / and leave out ?query and #anchor'),
+  toPath: z
+    .string()
+    .trim()
+    .max(2000)
+    .regex(/^(\/[^\s]*|https:\/\/\S+)$/, 'A path like /blog/new-post or a full https:// URL'),
+  permanent: z.boolean().default(true),
+});
 
 export const faqSchema = z.object({
   question: z.string().trim().min(4).max(300),
@@ -590,6 +829,148 @@ export const appearanceSettingsSchema = z.object({
   music: z.boolean().default(true),
 });
 export type AppearanceSettings = z.infer<typeof appearanceSettingsSchema>;
+
+// ── Site settings: website content (Admin → Content → Site content) ────────
+
+const optionalUrl = z.string().trim().url().max(500).optional().nullable().or(z.literal(''));
+const linkHref = z
+  .string()
+  .trim()
+  .max(500)
+  .regex(/^(\/(?!\/)|#|https:\/\/|mailto:)/, 'A site path like /pricing or a full https:// link');
+
+/** Words on the home page and around the site that staff edit without a deploy. */
+export const contentSettingsSchema = z.object({
+  announcement: z
+    .object({
+      enabled: z.boolean().default(false),
+      text: z.string().trim().max(160).default(''),
+      linkLabel: z.string().trim().max(40).default(''),
+      href: linkHref.or(z.literal('')).default(''),
+    })
+    .default({}),
+  hero: z
+    .object({
+      badge: z.string().trim().max(80).default('Now with natural, human-sounding voices'),
+      title: z.string().trim().min(4).max(120).default('Turn every lead into a booked meeting.'),
+      subtitle: z
+        .string()
+        .trim()
+        .max(400)
+        .default(
+          'Purple Voice builds AI agents that phone your leads, answer their questions and put appointments straight into your calendar — on your own phone numbers, around the clock.',
+        ),
+      primaryLabel: z.string().trim().max(40).default('Start free'),
+      primaryHref: linkHref.default('/signup?plan=FREE'),
+      secondaryLabel: z.string().trim().max(40).default('Hear a sample call'),
+      secondaryHref: linkHref.default('/#demo'),
+    })
+    .default({}),
+  footerTagline: z
+    .string()
+    .trim()
+    .max(300)
+    .default('AI voice agents that call, qualify and book — on your own phone numbers.'),
+  social: z
+    .object({
+      linkedin: optionalUrl,
+      x: optionalUrl,
+      youtube: optionalUrl,
+      instagram: optionalUrl,
+      facebook: optionalUrl,
+    })
+    .default({}),
+});
+export type ContentSettings = z.infer<typeof contentSettingsSchema>;
+
+/**
+ * Who runs the site, as the legal pages and cookie banner state it (GDPR
+ * art. 13: identity and contact details of the controller and DPO; UK GDPR;
+ * CCPA notice at collection). Filled into {{placeholders}} in the legal pages.
+ */
+export const legalSettingsSchema = z.object({
+  companyName: z.string().trim().max(160).default('Purple Rocket'),
+  address: z.string().trim().max(400).default(''),
+  country: z.string().trim().max(80).default(''),
+  registrationNumber: z.string().trim().max(80).default(''),
+  vatNumber: z.string().trim().max(80).default(''),
+  privacyEmail: z.string().trim().max(254).default(''),
+  dpoName: z.string().trim().max(160).default(''),
+  dpoEmail: z.string().trim().max(254).default(''),
+  /** GDPR art. 27 representative in the EU, if the company is outside the EU. */
+  euRepresentative: z.string().trim().max(400).default(''),
+  /** UK GDPR art. 27 representative in the UK, if the company is outside the UK. */
+  ukRepresentative: z.string().trim().max(400).default(''),
+  /** ICO registration (UK data protection fee) number. */
+  icoNumber: z.string().trim().max(40).default(''),
+  governingLaw: z.string().trim().max(120).default('England and Wales'),
+  effectiveDate: z.string().trim().max(40).default('18 October 2026'),
+});
+export type LegalSettings = z.infer<typeof legalSettingsSchema>;
+
+// ── Cookie consent and privacy requests (public) ───────────────────────────
+
+/** Bumped when the cookie list changes; visitors are asked again. */
+export const COOKIE_POLICY_VERSION = '2026-10-18';
+
+export const COOKIE_CATEGORIES = ['necessary', 'preferences', 'analytics', 'marketing'] as const;
+export type CookieCategory = (typeof COOKIE_CATEGORIES)[number];
+
+export const consentSchema = z.object({
+  consentId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
+  preferences: z.boolean(),
+  analytics: z.boolean(),
+  marketing: z.boolean(),
+  gpc: z.boolean().default(false),
+  policyVersion: z.string().trim().max(40),
+});
+export type ConsentInput = z.infer<typeof consentSchema>;
+
+export const PRIVACY_REQUEST_TYPES = [
+  'ACCESS',
+  'DELETE',
+  'CORRECT',
+  'PORTABILITY',
+  'OPT_OUT_SALE',
+  'OBJECT',
+  'WITHDRAW_CONSENT',
+  'OTHER',
+] as const;
+export type PrivacyRequestType = (typeof PRIVACY_REQUEST_TYPES)[number];
+
+export const PRIVACY_REQUEST_LABELS: Record<PrivacyRequestType, string> = {
+  ACCESS: 'Get a copy of my personal data',
+  DELETE: 'Delete my personal data',
+  CORRECT: 'Correct my personal data',
+  PORTABILITY: 'Send my data to me in a portable format',
+  OPT_OUT_SALE: 'Do not sell or share my personal information',
+  OBJECT: 'Object to or restrict processing',
+  WITHDRAW_CONSENT: 'Withdraw my consent',
+  OTHER: 'Something else',
+};
+
+export const PRIVACY_REGIONS = ['EU_EEA', 'UK', 'US_CA', 'US_OTHER', 'OTHER'] as const;
+export const PRIVACY_REGION_LABELS: Record<(typeof PRIVACY_REGIONS)[number], string> = {
+  EU_EEA: 'European Union / EEA',
+  UK: 'United Kingdom',
+  US_CA: 'California, USA',
+  US_OTHER: 'Another US state',
+  OTHER: 'Somewhere else',
+};
+
+/** A data-subject / consumer rights request from the public site. */
+export const privacyRequestSchema = z.object({
+  captchaToken,
+  name: z.string().trim().min(2).max(120),
+  email,
+  type: z.enum(PRIVACY_REQUEST_TYPES),
+  region: z.enum(PRIVACY_REGIONS),
+  /** "I am an authorised agent acting for someone else" (CCPA). */
+  onBehalf: z.boolean().default(false),
+  details: z.string().trim().max(5000).optional(),
+  /** Honeypot. */
+  website: z.string().max(500).optional(),
+});
 
 export const leadUpdateSchema = z.object({
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'WON', 'LOST']).optional(),

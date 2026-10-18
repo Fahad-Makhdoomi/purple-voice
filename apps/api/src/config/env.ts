@@ -64,6 +64,12 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
 
+  /** Graph API version for WhatsApp (Meta Cloud API) integrations. */
+  WHATSAPP_GRAPH_VERSION: z
+    .string()
+    .regex(/^v\d+\.\d+$/)
+    .default('v23.0'),
+
   /** The platform's own Claude key: powers the in-dashboard AI support assistant. */
   ANTHROPIC_API_KEY: optionalString,
   ASSISTANT_MODEL: z.string().default('claude-opus-5-5'),

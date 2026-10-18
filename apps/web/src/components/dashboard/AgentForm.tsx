@@ -38,6 +38,9 @@ export const EMPTY_AGENT: AgentDraft = {
   callbackGreeting: '',
   callbackInstructions: '',
   noiseFilter: 'STANDARD',
+  emailEnabled: false,
+  whatsappEnabled: false,
+  shareInfo: '',
 };
 
 /**

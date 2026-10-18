@@ -2,7 +2,14 @@
 
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { RERUN_TARGETS, RERUN_TARGET_INFO, type RerunTarget } from '@pv/shared';
+import {
+  MAX_CAMPAIGN_RETRIES,
+  RERUN_TARGETS,
+  RERUN_TARGET_INFO,
+  RETRY_STRATEGIES,
+  RETRY_STRATEGY_INFO,
+  type RerunTarget,
+} from '@pv/shared';
 import { api, ApiError } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { ErrorNote, Loading, Modal, Section, useAction } from '@/components/ui';
@@ -21,6 +28,7 @@ export interface EditableCampaign {
   callDays: number[];
   maxAttempts: number;
   retryDelayMinutes: number;
+  retryStrategy: string;
   agent: { id: string };
   phoneNumber: { id: string };
 }
@@ -63,7 +71,8 @@ export function EditCampaignModal({
             callWindowEnd: f.get('end'),
             callDays: days,
             maxAttempts: Number(f.get('maxAttempts')),
-            retryDelayMinutes: Math.round(Number(f.get('retryHours')) * 60),
+            retryDelayMinutes: Math.max(5, Math.round(Number(f.get('retryHours')) * 60)),
+            retryStrategy: f.get('retryStrategy'),
           },
         });
       } catch (err) {
@@ -187,24 +196,48 @@ export function EditCampaignModal({
               defaultValue={campaign.timezone}
             />
           </Field>
-          <Field id="ec-attempts" label="Attempts per contact">
+          <Field
+            id="ec-attempts"
+            label="Retry numbers that don't pick up"
+            help="No answer, busy, voicemail or a failed call. At most 5 retries per number."
+          >
             <select
               id="ec-attempts"
               name="maxAttempts"
               className="select"
               defaultValue={String(campaign.maxAttempts)}
             >
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n}>{n}</option>
+              {Array.from({ length: MAX_CAMPAIGN_RETRIES + 1 }, (_, n) => (
+                <option key={n} value={n + 1}>
+                  {n === 0 ? 'Never' : `Up to ${n} time${n > 1 ? 's' : ''}`}
+                </option>
               ))}
             </select>
           </Field>
-          <Field id="ec-retry" label="Retry after (hours)">
+          <Field id="ec-strategy" label="When to call them again">
+            <select
+              id="ec-strategy"
+              name="retryStrategy"
+              className="select"
+              defaultValue={campaign.retryStrategy}
+            >
+              {RETRY_STRATEGIES.map((s) => (
+                <option key={s} value={s} title={RETRY_STRATEGY_INFO[s].description}>
+                  {RETRY_STRATEGY_INFO[s].label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field
+            id="ec-retry"
+            label="Wait at least (hours)"
+            help="Before the same number is called again."
+          >
             <input
               id="ec-retry"
               name="retryHours"
               type="number"
-              min={1}
+              min={0.1}
               max={168}
               step="any"
               className="input"

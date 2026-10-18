@@ -1,6 +1,8 @@
 import {
+  FREE_PLAN_CODE,
   LIMIT_LABELS,
   isEntitledStatus,
+  isFreePlan,
   mergeFeatures,
   mergeLimits,
   withinLimit,
@@ -48,38 +50,67 @@ const NO_FEATURES: PlanFeatures = {
  */
 const MANUAL_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
+const NONE: Entitlements = {
+  planCode: null,
+  planName: null,
+  status: null,
+  active: false,
+  free: false,
+  includedMinutes: 0,
+  limits: ZERO_LIMITS,
+  features: NO_FEATURES,
+  currentPeriodStart: null,
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+};
+
+/**
+ * The Free plan, for a workspace without a live paid subscription. It has no
+ * billing period of its own, so its minutes are counted per calendar month
+ * (usageWindow). Turning the Free plan off in Admin → Plans takes it away.
+ */
+async function freeEntitlements(): Promise<Entitlements> {
+  const plan = await prisma.plan.findUnique({ where: { code: FREE_PLAN_CODE } });
+  if (!plan?.active) return NONE;
+  return {
+    planCode: plan.code,
+    planName: plan.name,
+    status: 'ACTIVE',
+    active: true,
+    free: true,
+    includedMinutes: plan.includedMinutes,
+    limits: mergeLimits(plan.limits as unknown as PlanLimits),
+    features: mergeFeatures(plan.features as unknown as PlanFeatures),
+    currentPeriodStart: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+  };
+}
+
 export async function getEntitlements(workspaceId: string): Promise<Entitlements> {
   const sub = await prisma.subscription.findUnique({
     where: { workspaceId },
     include: { plan: true },
   });
 
-  if (!sub) {
-    return {
-      planCode: null,
-      planName: null,
-      status: null,
-      active: false,
-      includedMinutes: 0,
-      limits: ZERO_LIMITS,
-      features: NO_FEATURES,
-      currentPeriodStart: null,
-      currentPeriodEnd: null,
-      cancelAtPeriodEnd: false,
-    };
-  }
+  if (!sub) return freeEntitlements();
 
   const manualLapsed =
     (sub.provider === 'MANUAL' ||
       (sub.cancelAtPeriodEnd && (sub.provider === 'RAZORPAY' || sub.provider === 'PAYPAL'))) &&
     !!sub.currentPeriodEnd &&
     sub.currentPeriodEnd.getTime() + MANUAL_GRACE_MS < Date.now();
+  const active = isEntitledStatus(sub.status) && !manualLapsed;
+
+  // A paid plan that ended (or a checkout never finished) leaves the workspace on Free.
+  if (!active) return freeEntitlements();
 
   return {
     planCode: sub.plan.code,
     planName: sub.plan.name,
     status: sub.status,
-    active: isEntitledStatus(sub.status) && !manualLapsed,
+    active,
+    free: isFreePlan(sub.plan),
     includedMinutes: sub.customMinutes ?? sub.plan.includedMinutes,
     limits: mergeLimits(
       sub.plan.limits as unknown as PlanLimits,

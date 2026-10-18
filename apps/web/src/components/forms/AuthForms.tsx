@@ -195,6 +195,8 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
           company: form.get('company') || undefined,
           email: form.get('email'),
           password: form.get('password'),
+          acceptTerms: form.get('acceptTerms') === 'on',
+          marketingOptIn: form.get('marketingOptIn') === 'on',
           captchaToken: await cap.getToken(),
         },
       });
@@ -212,11 +214,11 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
       <h1 className="text-h2">Create your account</h1>
       <p className="mt-2 text-muted">
         {plan === 'PRO'
-          ? 'You picked Pro.'
+          ? 'You picked Pro. Start on Free, then'
           : plan === 'BASIC'
-            ? 'You picked Basic.'
-            : 'Set up your workspace,'}{' '}
-        choose a plan when you&apos;re ready to connect a number.
+            ? 'You picked Basic. Start on Free, then'
+            : 'Start free with 100 AI call minutes a month, and'}{' '}
+        upgrade whenever you need more.
       </p>
       {google && <GoogleSignIn intent="signup" next={planNext} />}
       <form onSubmit={onSubmit} className={google ? 'space-y-5' : 'mt-8 space-y-5'}>
@@ -253,22 +255,29 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
         >
           <PasswordInput id="password" name="password" autoComplete="new-password" />
         </Field>
+        <label className="flex items-start gap-2.5 text-sm text-ink-soft">
+          <input type="checkbox" name="acceptTerms" required className="checkbox mt-0.5" />
+          <span>
+            I agree to the{' '}
+            <Link href="/terms" className="font-semibold underline">
+              Terms of Service
+            </Link>{' '}
+            and have read the{' '}
+            <Link href="/privacy" className="font-semibold underline">
+              Privacy Policy
+            </Link>
+            .
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 text-sm text-ink-soft">
+          <input type="checkbox" name="marketingOptIn" className="checkbox mt-0.5" />
+          <span>Email me product news and tips (optional, unsubscribe any time).</span>
+        </label>
         {cap.element}
         <FormError message={error} />
         <button className="btn btn-primary btn-lg w-full" disabled={busy}>
           {busy ? 'Creating account…' : 'Create account'}
         </button>
-        <p className="text-center text-xs text-subtle">
-          By creating an account you agree to our{' '}
-          <Link href="/terms" className="underline">
-            terms
-          </Link>{' '}
-          and{' '}
-          <Link href="/privacy" className="underline">
-            privacy policy
-          </Link>
-          .
-        </p>
       </form>
       <p className="mt-8 text-center text-sm text-muted">
         Already have an account?{' '}
