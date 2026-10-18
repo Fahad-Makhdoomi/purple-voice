@@ -47,7 +47,7 @@ export function Reveal({
 }: {
   as?: ElementType;
   delay?: number;
-  variant?: 'up' | 'left' | 'right' | 'zoom' | 'blur';
+  variant?: 'up' | 'left' | 'right' | 'zoom' | 'blur' | 'fade';
   className?: string;
   children: ReactNode;
 }) {

@@ -133,7 +133,16 @@ publicRouter.get('/pages', async (_req, res) => {
   const pages = await prisma.page.findMany({
     where: { status: 'PUBLISHED' },
     orderBy: { title: 'asc' },
-    select: { slug: true, title: true, showInFooter: true, updatedAt: true, noindex: true },
+    select: {
+      slug: true,
+      title: true,
+      showInFooter: true,
+      showInHeader: true,
+      navLabel: true,
+      navOrder: true,
+      updatedAt: true,
+      noindex: true,
+    },
   });
   res.json({ pages });
 });

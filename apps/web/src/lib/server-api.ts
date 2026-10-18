@@ -140,6 +140,9 @@ export interface CmsPage {
   slug: string;
   title: string;
   body: string;
+  layout?: 'markdown' | 'builder';
+  blocks?: unknown[];
+  canonicalUrl?: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
   ogImageUrl: string | null;
@@ -157,13 +160,26 @@ export async function getPage(slug: string) {
     )?.page ?? null
   );
 }
+interface PageLink {
+  slug: string;
+  title: string;
+  showInFooter: boolean;
+  showInHeader?: boolean;
+  navLabel?: string | null;
+  navOrder?: number;
+}
+async function getPageLinks() {
+  return (await get<{ pages: PageLink[] }>('/pages', ['pages'], { pages: [] })).pages;
+}
 export async function getFooterPages() {
-  const data = await get<{ pages: Array<{ slug: string; title: string; showInFooter: boolean }> }>(
-    '/pages',
-    ['pages'],
-    { pages: [] },
-  );
-  return data.pages.filter((p) => p.showInFooter);
+  return (await getPageLinks()).filter((p) => p.showInFooter);
+}
+/** Pages staff chose to link from the site header, in their order. */
+export async function getHeaderPages() {
+  return (await getPageLinks())
+    .filter((p) => p.showInHeader)
+    .sort((a, b) => (a.navOrder ?? 0) - (b.navOrder ?? 0))
+    .map((p) => ({ href: `/${p.slug}`, label: p.navLabel || p.title }));
 }
 
 export interface PublicSettings {

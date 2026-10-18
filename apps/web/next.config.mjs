@@ -10,6 +10,8 @@ const captchaHosts =
 const razorpayScript = 'https://checkout.razorpay.com https://cdn.razorpay.com';
 const razorpayFrames = 'https://api.razorpay.com https://checkout.razorpay.com';
 const razorpayConnect = 'https://*.razorpay.com';
+/** Page-builder video blocks: privacy-enhanced YouTube and Vimeo players. */
+const videoFrames = 'https://www.youtube-nocookie.com https://player.vimeo.com';
 const analyticsHosts =
   'https://plausible.io https://www.googletagmanager.com https://www.google-analytics.com';
 /**
@@ -30,21 +32,23 @@ const siteSocket = `${site.protocol === 'https:' ? 'wss:' : 'ws:'}//${site.host}
  * evaluates code at runtime; production builds never do.
  */
 const devEval = process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : '';
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${devEval} ${captchaHosts} ${analyticsHosts} ${razorpayScript}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  `connect-src 'self' ${siteSocket} ${captchaHosts} ${analyticsHosts} ${razorpayConnect}`,
-  `frame-src ${captchaHosts} ${razorpayFrames}`,
-  "media-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self' https://api.razorpay.com",
-  "frame-ancestors 'none'",
-  'upgrade-insecure-requests',
-].join('; ');
+const cspWith = (frameAncestors) =>
+  [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${devEval} ${captchaHosts} ${analyticsHosts} ${razorpayScript}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    `connect-src 'self' ${siteSocket} ${captchaHosts} ${analyticsHosts} ${razorpayConnect}`,
+    `frame-src 'self' ${captchaHosts} ${razorpayFrames} ${videoFrames}`,
+    "media-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://api.razorpay.com",
+    `frame-ancestors ${frameAncestors}`,
+    'upgrade-insecure-requests',
+  ].join('; ');
+const csp = cspWith("'none'");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -92,6 +96,15 @@ const nextConfig = {
     ];
     return [
       { source: '/:path*', headers: security },
+      // The page builder previews pages in an iframe of this route; only this site may frame it.
+      {
+        source: '/builder-preview',
+        headers: [
+          { key: 'Content-Security-Policy', value: cspWith("'self'") },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
+      },
       // Dashboards and admin are private: never cached by shared caches, never indexed.
       {
         source: '/(dashboard|admin)/:path*',

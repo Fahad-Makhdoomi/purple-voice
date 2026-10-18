@@ -4,7 +4,7 @@ import { Analytics } from '@/components/site/Analytics';
 import { CookieConsent } from '@/components/site/CookieConsent';
 import { AnnouncementBar } from '@/components/site/AnnouncementBar';
 import { ThemeMusic } from '@/components/site/ThemeMusic';
-import { getSettings } from '@/lib/server-api';
+import { getHeaderPages, getSettings } from '@/lib/server-api';
 import { themeMusic } from '@/lib/theme';
 
 /**
@@ -13,7 +13,7 @@ import { themeMusic } from '@/lib/theme';
  * Website theme (see src/styles/themes).
  */
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  const settings = await getSettings();
+  const [settings, headerPages] = await Promise.all([getSettings(), getHeaderPages()]);
   const { theme } = settings.appearance;
   const music = themeMusic(settings.appearance);
   const { announcement } = settings.content;
@@ -26,7 +26,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           {'.reveal{opacity:1!important;transform:none!important;filter:none!important}'}
         </style>
       </noscript>
-      <Header />
+      <Header pages={headerPages} />
       <main id="main">{children}</main>
       <Footer />
       {music && <ThemeMusic src={music} />}

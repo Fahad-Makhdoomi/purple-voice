@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn';
 /** The closing call to action. Same words in every theme; the backdrop follows the theme. */
 export async function CtaBand({
   title = 'Put your first agent on the phone today',
-  body = 'Start on Basic for $19 a month. Upgrade to Pro when you need more agents, numbers and campaigns.',
+  body = 'Start free with 100 AI call minutes a month. Upgrade to Basic or Pro when you need more agents, numbers and campaigns.',
 }: {
   title?: string;
   body?: string;

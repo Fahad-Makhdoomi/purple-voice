@@ -273,6 +273,9 @@
   .reveal[data-variant='zoom'] {
     transform: scale(0.92);
   }
+  .reveal[data-variant='fade'] {
+    transform: none;
+  }
   .reveal[data-variant='blur'] {
     filter: blur(10px);
     transform: translate3d(0, 12px, 0);

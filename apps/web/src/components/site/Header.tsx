@@ -27,8 +27,12 @@ const HOME_NAV = [
 /** Pages whose first section is dark: the header starts transparent with light text. */
 const DARK_TOP = new Set(['/']);
 
-export function Header() {
+/** `pages`: CMS pages staff chose to show in the header (Admin → Pages). */
+export function Header({ pages = [] }: { pages?: Array<{ href: string; label: string }> }) {
   const pathname = usePathname();
+  // Added pages go before Contact on inner pages and at the end on the home page.
+  const nav = [...NAV.slice(0, -1), ...pages, ...NAV.slice(-1)];
+  const homeNav = [...HOME_NAV, ...pages];
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const darkTop = DARK_TOP.has(pathname);
@@ -53,7 +57,7 @@ export function Header() {
               <Logo tone="light" />
             </Link>
             <nav aria-label="Main" className="hidden items-center md:flex">
-              {HOME_NAV.map((item) => (
+              {homeNav.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -95,7 +99,7 @@ export function Header() {
               className="border-t border-white/10 px-4 pb-5 pt-3 md:hidden"
             >
               <ul className="flex flex-col">
-                {HOME_NAV.map((item) => (
+                {homeNav.map((item) => (
                   <li key={item.href}>
                     <Link
                       href={item.href}
@@ -135,7 +139,7 @@ export function Header() {
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -183,7 +187,7 @@ export function Header() {
           className="container border-t border-line pb-6 pt-3 md:hidden"
         >
           <ul className="flex flex-col">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}

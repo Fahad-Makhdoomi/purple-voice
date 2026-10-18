@@ -1,7 +1,15 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { FileText, LayoutTemplate } from 'lucide-react';
+import {
+  PAGE_TEMPLATES,
+  pageBlocksSchema,
+  templateBlocks,
+  type PageBlock,
+  type PageTemplate,
+} from '@pv/shared';
 import { api, ApiError } from '@/lib/api';
 import { ErrorNote, Loading, PageHeader, Section, toast, useAction } from '@/components/ui';
 import { Field } from '@/components/forms/Field';
@@ -11,48 +19,88 @@ import {
   slugify,
   type SeoFields,
 } from '@/components/admin/ContentEditor';
+import { PageBuilder } from '@/components/admin/builder/PageBuilder';
+import { cn } from '@/lib/cn';
 
 interface PageDraft extends SeoFields {
   slug: string;
   title: string;
   body: string;
+  layout: 'markdown' | 'builder';
+  blocks: PageBlock[];
   status: 'DRAFT' | 'PUBLISHED';
   showInFooter: boolean;
+  showInHeader: boolean;
+  navLabel: string | null;
+  navOrder: number;
+  canonicalUrl: string | null;
 }
 
 const EMPTY: PageDraft = {
   slug: '',
   title: '',
   body: '',
+  layout: 'markdown',
+  blocks: [],
   status: 'DRAFT',
   showInFooter: false,
+  showInHeader: false,
+  navLabel: null,
+  navOrder: 0,
+  canonicalUrl: null,
   seoTitle: null,
   seoDescription: null,
   ogImageUrl: null,
   noindex: false,
 };
 
-export default function PageEditor() {
+/** A new builder page from ?template=landing|feature|about|pricing|blank. */
+function initialDraft(template: string | null): PageDraft {
+  if (!template || !(template in PAGE_TEMPLATES)) return EMPTY;
+  return { ...EMPTY, layout: 'builder', blocks: templateBlocks(template as PageTemplate) };
+}
+
+/** Plain text of a builder page, for the AI SEO draft. */
+function blocksText(blocks: PageBlock[]): string {
+  return blocks
+    .flatMap((b) =>
+      Object.values(b).filter((v): v is string => typeof v === 'string' && v.length > 3),
+    )
+    .join('\n\n');
+}
+
+function PageEditorInner() {
   const { id } = useParams<{ id: string }>();
+  const params = useSearchParams();
   const router = useRouter();
   const isNew = id === 'new';
-  const [draft, setDraft] = useState<PageDraft | null>(isNew ? EMPTY : null);
+  const [draft, setDraft] = useState<PageDraft | null>(
+    isNew ? initialDraft(params.get('template')) : null,
+  );
   const [slugTouched, setSlugTouched] = useState(!isNew);
   const [error, setError] = useState<string | null>(null);
   const { busy, run } = useAction();
 
   useEffect(() => {
     if (isNew) return;
-    api<{ page: PageDraft }>(`/admin/cms/pages/${id}`).then(({ page }) =>
+    api<{ page: PageDraft }>(`/admin/cms/pages/${id}`).then(({ page }) => {
+      const parsed = pageBlocksSchema.safeParse(page.blocks ?? []);
       setDraft({
         ...EMPTY,
-        ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, page[k as keyof PageDraft]])),
-      } as PageDraft),
-    );
+        ...Object.fromEntries(
+          Object.keys(EMPTY).map((k) => [
+            k,
+            page[k as keyof PageDraft] ?? EMPTY[k as keyof PageDraft],
+          ]),
+        ),
+        blocks: parsed.success ? parsed.data : [],
+      } as PageDraft);
+    });
   }, [id, isNew]);
 
   if (!draft) return <Loading />;
   const set = (patch: Partial<PageDraft>) => setDraft({ ...draft, ...patch });
+  const folder = `pages/${draft.slug || 'general'}`;
 
   async function save(status?: 'DRAFT' | 'PUBLISHED') {
     setError(null);
@@ -118,64 +166,158 @@ export default function PageEditor() {
           <ErrorNote message={error} />
         </div>
       )}
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <div className="min-w-0 space-y-5">
-          <Section>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field id="title" label="Title">
+
+      <div className="space-y-5">
+        <Section>
+          <div className="grid gap-5 lg:grid-cols-[1fr_1fr_auto]">
+            <Field id="title" label="Title">
+              <input
+                id="title"
+                className="input"
+                value={draft.title}
+                onChange={(e) =>
+                  set({
+                    title: e.target.value,
+                    ...(slugTouched ? {} : { slug: slugify(e.target.value) }),
+                  })
+                }
+              />
+            </Field>
+            <Field
+              id="slug"
+              label="URL"
+              help={`/${draft.slug || 'your-page'}. Changing it later redirects the old address.`}
+            >
+              <input
+                id="slug"
+                className="input font-mono"
+                value={draft.slug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  set({ slug: slugify(e.target.value) });
+                }}
+              />
+            </Field>
+            <fieldset>
+              <legend className="label">Build with</legend>
+              <div className="flex gap-1 rounded-sm bg-canvas p-1">
+                {(
+                  [
+                    ['builder', 'Page builder', LayoutTemplate],
+                    ['markdown', 'Text', FileText],
+                  ] as const
+                ).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={draft.layout === value}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-medium',
+                      draft.layout === value ? 'bg-surface shadow-sm' : 'text-muted',
+                    )}
+                    onClick={() => set({ layout: value })}
+                  >
+                    <Icon size={15} aria-hidden="true" /> {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={draft.showInHeader}
+                onChange={(e) => set({ showInHeader: e.target.checked })}
+              />
+              Show in the header menu
+            </label>
+            {draft.showInHeader && (
+              <>
                 <input
-                  id="title"
-                  className="input"
-                  value={draft.title}
-                  onChange={(e) =>
-                    set({
-                      title: e.target.value,
-                      ...(slugTouched ? {} : { slug: slugify(e.target.value) }),
-                    })
-                  }
+                  className="input h-9 w-44 text-sm"
+                  aria-label="Menu label"
+                  placeholder="Menu label (optional)"
+                  maxLength={40}
+                  value={draft.navLabel ?? ''}
+                  onChange={(e) => set({ navLabel: e.target.value || null })}
                 />
-              </Field>
-              <Field id="slug" label="URL slug" help={`/${draft.slug || 'your-page'}`}>
-                <input
-                  id="slug"
-                  className="input font-mono"
-                  value={draft.slug}
-                  onChange={(e) => {
-                    setSlugTouched(true);
-                    set({ slug: slugify(e.target.value) });
-                  }}
-                />
-              </Field>
-            </div>
-            <label className="mt-4 flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2">
+                  Position
+                  <input
+                    type="number"
+                    className="input h-9 w-20 text-sm"
+                    min={0}
+                    max={1000}
+                    value={draft.navOrder}
+                    onChange={(e) => set({ navOrder: Number(e.target.value) || 0 })}
+                  />
+                </label>
+              </>
+            )}
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 className="checkbox"
                 checked={draft.showInFooter}
                 onChange={(e) => set({ showInFooter: e.target.checked })}
               />
-              Link from the site footer
+              Link from the footer
             </label>
-          </Section>
-          <Section>
-            <MarkdownEditor
-              value={draft.body}
-              onChange={(body) => set({ body })}
-              folder={`pages/${draft.slug || 'general'}`}
-            />
-          </Section>
-        </div>
-        <Section title="Search & social">
-          <SeoPanel
-            value={draft}
-            onChange={(seo) => set(seo)}
-            title={draft.title}
-            body={draft.body}
-            path={`/${draft.slug}`}
-            folder={`pages/${draft.slug || 'general'}`}
+          </div>
+        </Section>
+
+        {draft.layout === 'builder' ? (
+          <PageBuilder
+            blocks={draft.blocks}
+            onChange={(blocks) => set({ blocks })}
+            folder={folder}
           />
+        ) : (
+          <Section>
+            <MarkdownEditor value={draft.body} onChange={(body) => set({ body })} folder={folder} />
+          </Section>
+        )}
+
+        <Section title="Search & social">
+          <div className="max-w-2xl">
+            <SeoPanel
+              value={draft}
+              onChange={(seo) => set(seo)}
+              title={draft.title}
+              body={draft.layout === 'builder' ? blocksText(draft.blocks) : draft.body}
+              path={`/${draft.slug}`}
+              folder={folder}
+            />
+            <div className="mt-4">
+              <Field
+                id="canonicalUrl"
+                label="Canonical URL"
+                optional
+                help="Only if this page is a copy of one elsewhere."
+              >
+                <input
+                  id="canonicalUrl"
+                  type="url"
+                  className="input font-mono text-xs"
+                  value={draft.canonicalUrl ?? ''}
+                  onChange={(e) => set({ canonicalUrl: e.target.value || null })}
+                  placeholder="https://"
+                />
+              </Field>
+            </div>
+          </div>
         </Section>
       </div>
     </>
+  );
+}
+
+export default function PageEditor() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <PageEditorInner />
+    </Suspense>
   );
 }

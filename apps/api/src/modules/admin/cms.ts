@@ -382,7 +382,14 @@ cmsRouter.delete('/media/:id', async (req, res) => {
     })) +
     (await prisma.page.count({
       where: { OR: [{ ogImageUrl: asset.url }, { body: { contains: asset.url } }] },
-    }));
+    })) +
+    // Builder pages keep image URLs inside their blocks.
+    Number(
+      (
+        await prisma.$queryRaw<Array<{ n: bigint }>>`
+          SELECT count(*) AS n FROM "Page" WHERE strpos(blocks::text, ${asset.url}) > 0`
+      )[0]?.n ?? 0,
+    );
   if (usedIn)
     throw badRequest(`This image is used on ${usedIn} page(s) or post(s). Remove it there first.`);
   await deleteImage(asset.id);
