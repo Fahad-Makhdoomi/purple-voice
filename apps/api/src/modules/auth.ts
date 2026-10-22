@@ -19,6 +19,7 @@ import { prisma } from '../lib/prisma';
 import { hashPassword, hasUsablePassword, verifyPassword } from '../lib/password';
 import { randomToken, sha256 } from '../lib/crypto';
 import { signAccessToken } from '../lib/jwt';
+import { refreshVerdict } from '../lib/refresh-token';
 import { badRequest, conflict, forbidden, unauthorized } from '../lib/http-error';
 import { sendMail } from '../lib/mailer';
 import { audit } from '../lib/audit';
@@ -169,12 +170,13 @@ authRouter.post('/refresh', async (req, res) => {
     where: { tokenHash: sha256(token) },
     include: { user: true },
   });
-  if (!session || session.expiresAt < new Date()) {
+  const verdict = refreshVerdict(session);
+  if (!session || verdict === 'expired') {
     clearSession(res);
     throw unauthorized();
   }
-  if (session.revokedAt) {
-    // A rotated token came back: someone else holds a copy. Kill the family.
+  if (verdict === 'reused') {
+    // A token rotated a while ago came back: someone else holds a copy. Kill the family.
     await prisma.session.updateMany({
       where: { familyId: session.familyId, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -188,10 +190,13 @@ authRouter.post('/refresh', async (req, res) => {
   }
 
   const next = await issueSession(req, res, session.user, session.familyId);
-  await prisma.session.update({
-    where: { id: session.id },
-    data: { revokedAt: new Date(), replacedBy: next.id },
-  });
+  // A concurrent refresh already retired this token; the session it made stays valid too.
+  if (verdict === 'rotate') {
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { revokedAt: new Date(), replacedBy: next.id },
+    });
+  }
   res.json({ user: publicUser(session.user) });
 });
 

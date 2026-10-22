@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Entitlements, Role, UsageSnapshot } from '@pv/shared';
 import { api, ApiError, getActingWorkspace, setActingWorkspace, type ActingWorkspace } from './api';
@@ -46,15 +46,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<ActingWorkspace | null>(null);
 
+  const signedIn = useRef(false);
   const reload = useCallback(async () => {
     try {
-      setMe(await api<Me>('/auth/me'));
+      const next = await api<Me>('/auth/me');
+      signedIn.current = true;
+      setMe(next);
     } catch (err) {
+      // Only a refused session signs out; the API calls refresh it first.
       if (err instanceof ApiError && err.status === 401) {
         await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(
           () => undefined,
         );
         router.replace(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+      } else if (!signedIn.current) {
+        // Offline or the server restarting: keep trying rather than spin forever.
+        setTimeout(() => void reload(), 5000);
       }
     } finally {
       setLoading(false);

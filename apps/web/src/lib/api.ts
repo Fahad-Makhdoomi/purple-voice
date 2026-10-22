@@ -2,7 +2,8 @@
 
 /**
  * Browser API client. Same-origin requests to /api/* with the session
- * cookies; on a 401 it refreshes the session once and retries. Staff acting
+ * cookies; on a 401 it refreshes the session once and retries (the access
+ * token lasts 15 minutes, the session 30 days). Staff acting
  * inside a customer's workspace send its id in X-Workspace-Id.
  */
 
@@ -45,15 +46,70 @@ export function setActingWorkspace(ws: ActingWorkspace | null) {
   }
 }
 
-let refreshing: Promise<boolean> | null = null;
-function refreshSession(): Promise<boolean> {
-  refreshing ??= fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
-    .then((r) => r.ok)
-    .catch(() => false)
-    .finally(() => {
-      setTimeout(() => (refreshing = null), 0);
-    });
-  return refreshing;
+/** Where a 401 means wrong details or no session at all, so refreshing can't help. */
+const NO_REFRESH = new Set([
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+]);
+
+/**
+ * ok: the session was renewed. signed_out: it's over, sign in again.
+ * unavailable: rate limited, offline or the API restarting; the session may be fine.
+ */
+type RefreshResult = 'ok' | 'signed_out' | 'unavailable';
+
+const REFRESHED_KEY = 'pv_refreshed_at';
+
+function lastRefreshAt(): number {
+  try {
+    return Number(window.localStorage.getItem(REFRESHED_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function postRefresh(): Promise<RefreshResult> {
+  try {
+    const r = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+    if (r.ok) {
+      try {
+        window.localStorage.setItem(REFRESHED_KEY, String(Date.now()));
+      } catch {
+        /* storage unavailable: other tabs just refresh for themselves */
+      }
+      return 'ok';
+    }
+    return r.status === 401 || r.status === 403 ? 'signed_out' : 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+/**
+ * One refresh at a time in this tab and, where the browser has Web Locks,
+ * across tabs. Tabs share the session cookie, so a tab that waited while
+ * another refreshed uses the new cookie instead of refreshing again.
+ */
+let refreshing: Promise<RefreshResult> | null = null;
+function refreshSession(): Promise<RefreshResult> {
+  if (refreshing) return refreshing;
+  const askedAt = Date.now();
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  const run = async (): Promise<RefreshResult> => {
+    if (!locks) return postRefresh();
+    return locks.request('pv-session-refresh', async () =>
+      lastRefreshAt() >= askedAt ? 'ok' : postRefresh(),
+    );
+  };
+  const pending = run().finally(() => {
+    setTimeout(() => (refreshing = null), 0);
+  });
+  refreshing = pending;
+  return pending;
 }
 
 export interface RequestOptions {
@@ -86,8 +142,13 @@ async function send(path: string, opts: RequestOptions): Promise<Response> {
 
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   let res = await send(path, opts);
-  if (res.status === 401 && !path.startsWith('/auth/')) {
-    if (await refreshSession()) res = await send(path, opts);
+  if (res.status === 401 && !NO_REFRESH.has(path)) {
+    const refreshed = await refreshSession();
+    if (refreshed === 'ok') res = await send(path, opts);
+    else if (refreshed === 'unavailable') {
+      // Not a sign-out: the caller can try again once the server answers.
+      throw new ApiError(503, 'unavailable', "Couldn't reach Purple Voice. Try again in a moment.");
+    }
   }
   if (res.status === 204) return undefined as T;
   const json = (await res.json().catch(() => ({}))) as {
