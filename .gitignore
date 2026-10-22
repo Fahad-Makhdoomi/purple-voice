@@ -15,6 +15,7 @@ deploy/env/*.env
 *.tsbuildinfo
 .vscode/
 .idea/
+.claude/
 
 # Uploaded media (served by nginx in production)
 storage/uploads/

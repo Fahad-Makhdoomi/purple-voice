@@ -18,6 +18,7 @@ import {
   Plug,
   Settings,
   ShieldAlert,
+  SquareKanban,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -63,6 +64,12 @@ export function DashboardFrame({ children }: { children: React.ReactNode }) {
         { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
         { href: '/dashboard/calls', label: 'Calls', icon: PhoneCall },
         { href: '/dashboard/dialer', label: 'Dialer', icon: PhoneOutgoing },
+        {
+          href: '/dashboard/crm',
+          label: 'CRM',
+          icon: SquareKanban,
+          badge: pro.crm ? undefined : 'Pro',
+        },
         { href: '/dashboard/appointments', label: 'Appointments', icon: CalendarCheck },
       ],
     },

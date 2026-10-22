@@ -5,7 +5,7 @@ import { useRef, useState } from 'react';
 import { FileText, Pause, Pencil, Play, Plus, Trash2, Upload, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
-import { useWorkspace } from '@/lib/workspace';
+import { useFeature, useWorkspace } from '@/lib/workspace';
 import {
   Loading,
   PageHeader,
@@ -30,6 +30,7 @@ import { cn } from '@/lib/cn';
 import { ContactModal, type EditableContact } from './contact-modal';
 import { PersonalizationPanel, ScriptModal, UploadPreviewModal } from './personalization';
 import { EditCampaignModal, RerunPanel, type EditableCampaign } from './campaign-tools';
+import { AddToCrmButton } from '@/components/crm/CrmParts';
 import { AiPanel, AnalyticsPanel, ExportButton, FollowUpPanel, type Report } from './insights';
 
 interface CampaignDetail {
@@ -227,6 +228,7 @@ export default function CampaignPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { entitlements, reload: reloadWs } = useWorkspace();
+  const crm = useFeature('crm');
   const { data, reload } = useApi<CampaignDetail>(`/app/campaigns/${id}`);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('ALL');
   const [page, setPage] = useState(1);
@@ -458,6 +460,7 @@ export default function CampaignPage() {
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <ExportButton campaignId={campaign.id} />
+              {crm && <AddToCrmButton campaignId={campaign.id} />}
               {!finished && (
                 <>
                   <button

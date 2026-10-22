@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Bot,
   Delete,
   Headphones,
   Mic,
@@ -27,9 +28,18 @@ import { useApi } from '@/lib/use-api';
 import { useSession } from '@/lib/session';
 import { useWorkspace } from '@/lib/workspace';
 import { BrowserCall, DialerSetupError, type CallPhase } from '@/lib/dialer';
-import { formatDuration, formatRelative } from '@/lib/format';
+import { formatDuration, formatRelative, humanize } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import { EmptyState, ErrorNote, Loading, PageHeader, Section, StatusBadge } from '@/components/ui';
+import {
+  EmptyState,
+  ErrorNote,
+  Loading,
+  PageHeader,
+  Section,
+  StatusBadge,
+  Tabs,
+  toast,
+} from '@/components/ui';
 import { Field } from '@/components/forms/Field';
 
 interface NumberRow {
@@ -40,7 +50,17 @@ interface NumberRow {
   telephonyAccount: { provider: TelephonyProvider; label: string | null };
 }
 
+interface AgentRow {
+  id: string;
+  name: string;
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED';
+}
+
 type Phase = 'idle' | Exclude<CallPhase, 'ended'>;
+/** You talk through the browser, or one of your agents makes the call. */
+type Mode = 'me' | 'agent';
+
+const ENDED = ['COMPLETED', 'TRANSFERRED', 'NO_ANSWER', 'BUSY', 'FAILED', 'CANCELED'];
 
 const KEY_LETTERS: Partial<Record<DialpadKey, string>> = {
   '2': 'ABC',
@@ -63,8 +83,14 @@ export default function DialerPage() {
   const { me } = useSession();
   const numbers = useApi<{ numbers: NumberRow[] }>('/app/telephony/numbers');
   const recent = useApi<{ calls: DialerCallView[] }>('/app/dialer/calls');
+  const agents = useApi<{ agents: AgentRow[] }>('/app/agents');
   const reloadRecent = recent.reload;
 
+  const [mode, setMode] = useState<Mode>('me');
+  const [agentId, setAgentId] = useState('');
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [agentCallId, setAgentCallId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState(false);
   const [fromId, setFromId] = useState('');
   const [dial, setDial] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
@@ -81,6 +107,12 @@ export default function DialerPage() {
   const answeredRef = useRef<number | null>(null);
 
   const eligible = useMemo(() => numbers.data?.numbers.filter(canDial) ?? [], [numbers.data]);
+  const activeAgents = useMemo(
+    () => agents.data?.agents.filter((a) => a.status === 'ACTIVE') ?? [],
+    [agents.data],
+  );
+  const agentCall = recent.data?.calls.find((c) => c.id === agentCallId) ?? null;
+  const agentCallLive = !!agentCallId && (!agentCall || !ENDED.includes(agentCall.status));
   const inCall = phase !== 'idle';
 
   // Default caller ID: the first number that can call.
@@ -88,6 +120,27 @@ export default function DialerPage() {
     if (!eligible.length || eligible.some((n) => n.id === fromId)) return;
     setFromId(eligible[0].id);
   }, [eligible, fromId]);
+
+  useEffect(() => {
+    if (!activeAgents.length || activeAgents.some((a) => a.id === agentId)) return;
+    setAgentId(activeAgents[0].id);
+  }, [activeAgents, agentId]);
+
+  // Links from the CRM: /dashboard/dialer?to=+1…&lead=…&mode=agent
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const to = q.get('to');
+    if (to) setDial(to);
+    if (q.get('lead')) setLeadId(q.get('lead'));
+    if (q.get('mode') === 'agent') setMode('agent');
+  }, []);
+
+  // While an agent's call is live, keep its status fresh.
+  useEffect(() => {
+    if (!agentCallLive) return;
+    const t = setInterval(() => void reloadRecent(), 3000);
+    return () => clearInterval(t);
+  }, [agentCallLive, reloadRecent]);
 
   // Warn up front when the browser has already blocked the microphone.
   useEffect(() => {
@@ -214,6 +267,40 @@ export default function DialerPage() {
     }
   }
 
+  /** One of your agents rings the number and has the conversation; you can follow it on the call's page. */
+  async function startAgentCall() {
+    const to = normalizeDialNumber(dial);
+    if (!to) {
+      setError('Enter the number with its country code, e.g. +1 415 555 0123.');
+      return;
+    }
+    setError(null);
+    setEnded(null);
+    setPlacing(true);
+    try {
+      const placed = await api<{ call: DialerCallView }>('/app/dialer/agent-calls', {
+        body: { agentId, phoneNumberId: fromId, to, ...(leadId ? { leadId } : {}) },
+      });
+      setAgentCallId(placed.call.id);
+      toast(`${activeAgents.find((a) => a.id === agentId)?.name ?? 'Your agent'} is calling ${to}`);
+      await reloadRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not place the call.');
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  async function endAgentCall() {
+    if (!agentCallId) return;
+    try {
+      await api(`/app/dialer/calls/${agentCallId}/hangup`, { method: 'POST' });
+      await reloadRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not end the call.');
+    }
+  }
+
   function toggleMute() {
     const next = !muted;
     callRef.current?.setMuted(next);
@@ -221,6 +308,19 @@ export default function DialerPage() {
   }
 
   if (!numbers.data) return <Loading />;
+
+  const agentName = activeAgents.find((a) => a.id === agentId)?.name ?? 'The agent';
+  const agentStatus = !agentCallId
+    ? null
+    : !agentCall || agentCall.status === 'QUEUED'
+      ? 'Starting the call…'
+      : agentCall.status === 'RINGING'
+        ? 'Ringing…'
+        : agentCall.status === 'IN_PROGRESS'
+          ? `${agentCall.agent?.name ?? agentName} is talking with them`
+          : agentCall.status === 'COMPLETED'
+            ? 'Call ended'
+            : humanize(agentCall.status);
 
   const statusText =
     phase === 'connecting'
@@ -243,7 +343,7 @@ export default function DialerPage() {
     <>
       <PageHeader
         title="Dialer"
-        description="Call anyone from your computer, through one of your numbers. You talk, not an agent; minutes count toward your plan like any call."
+        description="Call anyone through one of your numbers. Talk yourself from your computer, or have one of your AI agents make the call. Minutes count toward your plan like any call."
       />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,400px)_1fr]">
@@ -261,12 +361,64 @@ export default function DialerPage() {
             />
           ) : (
             <div className="space-y-5">
+              <div>
+                <Tabs<Mode>
+                  value={mode}
+                  onChange={(m) => {
+                    if (inCall || agentCallLive) return;
+                    setMode(m);
+                    setError(null);
+                  }}
+                  options={[
+                    { value: 'me', label: "I'll talk" },
+                    { value: 'agent', label: 'Agent calls' },
+                  ]}
+                />
+                <p className="help">
+                  {mode === 'me'
+                    ? 'You talk through your microphone. No agent is on the line.'
+                    : 'One of your AI agents rings the number and has the conversation, using its own instructions.'}
+                </p>
+              </div>
+
+              {mode === 'agent' && (
+                <Field
+                  id="agent"
+                  label="Agent"
+                  help={
+                    activeAgents.length === 0 ? (
+                      <>
+                        None of your agents is on.{' '}
+                        <Link href="/dashboard/agents" className="font-semibold text-brand-700">
+                          Turn one on
+                        </Link>{' '}
+                        to have it make calls.
+                      </>
+                    ) : undefined
+                  }
+                >
+                  <select
+                    id="agent"
+                    className="select"
+                    value={agentId}
+                    disabled={agentCallLive || activeAgents.length === 0}
+                    onChange={(e) => setAgentId(e.target.value)}
+                  >
+                    {activeAgents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+
               <Field id="from" label="Call from">
                 <select
                   id="from"
                   className="select"
                   value={fromId}
-                  disabled={inCall}
+                  disabled={inCall || agentCallLive}
                   onChange={(e) => setFromId(e.target.value)}
                 >
                   {eligible.map((n) => (
@@ -290,14 +442,20 @@ export default function DialerPage() {
                     autoComplete="tel"
                     placeholder="+1 415 555 0123"
                     value={dial}
-                    disabled={inCall}
+                    disabled={inCall || agentCallLive}
                     aria-describedby="dial-help"
-                    onChange={(e) => setDial(e.target.value.replace(/[^\d+\s()*#.-]/g, ''))}
+                    onChange={(e) => {
+                      setDial(e.target.value.replace(/[^\d+\s()*#.-]/g, ''));
+                      setLeadId(null);
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') void startCall();
+                      if (e.key !== 'Enter') return;
+                      if (mode === 'agent') {
+                        if (!agentCallLive && !placing && agentId) void startAgentCall();
+                      } else void startCall();
                     }}
                   />
-                  {dial && !inCall && (
+                  {dial && !inCall && !agentCallLive && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-icon absolute right-1 top-1/2 -translate-y-1/2"
@@ -313,10 +471,35 @@ export default function DialerPage() {
                 </p>
               </div>
 
-              <Keypad onPress={pressKey} disabled={phase === 'connecting' || phase === 'ringing'} />
+              <Keypad
+                onPress={pressKey}
+                disabled={
+                  phase === 'connecting' ||
+                  phase === 'ringing' ||
+                  (mode === 'agent' && agentCallLive)
+                }
+              />
 
               <div className="text-center" aria-live="polite">
-                {statusText && (
+                {mode === 'agent' && agentStatus && (
+                  <p className="text-sm font-semibold text-ink">
+                    {agentStatus}
+                    {agentCall && agentCall.durationSec > 0 && (
+                      <span className="num ml-2 font-normal text-muted">
+                        {formatDuration(agentCall.durationSec)}
+                      </span>
+                    )}
+                    {agentCallId && (
+                      <Link
+                        href={`/dashboard/calls/${agentCallId}`}
+                        className="ml-2 font-semibold text-brand-700 hover:text-brand-900"
+                      >
+                        Open call
+                      </Link>
+                    )}
+                  </p>
+                )}
+                {mode === 'me' && statusText && (
                   <p className="text-sm font-semibold text-ink">
                     {statusText}
                     {timer && <span className="num ml-2 font-normal text-muted">{timer}</span>}
@@ -328,7 +511,7 @@ export default function DialerPage() {
               </div>
 
               {error && <ErrorNote message={error} />}
-              {micBlocked && !error && (
+              {mode === 'me' && micBlocked && !error && (
                 <ErrorNote message="Your browser is blocking the microphone for this site. Allow it from the icon in the address bar to make calls." />
               )}
 
@@ -336,6 +519,26 @@ export default function DialerPage() {
                 <Link href="/dashboard/billing" className="btn btn-primary w-full">
                   Choose a plan to make calls
                 </Link>
+              ) : mode === 'agent' ? (
+                agentCallLive ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-lg w-full"
+                    onClick={() => void endAgentCall()}
+                  >
+                    <PhoneOff size={16} aria-hidden="true" /> End the agent&apos;s call
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-lg w-full"
+                    onClick={() => void startAgentCall()}
+                    disabled={!fromId || !dial || !agentId || placing}
+                  >
+                    <Bot size={16} aria-hidden="true" />{' '}
+                    {placing ? 'Starting…' : `${agentName} calls now`}
+                  </button>
+                )
               ) : inCall ? (
                 <div className="flex gap-3">
                   <button
@@ -371,10 +574,18 @@ export default function DialerPage() {
                 </button>
               )}
 
-              <p className="flex items-start gap-2 text-xs text-muted">
-                <Headphones size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                Use headphones: through speakers, the person you call can hear themselves echo.
-              </p>
+              {mode === 'me' ? (
+                <p className="flex items-start gap-2 text-xs text-muted">
+                  <Headphones size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  Use headphones: through speakers, the person you call can hear themselves echo.
+                </p>
+              ) : (
+                <p className="flex items-start gap-2 text-xs text-muted">
+                  <Bot size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  The agent says who it is and why it&apos;s calling, as set in its instructions.
+                  Only call people who expect to hear from you.
+                </p>
+              )}
             </div>
           )}
         </Section>
@@ -412,8 +623,12 @@ export default function DialerPage() {
                         {c.toNumber}
                       </Link>
                       <p className="text-xs text-muted">
-                        {c.placedBy?.id === me?.user.id ? 'You' : (c.placedBy?.name ?? 'Someone')} ·
-                        from <span className="num">{c.fromNumber}</span> ·{' '}
+                        {c.agent
+                          ? `${c.agent.name} (agent), for ${c.requestedBy?.id === me?.user.id ? 'you' : (c.requestedBy?.name ?? 'your team')}`
+                          : c.placedBy?.id === me?.user.id
+                            ? 'You'
+                            : (c.placedBy?.name ?? 'Someone')}{' '}
+                        · from <span className="num">{c.fromNumber}</span> ·{' '}
                         {formatRelative(c.createdAt)}
                       </p>
                     </div>
@@ -424,10 +639,15 @@ export default function DialerPage() {
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
-                      disabled={inCall}
+                      disabled={inCall || agentCallLive}
                       onClick={() => {
                         setDial(c.toNumber);
                         if (number) setFromId(number.id);
+                        if (c.agent) {
+                          setMode('agent');
+                          if (activeAgents.some((a) => a.id === c.agent!.id))
+                            setAgentId(c.agent.id);
+                        }
                         setError(null);
                       }}
                     >
