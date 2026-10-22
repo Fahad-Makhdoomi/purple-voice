@@ -11,6 +11,7 @@ import { developersRouter } from './developers';
 import { supportRouter } from './support';
 import { dialerRouter } from './dialer';
 import { doNotCallRouter } from './do-not-call';
+import { crmRouter } from './crm';
 
 /**
  * The subscriber dashboard API: /api/app/*. Every route acts on one
@@ -31,3 +32,4 @@ workspaceRouter.use('/developers', developersRouter);
 workspaceRouter.use('/support', supportRouter);
 workspaceRouter.use('/dialer', dialerRouter);
 workspaceRouter.use('/do-not-call', doNotCallRouter);
+workspaceRouter.use('/crm', crmRouter);

@@ -18,6 +18,7 @@ import { integrationCallbacksRouter } from './modules/workspace/integrations';
 import { adminRouter } from './modules/admin';
 import { developerApiRouter } from './modules/developer-api';
 import { telephonyWebhooksRouter } from './telephony/routes';
+import { hooksRouter } from './modules/hooks';
 
 export function createApp() {
   const app = express();
@@ -72,6 +73,8 @@ export function createApp() {
 
   // Mounted before the JSON parser: the Stripe webhook needs the raw body.
   app.use('/api/billing', billingRouter);
+  // CRM lead and WhatsApp webhooks: also raw, to check Meta's and Twilio's signatures.
+  app.use('/api/hooks', hooksRouter);
 
   app.use(express.json({ limit: '6mb' }));
   // Carrier webhooks post form-encoded bodies.

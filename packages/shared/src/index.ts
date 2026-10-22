@@ -11,3 +11,4 @@ export * from './follow-up';
 export * from './campaign-progress';
 export * from './page-blocks';
 export * from './seo';
+export * from './crm';

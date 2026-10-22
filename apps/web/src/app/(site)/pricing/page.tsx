@@ -39,6 +39,7 @@ const FEATURE_ROWS: FeatureKey[] = [
   'aiSupportAssistant',
   'prioritySupport',
   'advancedAutomations',
+  'crm',
 ];
 
 export default async function PricingPage() {

@@ -14,6 +14,14 @@ export const authLimiter = rateLimit({ ...common, windowMs: 15 * 60 * 1000, limi
 /** Public forms (contact sales). */
 export const formLimiter = rateLimit({ ...common, windowMs: 60 * 60 * 1000, limit: 10 });
 
+/** Lead and WhatsApp webhooks, per token: generous for real traffic, a ceiling for floods. */
+export const hookLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 1000,
+  limit: 300,
+  keyGenerator: (req) => req.path.split('/')[2] ?? req.ip ?? 'anon',
+});
+
 /** Developer API, per key or IP. */
 export const apiLimiter = rateLimit({
   ...common,

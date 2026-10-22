@@ -4,9 +4,10 @@ import { prisma } from './lib/prisma';
 import { dialerTick } from './jobs/dialer';
 import { deliverWebhooks } from './jobs/webhooks';
 import { maintenanceTick } from './jobs/maintenance';
+import { crmTick } from './jobs/crm';
 
 /**
- * Background worker: campaign dialer, webhook deliveries, maintenance.
+ * Background worker: campaign dialer, new-lead calls, webhook deliveries, maintenance.
  * Run exactly one instance. Each loop skips a tick if the previous one is
  * still running, so a slow pass never stacks up.
  */
@@ -29,6 +30,7 @@ function loop(name: string, intervalMs: number, fn: () => Promise<void>) {
 
 const timers = [
   loop('dialer', env.DIALER_INTERVAL_MS, dialerTick),
+  loop('crm', 5_000, crmTick),
   loop('webhooks', 5_000, deliverWebhooks),
   loop('maintenance', 60_000, maintenanceTick),
 ];

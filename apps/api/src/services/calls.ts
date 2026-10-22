@@ -19,6 +19,7 @@ import { canStartCall, getEntitlements, recordUsage } from './entitlements';
 import { summarizeCall, type TranscriptLine } from './ai/summarize';
 import { dialResultFor, nextRetryAt } from './campaign-retry';
 import { addToDoNotCall } from './do-not-call';
+import { syncCallToCrm } from './crm';
 
 const TERMINAL: CallStatus[] = [
   'COMPLETED',
@@ -39,6 +40,10 @@ export interface OutboundCallInput {
   agentId?: string;
   /** The person calling from the browser dialer (voice/dialer-bridge.ts). */
   placedById?: string;
+  /** The person who asked an agent to make this call (dialer agent mode, CRM). */
+  requestedById?: string;
+  /** The CRM lead being called. */
+  leadId?: string;
   phoneNumberId: string;
   to: string;
   campaignId?: string;
@@ -70,6 +75,8 @@ export async function startOutboundCall(input: OutboundCallInput): Promise<Call>
       workspaceId: input.workspaceId,
       agentId: input.agentId,
       placedById: input.placedById,
+      requestedById: input.requestedById,
+      leadId: input.leadId,
       campaignId: input.campaignId,
       contactId: input.contactId,
       phoneNumberId: number.id,
@@ -272,6 +279,16 @@ export async function finalizeCall(callId: string): Promise<void> {
     );
     if (call.contactId)
       await emitEvent(call.workspaceId, 'contact.updated', { contactId: call.contactId, outcome });
+
+    // CRM: the call goes on the lead's timeline; good campaign calls add the person.
+    if (ent.active && ent.features.crm) {
+      const reached = call.placedById
+        ? !!call.answeredAt && durationSec > 0
+        : dialResultFor({ ...call, durationSec }, outcome, transcript) === 'REACHED';
+      await syncCallToCrm({ ...call, endedAt }, outcome, summary, reached).catch((err) =>
+        logger.warn({ err, callId }, 'CRM update after call failed'),
+      );
+    }
     if (call.campaignId) await completeCampaignIfDone(call.campaignId);
   } catch (err) {
     logger.error({ err, callId }, 'Call finalisation failed');

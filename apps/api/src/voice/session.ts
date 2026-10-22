@@ -3,6 +3,7 @@ import type {
   Call,
   CampaignContact,
   CredentialProvider,
+  CrmLead,
   Integration,
   PhoneNumber,
   TelephonyAccount,
@@ -18,6 +19,7 @@ import { getAiSettings } from '../services/ai-settings';
 import { applyCallStatus, isTerminal, saveTranscript } from '../services/calls';
 import { busySlots, createEvent } from '../services/google-calendar';
 import { messagingChannels, sendAgentMessage } from '../services/messaging';
+import { leadAsContact } from '../services/crm';
 import type { TranscriptLine } from '../services/ai/summarize';
 import { adapterForAccount, type TelephonyAdapter } from '../telephony';
 import { buildInstructions, type PreviousCall } from './prompt';
@@ -33,6 +35,7 @@ import type { VoiceEngine } from './engines/types';
 type LoadedCall = Call & {
   agent: Agent | null;
   contact: CampaignContact | null;
+  lead: CrmLead | null;
   campaign: { goal: string; personalization: string } | null;
   workspace: Workspace;
   phoneNumber: (PhoneNumber & { telephonyAccount: TelephonyAccount }) | null;
@@ -71,6 +74,7 @@ export class CallSession {
       include: {
         agent: true,
         contact: true,
+        lead: true,
         campaign: { select: { goal: true, personalization: true } },
         workspace: true,
         phoneNumber: { include: { telephonyAccount: true } },
@@ -161,7 +165,8 @@ export class CallSession {
       agent,
       workspace: this.call.workspace,
       call: this.call,
-      contact: this.call.contact,
+      // Calling a CRM lead outside a campaign: the lead stands in for the contact.
+      contact: this.call.contact ?? (this.call.lead ? leadAsContact(this.call.lead) : null),
       campaignGoal: this.call.campaign?.goal,
       personalization: this.call.campaign?.personalization,
       previous: await this.previousCall(agent),

@@ -59,6 +59,8 @@ export interface PlanFeatures {
   aiSupportAssistant: boolean;
   prioritySupport: boolean;
   advancedAutomations: boolean;
+  /** Lead pipeline: campaign wins land in it, new leads get an agent call. */
+  crm: boolean;
 }
 
 export type FeatureKey = keyof PlanFeatures;
@@ -95,6 +97,7 @@ const NO_FEATURES: PlanFeatures = {
   aiSupportAssistant: false,
   prioritySupport: false,
   advancedAutomations: false,
+  crm: false,
 };
 
 const ALL_FEATURES: PlanFeatures = Object.fromEntries(
@@ -207,6 +210,7 @@ export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
       'AI support assistant',
       'Priority support',
       'Advanced automations',
+      'CRM with lead pipeline',
       'Unlimited calling campaigns',
       'Unlimited contacts per campaign',
       'Up to 20,000 call minutes / month',
@@ -260,6 +264,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   aiSupportAssistant: 'AI support assistant',
   prioritySupport: 'Priority support',
   advancedAutomations: 'Advanced automations',
+  crm: 'CRM and lead pipeline',
 };
 
 export const LIMIT_LABELS: Record<LimitKey, string> = {

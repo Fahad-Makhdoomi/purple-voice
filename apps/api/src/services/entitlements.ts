@@ -40,6 +40,7 @@ const NO_FEATURES: PlanFeatures = {
   aiSupportAssistant: false,
   prioritySupport: false,
   advancedAutomations: false,
+  crm: false,
 };
 
 /**

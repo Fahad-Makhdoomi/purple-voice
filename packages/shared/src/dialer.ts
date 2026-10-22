@@ -20,8 +20,20 @@ const e164 = z
 export const dialerCallSchema = z.object({
   phoneNumberId: z.string().min(1),
   to: e164,
+  /** The CRM lead being called, so the call shows on the lead. */
+  leadId: z.string().min(1).optional(),
 });
 export type DialerCallInput = z.infer<typeof dialerCallSchema>;
+
+/** The dialer's other mode: one of the workspace's agents makes the call instead of the person. */
+export const dialerAgentCallSchema = z.object({
+  agentId: z.string().min(1),
+  phoneNumberId: z.string().min(1),
+  to: e164,
+  /** The CRM lead being called, so the agent knows who it is and the call shows on the lead. */
+  leadId: z.string().min(1).optional(),
+});
+export type DialerAgentCallInput = z.infer<typeof dialerAgentCallSchema>;
 
 /** The phone line's sample rate. */
 export const DIALER_SAMPLE_RATE = 8000;
@@ -114,4 +126,7 @@ export interface DialerCallView {
   endedAt: string | null;
   endReason: string | null;
   placedBy: { id: string; name: string } | null;
+  /** Set when an agent made the call; requestedBy is who asked it to. */
+  agent: { id: string; name: string } | null;
+  requestedBy: { id: string; name: string } | null;
 }

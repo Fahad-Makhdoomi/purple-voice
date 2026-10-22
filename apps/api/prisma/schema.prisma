@@ -217,6 +217,12 @@ enum TicketPriority {
   URGENT
 }
 
+enum CrmStageKind {
+  OPEN
+  WON
+  LOST
+}
+
 enum ContentStatus {
   DRAFT
   PUBLISHED
@@ -254,6 +260,9 @@ model User {
   leads           Lead[]          @relation("LeadOwner")
   media           MediaAsset[]
   placedCalls     Call[]          @relation("PlacedCalls")
+  requestedCalls  Call[]          @relation("RequestedCalls")
+  crmLeads        CrmLead[]       @relation("CrmLeadOwner")
+  crmActivities   CrmActivity[]   @relation("CrmActivities")
 
   @@index([workspaceId])
   @@index([role])
@@ -331,6 +340,9 @@ model Workspace {
   auditLogs          AuditLog[]
   messages           CallMessage[]
   doNotCall          DoNotCallNumber[]
+  crmStages          CrmStage[]
+  crmLeads           CrmLead[]
+  crmSettings        CrmSettings?
 }
 
 model Plan {
@@ -650,6 +662,7 @@ model Campaign {
 
   contacts CampaignContact[]
   calls    Call[]
+  crmLeads CrmLead[]
 
   @@index([workspaceId])
   @@index([status])
@@ -724,6 +737,12 @@ model Call {
   /// A person calling from the browser dialer (no AI agent on the line).
   placedById     String?
   placedBy       User?             @relation("PlacedCalls", fields: [placedById], references: [id], onDelete: SetNull)
+  /// Who asked an agent to make this call (dialer agent mode, CRM). Not on the line.
+  requestedById  String?
+  requestedBy    User?             @relation("RequestedCalls", fields: [requestedById], references: [id], onDelete: SetNull)
+  /// The CRM lead this call was made to (dialer, CRM, new-lead automation).
+  leadId         String?
+  lead           CrmLead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
   /// An inbound call from someone an agent called earlier.
   isCallback     Boolean           @default(false)
   /// Set when post-call processing (summary, webhooks, usage) has run.
@@ -1111,4 +1130,111 @@ model AuditLog {
 
   @@index([workspaceId, createdAt])
   @@index([actorId, createdAt])
+}
+
+// ─── CRM (Pro and up) ───────────────────────────────────────────────────────
+
+/// A column of a workspace's lead pipeline. A workspace gets the default
+/// stages the first time it opens the CRM; `key` marks those, so automatic
+/// moves (an interested call → Interested) still find them after a rename.
+model CrmStage {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key         String?
+  name        String
+  kind        CrmStageKind @default(OPEN)
+  color       String       @default("slate")
+  position    Int
+  createdAt   DateTime     @default(now())
+
+  leads CrmLead[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, position])
+}
+
+/// Someone in a workspace's CRM: added by hand, from a campaign call that
+/// went well, someone who called in, or a new lead from WhatsApp or the lead
+/// webhook. One per phone number.
+model CrmLead {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stageId        String
+  stage          CrmStage     @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  phone          String
+  name           String?
+  email          String?
+  company        String?
+  notes          String       @default("")
+  /// Deal value in cents.
+  valueCents     Int?
+  tags           String[]     @default([])
+  /// Extra details from the lead webhook or a campaign's CSV columns; agents can use them on calls.
+  fields         Json?
+  /// manual, campaign, inbound_call, whatsapp, webhook or dialer.
+  source         String       @default("manual")
+  /// The campaign the lead came from.
+  campaignId     String?
+  campaign       Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  ownerId        String?
+  owner          User?        @relation("CrmLeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  lastOutcome    CallOutcome?
+  lastCallAt     DateTime?
+  /// New-lead automation: an agent calls the lead at this time. Cleared once the call is placed.
+  callDueAt      DateTime?
+  lastActivityAt DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  activities CrmActivity[]
+  calls      Call[]
+
+  @@unique([workspaceId, phone])
+  @@index([workspaceId, stageId])
+  @@index([callDueAt])
+}
+
+/// The lead's timeline: notes, calls, stage moves, WhatsApp messages.
+model CrmActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// created, note, call, stage, appointment, whatsapp, campaign or edit.
+  type      String
+  text      String
+  callId    String?
+  actorId   String?
+  actor     User?    @relation("CrmActivities", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+/// What goes into a workspace's pipeline on its own, and what happens when a
+/// new lead comes in.
+model CrmSettings {
+  workspaceId        String        @id
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Secret in the lead and WhatsApp webhook URLs (and Meta's verify token).
+  hookToken          String        @unique
+  /// Campaign call outcomes that add the person to the pipeline.
+  autoAddOutcomes    CallOutcome[] @default([INTERESTED, APPOINTMENT_BOOKED, CALLBACK_REQUESTED])
+  /// People who call in and show interest or book are added too.
+  autoAddInbound     Boolean       @default(true)
+  /// New leads from WhatsApp or the lead webhook: this agent calls them right away.
+  instantCallEnabled Boolean       @default(false)
+  instantAgentId     String?
+  instantNumberId    String?
+  /// Only call between these hours (workspace time zone); otherwise at the next opening.
+  instantWindowStart String?
+  instantWindowEnd   String?
+  /// WhatsApp messages from numbers not in the CRM become leads.
+  whatsappLeads      Boolean       @default(true)
+  /// Sent back on WhatsApp to a new lead. Blank: no reply.
+  whatsappReply      String        @default("")
+  /// Meta app secret (encrypted), to check WhatsApp webhook signatures.
+  metaAppSecretEnc   String?
+  updatedAt          DateTime      @updatedAt
 }

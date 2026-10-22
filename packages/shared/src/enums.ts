@@ -222,6 +222,8 @@ export const WEBHOOK_EVENTS = [
   'appointment.booked',
   'campaign.completed',
   'contact.updated',
+  'lead.created',
+  'lead.stage_changed',
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
