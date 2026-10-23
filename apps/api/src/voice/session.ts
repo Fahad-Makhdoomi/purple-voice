@@ -30,7 +30,6 @@ import { mulawDurationMs, type MediaTransport } from './transports';
 import { OpenAIRealtimeEngine } from './engines/openai-realtime';
 import { GeminiLiveEngine } from './engines/gemini-live';
 import { CascadedEngine } from './engines/cascaded';
-import { ElevenLabsEngine } from './engines/elevenlabs';
 import type { VoiceEngine } from './engines/types';
 
 type LoadedCall = Call & {
@@ -217,22 +216,19 @@ export class CallSession {
           { ...engineConfig, apiKey: await this.requireKey('GEMINI') },
           callbacks,
         );
-      case 'CASCADED': {
+      case 'CASCADED':
+      case 'ELEVENLABS': {
+        // Same pipeline either way; only who hears and speaks differs.
+        const speech = settings.voiceEngine === 'ELEVENLABS' ? 'ELEVENLABS' : 'DEEPGRAM';
         const [apiKey, speechApiKey] = await Promise.all([
           this.requireKey(settings.llmProvider),
-          this.requireKey('DEEPGRAM'),
+          this.requireKey(speech),
         ]);
         return new CascadedEngine(
-          { ...engineConfig, provider: settings.llmProvider, apiKey, speechApiKey },
+          { ...engineConfig, provider: settings.llmProvider, apiKey, speechApiKey, speech },
           callbacks,
         );
       }
-      case 'ELEVENLABS':
-        // The agent id rides in `model`; the voice is whatever the agent has in ElevenLabs.
-        return new ElevenLabsEngine(
-          { ...engineConfig, apiKey: await this.requireKey('ELEVENLABS') },
-          callbacks,
-        );
     }
   }
 

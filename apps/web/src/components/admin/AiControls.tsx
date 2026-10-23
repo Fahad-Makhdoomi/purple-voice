@@ -34,14 +34,14 @@ export const KEY_USES: Record<CredentialProvider, string> = {
   DEEPGRAM:
     'Hearing and speaking on the Cascaded engine only. Gemini Live and Realtime don’t use it.',
   ELEVENLABS:
-    'ElevenLabs Agents engine: the voice agent that answers the call. Needs “ElevenLabs Agents” read access.',
+    'Hearing and speaking on the ElevenLabs engine: realtime speech recognition and text-to-speech.',
 };
 
 const MODEL_LABEL: Record<VoiceEngine, string> = {
   REALTIME: 'Realtime model',
   GEMINI_LIVE: 'Live model',
   CASCADED: 'Model',
-  ELEVENLABS: 'ElevenLabs agent id',
+  ELEVENLABS: 'Model',
 };
 
 const CUSTOM = '__custom__';
@@ -57,8 +57,8 @@ export function sameAiSettings(a: AiSettingsView, b: AiSettingsView) {
 
 /** "Gemini Live · gemini-3.8-live", with the LLM vendor for Cascaded. */
 export function describeAiSettings(v: AiSettingsView) {
-  return v.voiceEngine === 'CASCADED'
-    ? `${VOICE_ENGINE_LABELS.CASCADED} · ${AI_PROVIDER_LABELS[v.llmProvider]} · ${v.model}`
+  return v.voiceEngine === 'CASCADED' || v.voiceEngine === 'ELEVENLABS'
+    ? `${VOICE_ENGINE_LABELS[v.voiceEngine]} · ${AI_PROVIDER_LABELS[v.llmProvider]} · ${v.model}`
     : `${VOICE_ENGINE_LABELS[v.voiceEngine]} · ${v.model}`;
 }
 
@@ -82,8 +82,7 @@ export function EngineModelFields({
   const options = modelsForEngine(value.voiceEngine, value.llmProvider);
   const known = options.find((m) => m.id === value.model);
   const [customMode, setCustomMode] = useState(false);
-  // An ElevenLabs agent id is always typed: there is no catalogue to pick from.
-  const isAgentId = value.voiceEngine === 'ELEVENLABS';
+  const hasLlmVendor = value.voiceEngine === 'CASCADED' || value.voiceEngine === 'ELEVENLABS';
   const custom = customMode || !known;
 
   const setEngine = (voiceEngine: VoiceEngine) => {
@@ -141,11 +140,15 @@ export function EngineModelFields({
       </fieldset>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        {value.voiceEngine === 'CASCADED' && (
+        {hasLlmVendor && (
           <Field
             id={`${idPrefix}-provider`}
             label="LLM vendor"
-            help="Does the thinking on the call; Deepgram hears and speaks."
+            help={
+              value.voiceEngine === 'ELEVENLABS'
+                ? 'Does the thinking on the call; ElevenLabs hears and speaks.'
+                : 'Does the thinking on the call; Deepgram hears and speaks.'
+            }
           >
             <select
               id={`${idPrefix}-provider`}
@@ -162,54 +165,44 @@ export function EngineModelFields({
             </select>
           </Field>
         )}
-        {!isAgentId && (
-          <Field
+        <Field
+          id={`${idPrefix}-model`}
+          label={MODEL_LABEL[value.voiceEngine]}
+          help={
+            custom
+              ? 'Type any model id the vendor supports below.'
+              : (known?.hint ?? 'Pick a suggestion, or choose “Another model id” to type one.')
+          }
+        >
+          <select
             id={`${idPrefix}-model`}
-            label={MODEL_LABEL[value.voiceEngine]}
-            help={
-              custom
-                ? 'Type any model id the vendor supports below.'
-                : (known?.hint ?? 'Pick a suggestion, or choose “Another model id” to type one.')
-            }
+            className="select"
+            value={custom ? CUSTOM : value.model}
+            disabled={disabled}
+            onChange={(e) => {
+              if (e.target.value === CUSTOM) {
+                setCustomMode(true);
+              } else {
+                setCustomMode(false);
+                onChange({ ...value, model: e.target.value });
+              }
+            }}
           >
-            <select
-              id={`${idPrefix}-model`}
-              className="select"
-              value={custom ? CUSTOM : value.model}
-              disabled={disabled}
-              onChange={(e) => {
-                if (e.target.value === CUSTOM) {
-                  setCustomMode(true);
-                } else {
-                  setCustomMode(false);
-                  onChange({ ...value, model: e.target.value });
-                }
-              }}
-            >
-              {options.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                  {m.hint ? ` — ${m.hint}` : ''}
-                </option>
-              ))}
-              <option value={CUSTOM}>Another model id…</option>
-            </select>
-          </Field>
-        )}
+            {options.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+                {m.hint ? ` — ${m.hint}` : ''}
+              </option>
+            ))}
+            <option value={CUSTOM}>Another model id…</option>
+          </select>
+        </Field>
         {custom && (
           <Field
             id={`${idPrefix}-model-id`}
-            label={isAgentId ? 'ElevenLabs agent id' : 'Model id'}
-            help={
-              isAgentId
-                ? 'From ElevenLabs → Agents → your agent (agent_…). In its Security tab, allow overriding the system prompt, first message and language, and set audio to μ-law 8000 Hz for best quality.'
-                : 'Exactly as the vendor names it: letters, digits and . : / - _ only.'
-            }
-            className={
-              value.voiceEngine === 'CASCADED' || isAgentId
-                ? 'sm:col-span-2 sm:max-w-md'
-                : undefined
-            }
+            label="Model id"
+            help="Exactly as the vendor names it: letters, digits and . : / - _ only."
+            className={hasLlmVendor ? 'sm:col-span-2 sm:max-w-md' : undefined}
           >
             <input
               id={`${idPrefix}-model-id`}

@@ -40,8 +40,8 @@ export const CREDENTIAL_PROVIDER_LABELS: Record<CredentialProvider, string> = {
  *  GEMINI_LIVE  Gemini Live speech-to-speech. Needs a Gemini key only.
  *  CASCADED     speech-to-text -> any LLM (OpenAI, Claude, Gemini) -> text-to-speech.
  *               Needs the LLM vendor's key plus a Deepgram key for speech.
- *  ELEVENLABS   An ElevenLabs voice agent (built in ElevenLabs Agents) answers the call.
- *               Needs an ElevenLabs key; the "model" is the ElevenLabs agent id.
+ *  ELEVENLABS   Like CASCADED, but ElevenLabs hears (Scribe realtime) and speaks (TTS).
+ *               Needs the LLM vendor's key plus an ElevenLabs key.
  */
 export const VOICE_ENGINES = ['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS'] as const;
 export type VoiceEngine = (typeof VOICE_ENGINES)[number];
@@ -50,7 +50,7 @@ export const VOICE_ENGINE_LABELS: Record<VoiceEngine, string> = {
   REALTIME: 'OpenAI Realtime',
   GEMINI_LIVE: 'Gemini Live',
   CASCADED: 'Cascaded (speech → LLM → speech)',
-  ELEVENLABS: 'ElevenLabs Agents',
+  ELEVENLABS: 'ElevenLabs voice (speech → LLM → speech)',
 };
 
 export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
@@ -59,7 +59,7 @@ export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
   CASCADED:
     'Deepgram hears and speaks; OpenAI, Claude or Gemini thinks. Needs that vendor’s key and a Deepgram key.',
   ELEVENLABS:
-    'An ElevenLabs voice agent talks; its voice, language model and knowledge are set in ElevenLabs. Needs an ElevenLabs key and the agent id.',
+    'ElevenLabs realtime speech recognition and lifelike voices; OpenAI, Claude or Gemini thinks, with your own agent prompt and tools. Needs that vendor’s key and an ElevenLabs key.',
 };
 
 export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {

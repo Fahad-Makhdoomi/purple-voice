@@ -106,7 +106,7 @@ describe('engines', () => {
   it('needs only a Gemini key for Gemini Live, no Deepgram', () => {
     expect(requiredProviders('GEMINI_LIVE', 'OPENAI')).toEqual(['GEMINI']);
     expect(requiredProviders('CASCADED', 'ANTHROPIC')).toEqual(['ANTHROPIC', 'DEEPGRAM']);
-    expect(requiredProviders('ELEVENLABS', 'OPENAI')).toEqual(['ELEVENLABS']);
+    expect(requiredProviders('ELEVENLABS', 'OPENAI')).toEqual(['OPENAI', 'ELEVENLABS']);
   });
 
   it('summarises speech-to-speech calls on a text model of the same vendor', () => {

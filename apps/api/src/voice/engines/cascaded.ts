@@ -6,15 +6,17 @@ import { GeminiConversation } from '../llm/gemini';
 import type { LlmConversation } from '../llm/types';
 import { mulawDurationMs } from '../transports';
 import { DeepgramStt, deepgramSpeak } from './deepgram';
+import { ElevenLabsStt, elevenLabsSpeak } from './elevenlabs-speech';
 import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
 
 /** Words the caller must say over the agent before it stops talking. */
 const INTERRUPT_WORDS: Record<NoiseFilter, number> = { OFF: 1, STANDARD: 2, STRONG: 3 };
 
 /**
- * Speech-to-text → any LLM → text-to-speech.
+ * Speech-to-text → any LLM → text-to-speech, with Deepgram or ElevenLabs
+ * (`speech`) doing the hearing and speaking.
  *
- * The caller's words stream to Deepgram; when Deepgram marks the end of
+ * The caller's words stream to the speech vendor; when it marks the end of
  * their utterance, the text goes to the LLM. The reply streams back and is
  * cut at sentence boundaries, each sentence synthesised and played in
  * order, so the agent starts talking after the first sentence rather than
@@ -22,7 +24,7 @@ const INTERRUPT_WORDS: Record<NoiseFilter, number> = { OFF: 1, STANDARD: 2, STRO
  * cleared and the in-flight LLM turn is aborted.
  */
 export class CascadedEngine implements VoiceEngine {
-  private stt: DeepgramStt;
+  private stt: DeepgramStt | ElevenLabsStt;
   private llm: LlmConversation;
   private pendingUserText = '';
   private turnAbort: AbortController | null = null;
@@ -34,10 +36,16 @@ export class CascadedEngine implements VoiceEngine {
   private closed = false;
 
   constructor(
-    private readonly config: EngineConfig & { provider: AiProvider; speechApiKey: string },
+    private readonly config: EngineConfig & {
+      provider: AiProvider;
+      speechApiKey: string;
+      /** Who hears and speaks; Deepgram unless set. */
+      speech?: 'DEEPGRAM' | 'ELEVENLABS';
+    },
     private readonly cb: EngineCallbacks,
   ) {
-    this.stt = new DeepgramStt(config.speechApiKey, config.language, {
+    const Stt = config.speech === 'ELEVENLABS' ? ElevenLabsStt : DeepgramStt;
+    this.stt = new Stt(config.speechApiKey, config.language, {
       onTranscript: (text, final) => {
         if (final) this.pendingUserText = `${this.pendingUserText} ${text}`.trim();
         // Only real words over the agent's voice interrupt it: a cough or a
@@ -156,17 +164,22 @@ export class CascadedEngine implements VoiceEngine {
       if (signal.aborted || this.closed) return;
       this.synthesizing = true;
       try {
-        await deepgramSpeak(
-          this.config.speechApiKey,
-          this.config.voice,
-          text,
-          (chunk) => {
-            this.playbackEndsAt =
-              Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
-            this.cb.onAudio(chunk);
-          },
-          signal,
-        );
+        const onChunk = (chunk: string) => {
+          this.playbackEndsAt = Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
+          this.cb.onAudio(chunk);
+        };
+        if (this.config.speech === 'ELEVENLABS') {
+          await elevenLabsSpeak(
+            this.config.speechApiKey,
+            this.config.voice,
+            text,
+            onChunk,
+            signal,
+            this.config.language.slice(0, 2).toLowerCase(),
+          );
+        } else {
+          await deepgramSpeak(this.config.speechApiKey, this.config.voice, text, onChunk, signal);
+        }
         if (!signal.aborted) this.spokenThisTurn += ` ${text}`;
       } catch (err) {
         if (!signal.aborted) logger.warn({ err }, 'Text-to-speech failed');

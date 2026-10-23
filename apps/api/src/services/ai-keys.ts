@@ -101,8 +101,7 @@ export async function verifyApiKey(provider: CredentialProvider, apiKey: string)
         return;
       }
       case 'ELEVENLABS': {
-        // Voice agents are all this key is for, so check it can read them.
-        const res = await fetch('https://api.elevenlabs.io/v1/convai/agents?page_size=1', {
+        const res = await fetch('https://api.elevenlabs.io/v1/models', {
           headers: { 'xi-api-key': apiKey },
           signal: AbortSignal.timeout(10_000),
         });
