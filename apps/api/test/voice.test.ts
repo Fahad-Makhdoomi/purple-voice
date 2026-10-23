@@ -100,3 +100,12 @@ describe('telephony documents', () => {
     expect(mulawDurationMs(Buffer.alloc(8000).toString('base64'))).toBe(1000);
   });
 });
+
+describe('single-brace variables', () => {
+  it('fills {name} too, and tidies a missing one', () => {
+    expect(fillVariables('Hello {name}, ek second?', { name: 'Ravi' })).toBe(
+      'Hello Ravi, ek second?',
+    );
+    expect(fillVariables('Hello {name}, ek second?', {})).toBe('Hello, ek second?');
+  });
+});

@@ -6,10 +6,16 @@ import { OpenAIConversation } from '../llm/openai';
 import { GeminiConversation } from '../llm/gemini';
 import type { LlmConversation } from '../llm/types';
 import { mulawDurationMs } from '../transports';
+import { SpeechFilter } from '../speakable';
 import { DeepgramStt, deepgramSpeak } from './deepgram';
 import { ElevenLabsStt, elevenLabsSpeak } from './elevenlabs-speech';
 import { SarvamStt, sarvamSpeak } from './sarvam-speech';
-import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
+import {
+  DEFAULT_OPENING,
+  type EngineCallbacks,
+  type EngineConfig,
+  type VoiceEngine,
+} from './types';
 
 /** Words the caller must say over the agent before it stops talking. */
 const INTERRUPT_WORDS: Record<NoiseFilter, number> = { OFF: 1, STANDARD: 2, STRONG: 3 };
@@ -53,6 +59,8 @@ export class CascadedEngine implements VoiceEngine {
   private closed = false;
   /** Sentences the agent spoke recently, to recognise them when the line echoes them back. */
   private recentSpeech: { words: Set<string>; at: number }[] = [];
+  /** Keeps markdown, labels and read-back instructions out of the voice. */
+  private readonly filter: SpeechFilter;
 
   constructor(
     private readonly config: EngineConfig & {
@@ -87,7 +95,13 @@ export class CascadedEngine implements VoiceEngine {
       onError: (err) => this.cb.onError(err),
     });
 
-    const args = [config.apiKey, config.model, config.instructions, config.tools] as const;
+    this.filter = new SpeechFilter(config.instructions);
+    // A text model opens the call from a system cue plus the person's "Hello?",
+    // never from instructions sent as the caller's words (which it may read back).
+    const instructions = config.greeting
+      ? config.instructions
+      : `${config.instructions}\n\n## Starting the call\n${config.opening ?? DEFAULT_OPENING} Your first reply is exactly the words you say out loud when the line connects, nothing else.`;
+    const args = [config.apiKey, config.model, instructions, config.tools] as const;
     this.llm =
       config.provider === 'ANTHROPIC'
         ? new ClaudeConversation(...args)
@@ -103,7 +117,7 @@ export class CascadedEngine implements VoiceEngine {
       this.say(this.config.greeting, new AbortController().signal);
     } else if (this.config.opening) {
       // No fixed line: let the model open (an incoming caller shouldn't hear silence).
-      void this.respond(`(The call has just connected. ${this.config.opening})`);
+      void this.respond('Hello?');
     }
   }
 
@@ -163,11 +177,18 @@ export class CascadedEngine implements VoiceEngine {
     let full = '';
 
     const flush = (force: boolean) => {
-      // Speak whole sentences as soon as they're complete.
-      const match = force ? buffer : buffer.match(/^[\s\S]*?[.!?…](\s|$)/)?.[0];
-      if (!match || !match.trim()) return;
+      // Speak whole sentences (or lines) as soon as they're complete.
+      const match = force ? buffer : buffer.match(/^[\s\S]*?(?:[.!?…।](\s|$)|\n)/)?.[0];
+      if (!match || !match.trim()) {
+        if (force) buffer = '';
+        return;
+      }
       buffer = buffer.slice(match.length);
-      this.say(match.trim(), abort.signal);
+      const spoken = this.filter.clean(match);
+      if (spoken) {
+        full += `${spoken} `;
+        this.say(spoken, abort.signal);
+      }
       if (!force) flush(false);
     };
 
@@ -176,7 +197,6 @@ export class CascadedEngine implements VoiceEngine {
         signal: abort.signal,
         onText: (delta) => {
           buffer += delta;
-          full += delta;
           flush(false);
         },
         onToolCall: async (name, input) => {
@@ -188,7 +208,11 @@ export class CascadedEngine implements VoiceEngine {
       });
       flush(true);
       await this.speechQueue;
-      if (!abort.signal.aborted && full.trim()) this.cb.onTranscript('agent', full.trim());
+      if (!abort.signal.aborted && full.trim()) {
+        this.cb.onTranscript('agent', full.trim());
+        // Logged in full: a later interruption mustn't log this turn a second time.
+        this.spokenThisTurn = '';
+      }
     } catch (err) {
       if (!abort.signal.aborted) {
         logger.warn({ err }, 'LLM turn failed');
