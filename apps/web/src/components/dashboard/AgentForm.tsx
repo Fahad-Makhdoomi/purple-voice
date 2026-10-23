@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Info } from 'lucide-react';
 import {
   LANGUAGES,
+  isElevenLabsVoiceId,
   NOISE_FILTERS,
   NOISE_FILTER_LABELS,
   type AgentInput,
@@ -69,12 +70,14 @@ export function AgentForm({
   const [showKnowledge, setShowKnowledge] = useState(!!value.knowledge);
   // Set when the agent's saved voice is no longer offered (the team changed the AI voice).
   const [voiceReplaced, setVoiceReplaced] = useState(false);
+  const [customVoice, setCustomVoice] = useState('');
 
   const voices = ai.data?.voices ?? [];
   // Use the default voice for a new agent, or when the saved one is no longer
   // offered. Only a new voice list or a changed voice needs this check.
   useEffect(() => {
     if (!ai.data || ai.data.voices.some((v) => v.id === value.voice)) return;
+    if (ai.data.customVoice && isElevenLabsVoiceId(value.voice)) return;
     if (value.voice) setVoiceReplaced(true);
     onChange({ ...value, voice: ai.data.defaultVoice });
   }, [ai.data, value.voice]);
@@ -104,7 +107,7 @@ export function AgentForm({
               value={value.language}
               onChange={(e) => set('language', e.target.value)}
             >
-              {LANGUAGES.map((l) => (
+              {(ai.data?.languages ?? LANGUAGES).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.label}
                 </option>
@@ -183,6 +186,9 @@ export function AgentForm({
               {!ai.data && (
                 <option value="">{ai.error ? 'Voices unavailable' : 'Loading voices…'}</option>
               )}
+              {ai.data && !voices.some((v) => v.id === value.voice) && value.voice && (
+                <option value={value.voice}>Custom voice ({value.voice})</option>
+              )}
               {voices.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.label}
@@ -191,6 +197,35 @@ export function AgentForm({
               ))}
             </select>
           </Field>
+          {ai.data?.customVoice && (
+            <Field
+              id="voice-custom"
+              label="Or use any voice by its ID"
+              help="Every voice on your account is listed above. For one from the Voice Library, add it to My Voices first, or paste its voice ID here."
+              className="mt-4"
+            >
+              <input
+                id="voice-custom"
+                className="input font-mono"
+                spellCheck={false}
+                autoComplete="off"
+                maxLength={40}
+                pattern="[A-Za-z0-9]{10,40}"
+                title="Letters and digits only"
+                placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
+                value={customVoice}
+                onChange={(e) => {
+                  const id = e.target.value.trim();
+                  setCustomVoice(id);
+                  // Only a complete-looking id replaces the selected voice.
+                  if (isElevenLabsVoiceId(id)) {
+                    setVoiceReplaced(false);
+                    set('voice', id);
+                  }
+                }}
+              />
+            </Field>
+          )}
         </div>
         <div className="max-w-md">
           <Field

@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { isoLanguage } from '@pv/shared';
 import type { SttEvents } from './deepgram';
 
 /**
@@ -27,7 +28,7 @@ export class ElevenLabsStt {
     const params = new URLSearchParams({
       model_id: 'scribe_v2_realtime',
       audio_format: 'ulaw_8000',
-      language_code: this.language.slice(0, 2).toLowerCase(),
+      language_code: isoLanguage(this.language),
       // ElevenLabs ends the caller's turn after this much silence.
       commit_strategy: 'vad',
       vad_silence_threshold_secs: '0.6',

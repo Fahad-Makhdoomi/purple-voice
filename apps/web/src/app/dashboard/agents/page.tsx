@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Bot, Plus } from 'lucide-react';
-import { LANGUAGES } from '@pv/shared';
+import { languageLabel } from '@pv/shared';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import { EmptyState, Loading, PageHeader, StatusBadge } from '@/components/ui';
@@ -74,9 +74,7 @@ export default function AgentsPage() {
                   <StatusBadge status={a.status} />
                 </div>
                 <h2 className="mt-4 font-semibold">{a.name}</h2>
-                <p className="mt-1 text-sm text-muted">
-                  {LANGUAGES.find((l) => l.id === a.language)?.label ?? a.language}
-                </p>
+                <p className="mt-1 text-sm text-muted">{languageLabel(a.language)}</p>
                 <dl className="mt-5 grid grid-cols-3 gap-2 border-t border-line pt-4 text-center">
                   <div>
                     <dt className="text-xs text-muted">Calls</dt>

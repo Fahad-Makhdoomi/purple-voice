@@ -1,4 +1,5 @@
 import type { Agent, Call, CampaignContact, Workspace } from '@prisma/client';
+import { languageLabel } from '@pv/shared';
 import { describe, isValidTimeZone } from './time';
 
 /** Replaces {{name}}, {{company}} and any CSV column {{field}} with the contact's values. */
@@ -162,7 +163,7 @@ export function buildInstructions(input: {
         '- Never use lists, markdown, emojis, URLs or symbols; spell out numbers the way people say them.',
         '- Ask one question at a time, then stop and listen.',
         '- Background sounds, other voices in the room and line noise are not the caller talking to you. If what you heard is unclear or does not fit, keep going or ask them to repeat.',
-        `- Speak in ${agent.language}. If the person switches language, follow them if you can.`,
+        `- Speak in ${languageLabel(agent.language)}. If the person switches language, follow them if you can.`,
         `- If asked, say honestly that you are an AI assistant ${kind === 'outbound' ? 'calling' : 'answering'} on behalf of ${workspace.name}.`,
         '- If the person asks not to be called again, apologise, confirm they will not be contacted, then end the call.',
         kind === 'outbound' &&

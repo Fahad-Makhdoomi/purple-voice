@@ -114,6 +114,62 @@ export const LANGUAGES = [
   { id: 'hi', label: 'Hindi' },
 ] as const;
 
+/**
+ * More languages for the ELEVENLABS engine: the ones ElevenLabs' low-latency
+ * voice model speaks, which its realtime speech recognition also hears.
+ */
+export const ELEVENLABS_EXTRA_LANGUAGES = [
+  { id: 'pt', label: 'Portuguese' },
+  { id: 'it', label: 'Italian' },
+  { id: 'nl', label: 'Dutch' },
+  { id: 'ja', label: 'Japanese' },
+  { id: 'ko', label: 'Korean' },
+  { id: 'zh', label: 'Chinese' },
+  { id: 'ar', label: 'Arabic' },
+  { id: 'ru', label: 'Russian' },
+  { id: 'tr', label: 'Turkish' },
+  { id: 'pl', label: 'Polish' },
+  { id: 'uk', label: 'Ukrainian' },
+  { id: 'ta', label: 'Tamil' },
+  { id: 'id', label: 'Indonesian' },
+  { id: 'ms', label: 'Malay' },
+  { id: 'fil', label: 'Filipino' },
+  { id: 'vi', label: 'Vietnamese' },
+  { id: 'sv', label: 'Swedish' },
+  { id: 'da', label: 'Danish' },
+  { id: 'no', label: 'Norwegian' },
+  { id: 'fi', label: 'Finnish' },
+  { id: 'cs', label: 'Czech' },
+  { id: 'sk', label: 'Slovak' },
+  { id: 'hu', label: 'Hungarian' },
+  { id: 'ro', label: 'Romanian' },
+  { id: 'bg', label: 'Bulgarian' },
+  { id: 'el', label: 'Greek' },
+  { id: 'hr', label: 'Croatian' },
+] as const;
+
+/** The languages an agent can speak under an engine. */
+export function languagesForEngine(
+  engine: VoiceEngine,
+): ReadonlyArray<{ id: string; label: string }> {
+  return engine === 'ELEVENLABS' ? [...LANGUAGES, ...ELEVENLABS_EXTRA_LANGUAGES] : LANGUAGES;
+}
+
+/** A language's name for any language an agent might have, whatever the engine. */
+export function languageLabel(id: string): string {
+  return [...LANGUAGES, ...ELEVENLABS_EXTRA_LANGUAGES].find((l) => l.id === id)?.label ?? id;
+}
+
+/** The language code speech vendors want: "en-US" → "en", "fil" stays "fil". */
+export function isoLanguage(language: string): string {
+  return language.split('-')[0]!.toLowerCase();
+}
+
+/** ElevenLabs voice ids are 20 letters and digits; any voice on the account (or added from the library) works. */
+export function isElevenLabsVoiceId(voice: string | null | undefined): voice is string {
+  return !!voice && /^[A-Za-z0-9]{10,40}$/.test(voice);
+}
+
 // ── Per-engine helpers ──────────────────────────────────────────────────────
 
 /** The voices an agent can use under each engine. */
@@ -139,6 +195,7 @@ export const DEFAULT_VOICE: Record<VoiceEngine, string> = {
 
 /** The voice to use: the agent's own if the engine offers it, else the engine default. */
 export function voiceForEngine(engine: VoiceEngine, voice: string | null | undefined): string {
+  if (engine === 'ELEVENLABS' && isElevenLabsVoiceId(voice)) return voice;
   return voice && voicesForEngine(engine).some((v) => v.id === voice)
     ? voice
     : DEFAULT_VOICE[engine];

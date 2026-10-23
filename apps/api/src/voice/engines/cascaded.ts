@@ -1,4 +1,5 @@
 import type { AiProvider, NoiseFilter } from '@prisma/client';
+import { isoLanguage } from '@pv/shared';
 import { logger } from '../../lib/logger';
 import { ClaudeConversation } from '../llm/claude';
 import { OpenAIConversation } from '../llm/openai';
@@ -11,6 +12,21 @@ import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
 
 /** Words the caller must say over the agent before it stops talking. */
 const INTERRUPT_WORDS: Record<NoiseFilter, number> = { OFF: 1, STANDARD: 2, STRONG: 3 };
+/** How long after the agent stops that its echo can still reach the recogniser. */
+const ECHO_TAIL_MS = 1500;
+/** How far back the agent's own words are remembered for echo checks. */
+const ECHO_MEMORY_MS = 20_000;
+/** Share of a heard phrase that must be the agent's own recent words to count as echo. */
+const ECHO_OVERLAP = 0.6;
+
+export function words(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{M}\p{N}\s']/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
 
 /**
  * Speech-to-text → any LLM → text-to-speech, with Deepgram or ElevenLabs
@@ -34,6 +50,8 @@ export class CascadedEngine implements VoiceEngine {
   private spokenThisTurn = '';
   private speechQueue: Promise<void> = Promise.resolve();
   private closed = false;
+  /** Sentences the agent spoke recently, to recognise them when the line echoes them back. */
+  private recentSpeech: { words: Set<string>; at: number }[] = [];
 
   constructor(
     private readonly config: EngineConfig & {
@@ -47,11 +65,15 @@ export class CascadedEngine implements VoiceEngine {
     const Stt = config.speech === 'ELEVENLABS' ? ElevenLabsStt : DeepgramStt;
     this.stt = new Stt(config.speechApiKey, config.language, {
       onTranscript: (text, final) => {
+        // The phone line can carry the agent's own voice back to the
+        // recogniser. Heard that way it is not the caller: answering it is
+        // how an agent ends up talking to itself.
+        if (this.isEcho(text)) return;
         if (final) this.pendingUserText = `${this.pendingUserText} ${text}`.trim();
         // Only real words over the agent's voice interrupt it: a cough or a
         // stray background word doesn't. Noisier settings need more words.
-        const words = text.trim().split(/\s+/).filter(Boolean).length;
-        if (this.isSpeaking() && words >= INTERRUPT_WORDS[config.noiseFilter ?? 'STANDARD'])
+        const count = text.trim().split(/\s+/).filter(Boolean).length;
+        if (this.isSpeaking() && count >= INTERRUPT_WORDS[config.noiseFilter ?? 'STANDARD'])
           this.interrupt();
       },
       onUtteranceEnd: () => this.onUtteranceEnd(),
@@ -93,6 +115,17 @@ export class CascadedEngine implements VoiceEngine {
     return this.synthesizing || Date.now() < this.playbackEndsAt;
   }
 
+  /** Mostly the agent's own recent words, heard while (or just after) it spoke. */
+  private isEcho(text: string): boolean {
+    const now = Date.now();
+    if (!this.isSpeaking() && now > this.playbackEndsAt + ECHO_TAIL_MS) return false;
+    this.recentSpeech = this.recentSpeech.filter((s) => now - s.at < ECHO_MEMORY_MS);
+    const heard = words(text);
+    if (!heard.length) return true;
+    const own = (w: string) => this.recentSpeech.some((s) => s.words.has(w));
+    return heard.filter(own).length / heard.length >= ECHO_OVERLAP;
+  }
+
   private interrupt() {
     this.turnAbort?.abort();
     this.turnAbort = null;
@@ -108,6 +141,9 @@ export class CascadedEngine implements VoiceEngine {
     const text = this.pendingUserText.trim();
     this.pendingUserText = '';
     if (!text || this.closed) return;
+    // The caller finished a turn over the agent: stop the agent properly
+    // (carrier queue cleared) before answering, so two replies never overlap.
+    if (this.isSpeaking()) this.interrupt();
     this.cb.onTranscript('caller', text);
     void this.respond(text);
   }
@@ -163,6 +199,7 @@ export class CascadedEngine implements VoiceEngine {
     this.speechQueue = this.speechQueue.then(async () => {
       if (signal.aborted || this.closed) return;
       this.synthesizing = true;
+      this.recentSpeech.push({ words: new Set(words(text)), at: Date.now() });
       try {
         const onChunk = (chunk: string) => {
           this.playbackEndsAt = Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
@@ -175,7 +212,7 @@ export class CascadedEngine implements VoiceEngine {
             text,
             onChunk,
             signal,
-            this.config.language.slice(0, 2).toLowerCase(),
+            isoLanguage(this.config.language),
           );
         } else {
           await deepgramSpeak(this.config.speechApiKey, this.config.voice, text, onChunk, signal);

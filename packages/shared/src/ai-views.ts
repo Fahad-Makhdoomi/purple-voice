@@ -21,6 +21,10 @@ export interface WorkspaceAiView {
   /** The voices of the engine staff chose for this workspace. */
   voices: ModelOption[];
   defaultVoice: string;
+  /** The languages an agent can speak with this AI. */
+  languages: { id: string; label: string }[];
+  /** Any voice id may be typed in, not only the ones listed. */
+  customVoice: boolean;
   /** Every key the engine needs is available, so agents can take calls. */
   ready: boolean;
 }

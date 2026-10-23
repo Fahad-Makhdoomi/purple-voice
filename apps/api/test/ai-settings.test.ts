@@ -7,6 +7,7 @@ import {
   credentialProviderParamSchema,
   DEFAULT_LLM_MODEL,
   DEFAULT_VOICE,
+  languagesForEngine,
   LLM_MODELS,
   REALTIME_SUMMARY_MODEL,
   requiredProviders,
@@ -19,6 +20,11 @@ import type { AiStatus } from '../src/services/ai-settings';
 // No database here: the AI status and the phone-number count are stubbed.
 const mocks = vi.hoisted(() => ({ getAiStatus: vi.fn(), phoneNumbers: vi.fn() }));
 vi.mock('../src/services/ai-settings', () => ({ getAiStatus: mocks.getAiStatus }));
+// No ElevenLabs key in these tests: the premade voices are listed.
+vi.mock('../src/services/ai-keys', async (orig) => ({
+  ...(await orig<typeof import('../src/services/ai-keys')>()),
+  findApiKey: async () => null,
+}));
 vi.mock('../src/lib/prisma', () => ({
   prisma: { phoneNumber: { count: mocks.phoneNumbers } },
 }));
@@ -170,7 +176,15 @@ describe('GET /api/app/ai', () => {
     async (engine) => {
       mocks.getAiStatus.mockResolvedValue(status(engine, engine !== 'CASCADED'));
       const res = await request(app).get('/ai').expect(200);
-      expect(Object.keys(res.body).sort()).toEqual(['defaultVoice', 'ready', 'voices']);
+      expect(Object.keys(res.body).sort()).toEqual([
+        'customVoice',
+        'defaultVoice',
+        'languages',
+        'ready',
+        'voices',
+      ]);
+      expect(res.body.customVoice).toBe(engine === 'ELEVENLABS');
+      expect(res.body.languages).toEqual([...languagesForEngine(engine)]);
       expect(res.body.voices).toEqual(voicesForEngine(engine));
       expect(res.body.defaultVoice).toBe(DEFAULT_VOICE[engine]);
       expect(res.body.ready).toBe(engine !== 'CASCADED');
