@@ -18,7 +18,7 @@ export const AI_PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
 /** Speech vendors: Deepgram for the cascaded engine, ElevenLabs for its own voice agents. */
-export const SPEECH_PROVIDERS = ['DEEPGRAM', 'ELEVENLABS'] as const;
+export const SPEECH_PROVIDERS = ['DEEPGRAM', 'ELEVENLABS', 'SARVAM'] as const;
 export type SpeechProvider = (typeof SPEECH_PROVIDERS)[number];
 
 export const CREDENTIAL_PROVIDERS = [...AI_PROVIDERS, ...SPEECH_PROVIDERS] as const;
@@ -30,6 +30,7 @@ export const CREDENTIAL_PROVIDER_LABELS: Record<CredentialProvider, string> = {
   GEMINI: 'Google Gemini',
   DEEPGRAM: 'Deepgram (speech)',
   ELEVENLABS: 'ElevenLabs',
+  SARVAM: 'Sarvam AI',
 };
 
 /**
@@ -42,8 +43,16 @@ export const CREDENTIAL_PROVIDER_LABELS: Record<CredentialProvider, string> = {
  *               Needs the LLM vendor's key plus a Deepgram key for speech.
  *  ELEVENLABS   Like CASCADED, but ElevenLabs hears (Scribe realtime) and speaks (TTS).
  *               Needs the LLM vendor's key plus an ElevenLabs key.
+ *  SARVAM       Like CASCADED, but Sarvam AI hears (Saaras) and speaks (Bulbul): Indian
+ *               languages and voices. Needs the LLM vendor's key plus a Sarvam key.
  */
-export const VOICE_ENGINES = ['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS'] as const;
+export const VOICE_ENGINES = [
+  'REALTIME',
+  'GEMINI_LIVE',
+  'CASCADED',
+  'ELEVENLABS',
+  'SARVAM',
+] as const;
 export type VoiceEngine = (typeof VOICE_ENGINES)[number];
 
 export const VOICE_ENGINE_LABELS: Record<VoiceEngine, string> = {
@@ -51,6 +60,7 @@ export const VOICE_ENGINE_LABELS: Record<VoiceEngine, string> = {
   GEMINI_LIVE: 'Gemini Live',
   CASCADED: 'Cascaded (speech → LLM → speech)',
   ELEVENLABS: 'ElevenLabs voice (speech → LLM → speech)',
+  SARVAM: 'Sarvam AI (Indian languages)',
 };
 
 export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
@@ -60,6 +70,8 @@ export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
     'Deepgram hears and speaks; OpenAI, Claude or Gemini thinks. Needs that vendor’s key and a Deepgram key.',
   ELEVENLABS:
     'ElevenLabs realtime speech recognition and lifelike voices; OpenAI, Claude or Gemini thinks, with your own agent prompt and tools. Needs that vendor’s key and an ElevenLabs key.',
+  SARVAM:
+    'Sarvam AI hears and speaks Hindi, English (India) and 9 more Indian languages with natural Indian voices; OpenAI, Claude or Gemini thinks. Needs that vendor’s key and a Sarvam key.',
 };
 
 export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {

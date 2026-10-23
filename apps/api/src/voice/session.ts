@@ -217,9 +217,10 @@ export class CallSession {
           callbacks,
         );
       case 'CASCADED':
-      case 'ELEVENLABS': {
+      case 'ELEVENLABS':
+      case 'SARVAM': {
         // Same pipeline either way; only who hears and speaks differs.
-        const speech = settings.voiceEngine === 'ELEVENLABS' ? 'ELEVENLABS' : 'DEEPGRAM';
+        const speech = settings.voiceEngine === 'CASCADED' ? 'DEEPGRAM' : settings.voiceEngine;
         const [apiKey, speechApiKey] = await Promise.all([
           this.requireKey(settings.llmProvider),
           this.requireKey(speech),

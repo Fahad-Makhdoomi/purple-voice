@@ -74,6 +74,7 @@ enum CredentialProvider {
   GEMINI
   DEEPGRAM
   ELEVENLABS
+  SARVAM
 }
 
 enum TelephonyProvider {
@@ -87,6 +88,7 @@ enum VoiceEngine {
   GEMINI_LIVE
   CASCADED
   ELEVENLABS
+  SARVAM
 }
 
 enum AiProvider {

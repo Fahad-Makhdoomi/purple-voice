@@ -330,6 +330,15 @@ the most sensitive setting); OpenAI Realtime adds near-field noise reduction and
   Claude or Gemini) are ours; nothing is created in ElevenLabs. Needs the LLM vendor's key
   plus an ElevenLabs key; the agent's voice is an ElevenLabs voice id.
 
+- **Sarvam AI** (`engines/sarvam-speech.ts`) — the same pipeline with Sarvam for Indian
+  languages: Saaras v3 streaming speech-to-text (caller μ-law upsampled to 16 kHz PCM; its
+  VAD ends the turn) and Bulbul text-to-speech at 8 kHz (v3 voices, or v4-flash persona
+  voices named `name_lang_style`), one sentence per request. Needs the LLM vendor's key
+  plus a Sarvam key.
+
+Each speech engine ignores phrases that are mostly the agent's own recent words heard
+while it speaks (line echo), so an agent never answers itself.
+
 LLM adapters (`voice/llm`) each keep their vendor's native history. For Claude this
 matters: responses are appended exactly as returned (thinking blocks included),
 nothing earlier is edited, effort is `low` for latency, tool inputs stream eagerly

@@ -113,6 +113,7 @@ describe('engines', () => {
     expect(requiredProviders('GEMINI_LIVE', 'OPENAI')).toEqual(['GEMINI']);
     expect(requiredProviders('CASCADED', 'ANTHROPIC')).toEqual(['ANTHROPIC', 'DEEPGRAM']);
     expect(requiredProviders('ELEVENLABS', 'OPENAI')).toEqual(['OPENAI', 'ELEVENLABS']);
+    expect(requiredProviders('SARVAM', 'GEMINI')).toEqual(['GEMINI', 'SARVAM']);
   });
 
   it('summarises speech-to-speech calls on a text model of the same vendor', () => {
@@ -171,7 +172,7 @@ describe('GET /api/app/ai', () => {
   });
   app.use('/ai', aiRouter);
 
-  it.each(['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS'] as const)(
+  it.each(['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS', 'SARVAM'] as const)(
     'shows a %s workspace its voices and readiness, nothing about vendors or keys',
     async (engine) => {
       mocks.getAiStatus.mockResolvedValue(status(engine, engine !== 'CASCADED'));

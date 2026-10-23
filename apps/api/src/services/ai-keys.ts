@@ -108,6 +108,17 @@ export async function verifyApiKey(provider: CredentialProvider, apiKey: string)
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return;
       }
+      case 'SARVAM': {
+        // Sarvam has no free read-only endpoint; one word of speech costs next to nothing.
+        const res = await fetch('https://api.sarvam.ai/text-to-speech', {
+          method: 'POST',
+          headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: 'Hi', language_code: 'en-IN', speech_sample_rate: 8000 }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return;
+      }
     }
   } catch (err) {
     if (

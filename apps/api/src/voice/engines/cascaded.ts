@@ -8,6 +8,7 @@ import type { LlmConversation } from '../llm/types';
 import { mulawDurationMs } from '../transports';
 import { DeepgramStt, deepgramSpeak } from './deepgram';
 import { ElevenLabsStt, elevenLabsSpeak } from './elevenlabs-speech';
+import { SarvamStt, sarvamSpeak } from './sarvam-speech';
 import type { EngineCallbacks, EngineConfig, VoiceEngine } from './types';
 
 /** Words the caller must say over the agent before it stops talking. */
@@ -29,7 +30,7 @@ export function words(text: string): string[] {
 }
 
 /**
- * Speech-to-text → any LLM → text-to-speech, with Deepgram or ElevenLabs
+ * Speech-to-text → any LLM → text-to-speech, with Deepgram, ElevenLabs or Sarvam
  * (`speech`) doing the hearing and speaking.
  *
  * The caller's words stream to the speech vendor; when it marks the end of
@@ -40,7 +41,7 @@ export function words(text: string): string[] {
  * cleared and the in-flight LLM turn is aborted.
  */
 export class CascadedEngine implements VoiceEngine {
-  private stt: DeepgramStt | ElevenLabsStt;
+  private stt: DeepgramStt | ElevenLabsStt | SarvamStt;
   private llm: LlmConversation;
   private pendingUserText = '';
   private turnAbort: AbortController | null = null;
@@ -58,11 +59,16 @@ export class CascadedEngine implements VoiceEngine {
       provider: AiProvider;
       speechApiKey: string;
       /** Who hears and speaks; Deepgram unless set. */
-      speech?: 'DEEPGRAM' | 'ELEVENLABS';
+      speech?: 'DEEPGRAM' | 'ELEVENLABS' | 'SARVAM';
     },
     private readonly cb: EngineCallbacks,
   ) {
-    const Stt = config.speech === 'ELEVENLABS' ? ElevenLabsStt : DeepgramStt;
+    const Stt =
+      config.speech === 'ELEVENLABS'
+        ? ElevenLabsStt
+        : config.speech === 'SARVAM'
+          ? SarvamStt
+          : DeepgramStt;
     this.stt = new Stt(config.speechApiKey, config.language, {
       onTranscript: (text, final) => {
         // The phone line can carry the agent's own voice back to the
@@ -213,6 +219,15 @@ export class CascadedEngine implements VoiceEngine {
             onChunk,
             signal,
             isoLanguage(this.config.language),
+          );
+        } else if (this.config.speech === 'SARVAM') {
+          await sarvamSpeak(
+            this.config.speechApiKey,
+            this.config.voice,
+            text,
+            onChunk,
+            signal,
+            this.config.language,
           );
         } else {
           await deepgramSpeak(this.config.speechApiKey, this.config.voice, text, onChunk, signal);

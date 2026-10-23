@@ -35,6 +35,7 @@ export const KEY_USES: Record<CredentialProvider, string> = {
     'Hearing and speaking on the Cascaded engine only. Gemini Live and Realtime don’t use it.',
   ELEVENLABS:
     'Hearing and speaking on the ElevenLabs engine: realtime speech recognition and text-to-speech.',
+  SARVAM: 'Hearing and speaking on the Sarvam AI engine: Indian languages and voices.',
 };
 
 const MODEL_LABEL: Record<VoiceEngine, string> = {
@@ -42,9 +43,19 @@ const MODEL_LABEL: Record<VoiceEngine, string> = {
   GEMINI_LIVE: 'Live model',
   CASCADED: 'Model',
   ELEVENLABS: 'Model',
+  SARVAM: 'Model',
 };
 
 const CUSTOM = '__custom__';
+
+/** Engines where a speech vendor hears and speaks and a separate LLM thinks. */
+const SPEECH_PIPELINES: VoiceEngine[] = ['CASCADED', 'ELEVENLABS', 'SARVAM'];
+
+const LISTENS_AND_SPEAKS: Partial<Record<VoiceEngine, string>> = {
+  CASCADED: 'Deepgram',
+  ELEVENLABS: 'ElevenLabs',
+  SARVAM: 'Sarvam AI',
+};
 
 /** Just the settings, without the API's `source` or anything else riding along. */
 export function pickAiSettings(v: AiSettingsView): AiSettingsView {
@@ -57,7 +68,7 @@ export function sameAiSettings(a: AiSettingsView, b: AiSettingsView) {
 
 /** "Gemini Live · gemini-3.8-live", with the LLM vendor for Cascaded. */
 export function describeAiSettings(v: AiSettingsView) {
-  return v.voiceEngine === 'CASCADED' || v.voiceEngine === 'ELEVENLABS'
+  return SPEECH_PIPELINES.includes(v.voiceEngine)
     ? `${VOICE_ENGINE_LABELS[v.voiceEngine]} · ${AI_PROVIDER_LABELS[v.llmProvider]} · ${v.model}`
     : `${VOICE_ENGINE_LABELS[v.voiceEngine]} · ${v.model}`;
 }
@@ -82,7 +93,7 @@ export function EngineModelFields({
   const options = modelsForEngine(value.voiceEngine, value.llmProvider);
   const known = options.find((m) => m.id === value.model);
   const [customMode, setCustomMode] = useState(false);
-  const hasLlmVendor = value.voiceEngine === 'CASCADED' || value.voiceEngine === 'ELEVENLABS';
+  const hasLlmVendor = SPEECH_PIPELINES.includes(value.voiceEngine);
   const custom = customMode || !known;
 
   const setEngine = (voiceEngine: VoiceEngine) => {
@@ -106,7 +117,7 @@ export function EngineModelFields({
     <div className="space-y-5">
       <fieldset disabled={disabled}>
         <legend className="label">Voice engine</legend>
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {VOICE_ENGINES.map((engine) => {
             const checked = value.voiceEngine === engine;
             return (
@@ -144,11 +155,7 @@ export function EngineModelFields({
           <Field
             id={`${idPrefix}-provider`}
             label="LLM vendor"
-            help={
-              value.voiceEngine === 'ELEVENLABS'
-                ? 'Does the thinking on the call; ElevenLabs hears and speaks.'
-                : 'Does the thinking on the call; Deepgram hears and speaks.'
-            }
+            help={`Does the thinking on the call; ${LISTENS_AND_SPEAKS[value.voiceEngine]} hears and speaks.`}
           >
             <select
               id={`${idPrefix}-provider`}
