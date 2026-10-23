@@ -323,6 +323,17 @@ the most sensitive setting); OpenAI Realtime adds near-field noise reduction and
   filter) over the agent's voice
   aborts the LLM turn and clears playback.
 
+- **ElevenLabs Agents** (`engines/elevenlabs.ts`) — an ElevenLabs voice agent answers the
+  call over its conversation WebSocket. Needs only an ElevenLabs key; the engine's "model"
+  is the agent id (`agent_…`), and the voice, LLM and knowledge base are set on that agent
+  in ElevenLabs. Per call we override its prompt, first message and language (enable
+  overrides in the agent's Security tab), so our prompt assembly and `{{variables}}` still
+  apply. An agent set to μ-law 8000 Hz passes audio straight through; PCM 24 kHz out and
+  PCM 16 kHz in are converted. ElevenLabs only calls tools configured on the agent: client
+  tools named like ours (`check_availability`, `book_appointment`, `transfer_call`,
+  `end_call`, `send_email`, `send_whatsapp`) run here. Summaries need a Gemini key
+  (none: no summary).
+
 LLM adapters (`voice/llm`) each keep their vendor's native history. For Claude this
 matters: responses are appended exactly as returned (thinking blocks included),
 nothing earlier is edited, effort is `low` for latency, tool inputs stream eagerly

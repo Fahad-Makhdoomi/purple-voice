@@ -100,6 +100,15 @@ export async function verifyApiKey(provider: CredentialProvider, apiKey: string)
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return;
       }
+      case 'ELEVENLABS': {
+        // Voice agents are all this key is for, so check it can read them.
+        const res = await fetch('https://api.elevenlabs.io/v1/convai/agents?page_size=1', {
+          headers: { 'xi-api-key': apiKey },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return;
+      }
     }
   } catch (err) {
     if (

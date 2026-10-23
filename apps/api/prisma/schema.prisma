@@ -73,6 +73,7 @@ enum CredentialProvider {
   ANTHROPIC
   GEMINI
   DEEPGRAM
+  ELEVENLABS
 }
 
 enum TelephonyProvider {
@@ -85,6 +86,7 @@ enum VoiceEngine {
   REALTIME
   GEMINI_LIVE
   CASCADED
+  ELEVENLABS
 }
 
 enum AiProvider {

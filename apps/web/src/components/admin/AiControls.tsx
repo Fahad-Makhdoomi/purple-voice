@@ -33,12 +33,15 @@ export const KEY_USES: Record<CredentialProvider, string> = {
   GEMINI: 'Gemini Live, and Gemini models on the Cascaded engine.',
   DEEPGRAM:
     'Hearing and speaking on the Cascaded engine only. Gemini Live and Realtime don’t use it.',
+  ELEVENLABS:
+    'ElevenLabs Agents engine: the voice agent that answers the call. Needs “ElevenLabs Agents” read access.',
 };
 
 const MODEL_LABEL: Record<VoiceEngine, string> = {
   REALTIME: 'Realtime model',
   GEMINI_LIVE: 'Live model',
   CASCADED: 'Model',
+  ELEVENLABS: 'ElevenLabs agent id',
 };
 
 const CUSTOM = '__custom__';
@@ -79,6 +82,8 @@ export function EngineModelFields({
   const options = modelsForEngine(value.voiceEngine, value.llmProvider);
   const known = options.find((m) => m.id === value.model);
   const [customMode, setCustomMode] = useState(false);
+  // An ElevenLabs agent id is always typed: there is no catalogue to pick from.
+  const isAgentId = value.voiceEngine === 'ELEVENLABS';
   const custom = customMode || !known;
 
   const setEngine = (voiceEngine: VoiceEngine) => {
@@ -102,7 +107,7 @@ export function EngineModelFields({
     <div className="space-y-5">
       <fieldset disabled={disabled}>
         <legend className="label">Voice engine</legend>
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
           {VOICE_ENGINES.map((engine) => {
             const checked = value.voiceEngine === engine;
             return (
@@ -157,44 +162,54 @@ export function EngineModelFields({
             </select>
           </Field>
         )}
-        <Field
-          id={`${idPrefix}-model`}
-          label={MODEL_LABEL[value.voiceEngine]}
-          help={
-            custom
-              ? 'Type any model id the vendor supports below.'
-              : (known?.hint ?? 'Pick a suggestion, or choose “Another model id” to type one.')
-          }
-        >
-          <select
+        {!isAgentId && (
+          <Field
             id={`${idPrefix}-model`}
-            className="select"
-            value={custom ? CUSTOM : value.model}
-            disabled={disabled}
-            onChange={(e) => {
-              if (e.target.value === CUSTOM) {
-                setCustomMode(true);
-              } else {
-                setCustomMode(false);
-                onChange({ ...value, model: e.target.value });
-              }
-            }}
+            label={MODEL_LABEL[value.voiceEngine]}
+            help={
+              custom
+                ? 'Type any model id the vendor supports below.'
+                : (known?.hint ?? 'Pick a suggestion, or choose “Another model id” to type one.')
+            }
           >
-            {options.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-                {m.hint ? ` — ${m.hint}` : ''}
-              </option>
-            ))}
-            <option value={CUSTOM}>Another model id…</option>
-          </select>
-        </Field>
+            <select
+              id={`${idPrefix}-model`}
+              className="select"
+              value={custom ? CUSTOM : value.model}
+              disabled={disabled}
+              onChange={(e) => {
+                if (e.target.value === CUSTOM) {
+                  setCustomMode(true);
+                } else {
+                  setCustomMode(false);
+                  onChange({ ...value, model: e.target.value });
+                }
+              }}
+            >
+              {options.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                  {m.hint ? ` — ${m.hint}` : ''}
+                </option>
+              ))}
+              <option value={CUSTOM}>Another model id…</option>
+            </select>
+          </Field>
+        )}
         {custom && (
           <Field
             id={`${idPrefix}-model-id`}
-            label="Model id"
-            help="Exactly as the vendor names it: letters, digits and . : / - _ only."
-            className={value.voiceEngine === 'CASCADED' ? 'sm:col-span-2 sm:max-w-md' : undefined}
+            label={isAgentId ? 'ElevenLabs agent id' : 'Model id'}
+            help={
+              isAgentId
+                ? 'From ElevenLabs → Agents → your agent (agent_…). In its Security tab, allow overriding the system prompt, first message and language, and set audio to μ-law 8000 Hz for best quality.'
+                : 'Exactly as the vendor names it: letters, digits and . : / - _ only.'
+            }
+            className={
+              value.voiceEngine === 'CASCADED' || isAgentId
+                ? 'sm:col-span-2 sm:max-w-md'
+                : undefined
+            }
           >
             <input
               id={`${idPrefix}-model-id`}

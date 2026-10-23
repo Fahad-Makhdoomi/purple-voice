@@ -30,6 +30,7 @@ import { mulawDurationMs, type MediaTransport } from './transports';
 import { OpenAIRealtimeEngine } from './engines/openai-realtime';
 import { GeminiLiveEngine } from './engines/gemini-live';
 import { CascadedEngine } from './engines/cascaded';
+import { ElevenLabsEngine } from './engines/elevenlabs';
 import type { VoiceEngine } from './engines/types';
 
 type LoadedCall = Call & {
@@ -226,6 +227,12 @@ export class CallSession {
           callbacks,
         );
       }
+      case 'ELEVENLABS':
+        // The agent id rides in `model`; the voice is whatever the agent has in ElevenLabs.
+        return new ElevenLabsEngine(
+          { ...engineConfig, apiKey: await this.requireKey('ELEVENLABS') },
+          callbacks,
+        );
     }
   }
 

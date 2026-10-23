@@ -82,6 +82,14 @@ export const GEMINI_LIVE_VOICES: ModelOption[] = [
   { id: 'Zephyr', label: 'Zephyr — bright' },
 ];
 
+/**
+ * ELEVENLABS: the "model" staff enter is the ElevenLabs agent id
+ * (agent_…), and the voice is the one set on that agent in ElevenLabs.
+ */
+export const ELEVENLABS_VOICES: ModelOption[] = [
+  { id: 'agent-default', label: 'Your agent’s configured voice' },
+];
+
 /** Deepgram Aura voices for the CASCADED engine. */
 export const CASCADED_VOICES: ModelOption[] = [
   { id: 'aura-2-thalia-en', label: 'Thalia — warm, clear (US)' },
@@ -113,6 +121,8 @@ export function voicesForEngine(engine: VoiceEngine): ModelOption[] {
       return GEMINI_LIVE_VOICES;
     case 'CASCADED':
       return CASCADED_VOICES;
+    case 'ELEVENLABS':
+      return ELEVENLABS_VOICES;
   }
 }
 
@@ -120,6 +130,7 @@ export const DEFAULT_VOICE: Record<VoiceEngine, string> = {
   REALTIME: 'marin',
   GEMINI_LIVE: 'Puck',
   CASCADED: 'aura-2-thalia-en',
+  ELEVENLABS: 'agent-default',
 };
 
 /** The voice to use: the agent's own if the engine offers it, else the engine default. */
@@ -133,12 +144,14 @@ export function voiceForEngine(engine: VoiceEngine, voice: string | null | undef
 export function modelsForEngine(engine: VoiceEngine, llmProvider: AiProvider): ModelOption[] {
   if (engine === 'REALTIME') return REALTIME_MODELS;
   if (engine === 'GEMINI_LIVE') return GEMINI_LIVE_MODELS;
+  if (engine === 'ELEVENLABS') return [];
   return LLM_MODELS[llmProvider];
 }
 
 export function defaultModelForEngine(engine: VoiceEngine, llmProvider: AiProvider): string {
   if (engine === 'REALTIME') return REALTIME_MODELS[0]!.id;
   if (engine === 'GEMINI_LIVE') return GEMINI_LIVE_MODELS[0]!.id;
+  if (engine === 'ELEVENLABS') return '';
   return DEFAULT_LLM_MODEL[llmProvider];
 }
 
@@ -148,7 +161,8 @@ export const REALTIME_SUMMARY_MODEL = 'gpt-4.1-mini';
 /**
  * The text model that writes post-call summaries. Speech-to-speech models
  * can't return text-only JSON, so REALTIME summarises on an OpenAI chat
- * model and GEMINI_LIVE on a Gemini text model; CASCADED uses its own LLM.
+ * model, GEMINI_LIVE and ELEVENLABS on a Gemini text model (no Gemini key: no
+ * summary); CASCADED uses its own LLM.
  */
 export function summaryModelForEngine(
   engine: VoiceEngine,
@@ -156,7 +170,8 @@ export function summaryModelForEngine(
   model: string,
 ): { provider: AiProvider; model: string } {
   if (engine === 'REALTIME') return { provider: 'OPENAI', model: REALTIME_SUMMARY_MODEL };
-  if (engine === 'GEMINI_LIVE') return { provider: 'GEMINI', model: DEFAULT_LLM_MODEL.GEMINI };
+  if (engine === 'GEMINI_LIVE' || engine === 'ELEVENLABS')
+    return { provider: 'GEMINI', model: DEFAULT_LLM_MODEL.GEMINI };
   return { provider: llmProvider, model };
 }
 
@@ -167,5 +182,6 @@ export function requiredProviders(
 ): CredentialProvider[] {
   if (engine === 'REALTIME') return ['OPENAI'];
   if (engine === 'GEMINI_LIVE') return ['GEMINI'];
+  if (engine === 'ELEVENLABS') return ['ELEVENLABS'];
   return [llmProvider, 'DEEPGRAM'];
 }

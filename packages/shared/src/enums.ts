@@ -17,8 +17,8 @@ export const TELEPHONY_PROVIDER_LABELS: Record<TelephonyProvider, string> = {
 export const AI_PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
-/** Speech vendors used by the cascaded voice engine (speech-to-text + text-to-speech). */
-export const SPEECH_PROVIDERS = ['DEEPGRAM'] as const;
+/** Speech vendors: Deepgram for the cascaded engine, ElevenLabs for its own voice agents. */
+export const SPEECH_PROVIDERS = ['DEEPGRAM', 'ELEVENLABS'] as const;
 export type SpeechProvider = (typeof SPEECH_PROVIDERS)[number];
 
 export const CREDENTIAL_PROVIDERS = [...AI_PROVIDERS, ...SPEECH_PROVIDERS] as const;
@@ -29,6 +29,7 @@ export const CREDENTIAL_PROVIDER_LABELS: Record<CredentialProvider, string> = {
   ANTHROPIC: 'Claude (Anthropic)',
   GEMINI: 'Google Gemini',
   DEEPGRAM: 'Deepgram (speech)',
+  ELEVENLABS: 'ElevenLabs',
 };
 
 /**
@@ -39,14 +40,17 @@ export const CREDENTIAL_PROVIDER_LABELS: Record<CredentialProvider, string> = {
  *  GEMINI_LIVE  Gemini Live speech-to-speech. Needs a Gemini key only.
  *  CASCADED     speech-to-text -> any LLM (OpenAI, Claude, Gemini) -> text-to-speech.
  *               Needs the LLM vendor's key plus a Deepgram key for speech.
+ *  ELEVENLABS   An ElevenLabs voice agent (built in ElevenLabs Agents) answers the call.
+ *               Needs an ElevenLabs key; the "model" is the ElevenLabs agent id.
  */
-export const VOICE_ENGINES = ['REALTIME', 'GEMINI_LIVE', 'CASCADED'] as const;
+export const VOICE_ENGINES = ['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS'] as const;
 export type VoiceEngine = (typeof VOICE_ENGINES)[number];
 
 export const VOICE_ENGINE_LABELS: Record<VoiceEngine, string> = {
   REALTIME: 'OpenAI Realtime',
   GEMINI_LIVE: 'Gemini Live',
   CASCADED: 'Cascaded (speech → LLM → speech)',
+  ELEVENLABS: 'ElevenLabs Agents',
 };
 
 export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
@@ -54,6 +58,8 @@ export const VOICE_ENGINE_DESCRIPTIONS: Record<VoiceEngine, string> = {
   GEMINI_LIVE: 'Speech-to-speech on Google Gemini. Needs a Gemini key only, no Deepgram.',
   CASCADED:
     'Deepgram hears and speaks; OpenAI, Claude or Gemini thinks. Needs that vendor’s key and a Deepgram key.',
+  ELEVENLABS:
+    'An ElevenLabs voice agent talks; its voice, language model and knowledge are set in ElevenLabs. Needs an ElevenLabs key and the agent id.',
 };
 
 export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {

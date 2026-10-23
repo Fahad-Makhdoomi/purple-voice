@@ -27,7 +27,16 @@ import { agentReadiness } from '../src/services/agent-readiness';
 import { aiRouter } from '../src/modules/workspace/ai';
 
 /** Words that would tell a subscriber which vendor or model powers their agents. */
-const VENDOR_WORDS = ['openai', 'anthropic', 'claude', 'gemini', 'deepgram', 'gpt', 'realtime'];
+const VENDOR_WORDS = [
+  'openai',
+  'anthropic',
+  'claude',
+  'gemini',
+  'deepgram',
+  'gpt',
+  'realtime',
+  'elevenlabs',
+];
 
 function status(voiceEngine: VoiceEngine, ready: boolean): AiStatus {
   return {
@@ -97,6 +106,7 @@ describe('engines', () => {
   it('needs only a Gemini key for Gemini Live, no Deepgram', () => {
     expect(requiredProviders('GEMINI_LIVE', 'OPENAI')).toEqual(['GEMINI']);
     expect(requiredProviders('CASCADED', 'ANTHROPIC')).toEqual(['ANTHROPIC', 'DEEPGRAM']);
+    expect(requiredProviders('ELEVENLABS', 'OPENAI')).toEqual(['ELEVENLABS']);
   });
 
   it('summarises speech-to-speech calls on a text model of the same vendor', () => {
@@ -155,7 +165,7 @@ describe('GET /api/app/ai', () => {
   });
   app.use('/ai', aiRouter);
 
-  it.each(['REALTIME', 'GEMINI_LIVE', 'CASCADED'] as const)(
+  it.each(['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS'] as const)(
     'shows a %s workspace its voices and readiness, nothing about vendors or keys',
     async (engine) => {
       mocks.getAiStatus.mockResolvedValue(status(engine, engine !== 'CASCADED'));
