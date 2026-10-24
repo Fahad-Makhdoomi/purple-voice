@@ -68,6 +68,8 @@ export class CascadedEngine implements VoiceEngine {
       speechApiKey: string;
       /** Who hears and speaks; Deepgram unless set. */
       speech?: 'DEEPGRAM' | 'ELEVENLABS' | 'SARVAM';
+      /** Text-to-speech model (ElevenLabs, Sarvam); the vendor default when unset. */
+      speechModel?: string;
     },
     private readonly cb: EngineCallbacks,
   ) {
@@ -107,7 +109,7 @@ export class CascadedEngine implements VoiceEngine {
         ? new ClaudeConversation(...args)
         : config.provider === 'GEMINI'
           ? new GeminiConversation(...args)
-          : new OpenAIConversation(...args);
+          : new OpenAIConversation(...args, config.provider === 'SARVAM' ? 'SARVAM' : 'OPENAI');
   }
 
   async start(): Promise<void> {
@@ -178,7 +180,12 @@ export class CascadedEngine implements VoiceEngine {
 
     const flush = (force: boolean) => {
       // Speak whole sentences (or lines) as soon as they're complete.
-      const match = force ? buffer : buffer.match(/^[\s\S]*?(?:[.!?…।](\s|$)|\n)/)?.[0];
+      // The first words of a reply go out at the first comma once there are a
+      // few of them, so the caller hears the agent sooner.
+      const match = force
+        ? buffer
+        : (buffer.match(/^[\s\S]*?(?:[.!?…।](\s|$)|\n)/)?.[0] ??
+          (!full ? buffer.match(/^(?:\S+\s+){3,}?\S+[,;:،](\s)/)?.[0] : undefined));
       if (!match || !match.trim()) {
         if (force) buffer = '';
         return;
@@ -243,6 +250,7 @@ export class CascadedEngine implements VoiceEngine {
             onChunk,
             signal,
             isoLanguage(this.config.language),
+            this.config.speechModel,
           );
         } else if (this.config.speech === 'SARVAM') {
           await sarvamSpeak(
@@ -252,6 +260,7 @@ export class CascadedEngine implements VoiceEngine {
             onChunk,
             signal,
             this.config.language,
+            this.config.speechModel,
           );
         } else {
           await deepgramSpeak(this.config.speechApiKey, this.config.voice, text, onChunk, signal);

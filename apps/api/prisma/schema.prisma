@@ -95,6 +95,7 @@ enum AiProvider {
   OPENAI
   ANTHROPIC
   GEMINI
+  SARVAM
 }
 
 /// How hard the agent filters the caller's line before its voice detection
@@ -477,6 +478,8 @@ model WorkspaceAiSettings {
   llmProvider AiProvider  @default(OPENAI)
   /// Realtime / Live model for speech-to-speech engines, the LLM for CASCADED.
   model       String
+  /// Text-to-speech model for the ElevenLabs and Sarvam engines (e.g. bulbul:v3); null: the engine default.
+  speechModel String?
   updatedById String?
   updatedAt   DateTime    @updatedAt
 }

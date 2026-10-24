@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { sarvamChatClient } from './sarvam-client';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { CALL_OUTCOMES, summaryModelForEngine } from '@pv/shared';
@@ -99,8 +100,11 @@ export async function summarizeCall(
       return text ? summarySchema.parse(JSON.parse(text)) : null;
     }
 
-    if (provider === 'OPENAI') {
-      const client = new OpenAI({ apiKey, timeout: 60_000 });
+    if (provider === 'OPENAI' || provider === 'SARVAM') {
+      const client =
+        provider === 'SARVAM'
+          ? sarvamChatClient(apiKey, 60_000)
+          : new OpenAI({ apiKey, timeout: 60_000 });
       const completion = await client.chat.completions.create({
         model,
         messages: [

@@ -10,7 +10,7 @@ import type { SttEvents } from './deepgram';
 
 const STT_URL = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime';
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
-/** Low-latency multilingual model (32 languages). */
+/** Default: the low-latency multilingual model (32 languages). Staff can pick another. */
 const TTS_MODEL = 'eleven_flash_v2_5';
 
 export class ElevenLabsStt {
@@ -101,6 +101,7 @@ export async function elevenLabsSpeak(
   onChunk: (payloadB64: string) => void,
   signal: AbortSignal,
   language = 'en',
+  model = TTS_MODEL,
   baseUrl = TTS_URL,
 ): Promise<void> {
   const res = await fetch(
@@ -108,7 +109,7 @@ export async function elevenLabsSpeak(
     {
       method: 'POST',
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, model_id: TTS_MODEL, language_code: language }),
+      body: JSON.stringify({ text, model_id: model, language_code: language }),
       signal,
     },
   );

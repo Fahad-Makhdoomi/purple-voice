@@ -19,13 +19,13 @@ import type { SttEvents } from './deepgram';
 
 const STT_URL = 'wss://api.sarvam.ai/speech-to-text/ws';
 const TTS_URL = 'https://api.sarvam.ai/text-to-speech';
-/** If Saaras reports the end of speech but sends no transcript, ask it to finalise. */
-const FLUSH_AFTER_MS = 1200;
+/** A transcript repeated this soon (after a flush that wasn't needed) is the same turn. */
+const DUPLICATE_MS = 3000;
 
 export class SarvamStt {
   private ws?: WebSocket;
   private up = new Upsampler8kTo16k();
-  private flushTimer?: NodeJS.Timeout;
+  private last = { text: '', at: 0 };
 
   constructor(
     private readonly apiKey: string,
@@ -58,19 +58,20 @@ export class SarvamStt {
       }
       const data = msg.data ?? {};
       if (msg.type === 'data') {
-        clearTimeout(this.flushTimer);
         const text: string = data.transcript?.trim() ?? '';
+        const now = Date.now();
+        if (text === this.last.text && now - this.last.at < DUPLICATE_MS) return;
+        this.last = { text, at: now };
         if (text) {
           this.events.onTranscript(text, true);
           this.events.onUtteranceEnd();
         }
       } else if (msg.type === 'events') {
         if (data.signal_type === 'START_SPEECH') {
-          clearTimeout(this.flushTimer);
           this.events.onSpeechStarted();
         } else if (data.signal_type === 'END_SPEECH') {
-          clearTimeout(this.flushTimer);
-          this.flushTimer = setTimeout(() => this.sendJson({ type: 'flush' }), FLUSH_AFTER_MS);
+          // Ask for the transcript now instead of waiting on Saaras to decide.
+          this.sendJson({ type: 'flush' });
         }
       } else if (msg.type === 'error') {
         this.events.onError(new Error(`Sarvam STT: ${data.error ?? data.message ?? 'error'}`));
@@ -107,7 +108,6 @@ export class SarvamStt {
   }
 
   close() {
-    clearTimeout(this.flushTimer);
     this.ws?.close();
   }
 }
@@ -162,6 +162,7 @@ export async function sarvamSpeak(
   onChunk: (payloadB64: string) => void,
   signal: AbortSignal,
   language = 'en-IN',
+  model = sarvamModelForVoice(voice),
   url = TTS_URL,
 ): Promise<void> {
   const res = await fetch(url, {
@@ -171,7 +172,7 @@ export async function sarvamSpeak(
       text,
       language_code: sarvamLanguage(language),
       speaker: voice,
-      model: sarvamModelForVoice(voice),
+      model,
       speech_sample_rate: 8000,
     }),
     signal,

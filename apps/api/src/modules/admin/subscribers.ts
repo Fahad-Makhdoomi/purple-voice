@@ -283,12 +283,14 @@ async function aiAdminView(workspaceId: string): Promise<AiAdminView> {
       voiceEngine: status.settings.voiceEngine,
       llmProvider: status.settings.llmProvider,
       model: status.settings.model,
+      speechModel: status.settings.speechModel,
       source: status.settings.source,
     },
     platformDefault: {
       voiceEngine: platformDefault.voiceEngine,
       llmProvider: platformDefault.llmProvider,
       model: platformDefault.model,
+      speechModel: platformDefault.speechModel ?? null,
     },
     keys: status.keys,
     workspaceKeys: CREDENTIAL_PROVIDERS.flatMap((provider) => {

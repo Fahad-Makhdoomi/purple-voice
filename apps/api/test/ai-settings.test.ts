@@ -7,6 +7,8 @@ import {
   credentialProviderParamSchema,
   DEFAULT_LLM_MODEL,
   DEFAULT_VOICE,
+  defaultVoiceFor,
+  speechModelFor,
   languagesForEngine,
   LLM_MODELS,
   REALTIME_SUMMARY_MODEL,
@@ -50,6 +52,7 @@ function status(voiceEngine: VoiceEngine, ready: boolean): AiStatus {
       voiceEngine,
       llmProvider: 'ANTHROPIC',
       model: DEFAULT_LLM_MODEL.ANTHROPIC,
+      speechModel: speechModelFor(voiceEngine),
       source: 'workspace',
     },
     keys: requiredProviders(voiceEngine, 'ANTHROPIC').map((provider) => ({
@@ -186,8 +189,8 @@ describe('GET /api/app/ai', () => {
       ]);
       expect(res.body.customVoice).toBe(engine === 'ELEVENLABS');
       expect(res.body.languages).toEqual([...languagesForEngine(engine)]);
-      expect(res.body.voices).toEqual(voicesForEngine(engine));
-      expect(res.body.defaultVoice).toBe(DEFAULT_VOICE[engine]);
+      expect(res.body.voices).toEqual(voicesForEngine(engine, speechModelFor(engine)));
+      expect(res.body.defaultVoice).toBe(defaultVoiceFor(engine, speechModelFor(engine)));
       expect(res.body.ready).toBe(engine !== 'CASCADED');
       const text = JSON.stringify(res.body).toLowerCase();
       for (const word of VENDOR_WORDS) expect(text).not.toContain(word);

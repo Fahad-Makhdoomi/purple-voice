@@ -76,6 +76,7 @@ describe('elevenLabsSpeak', () => {
       (c) => chunks.push(c),
       new AbortController().signal,
       'en',
+      undefined,
       `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     );
     expect(seen.url).toBe('/voice123/stream?output_format=ulaw_8000');

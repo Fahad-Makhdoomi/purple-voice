@@ -147,6 +147,13 @@ export const aiSettingsSchema = z.object({
     .min(2)
     .max(100)
     .regex(/^[\w.:/-]+$/, 'Model ids contain only letters, digits and . : / - _'),
+  /** Text-to-speech model for the ElevenLabs and Sarvam engines (e.g. bulbul:v3). */
+  speechModel: z
+    .string()
+    .trim()
+    .max(60)
+    .regex(/^[\w.:/-]*$/, 'Model ids contain only letters, digits and . : / - _')
+    .nullish(),
 });
 export type AiSettingsInput = z.infer<typeof aiSettingsSchema>;
 

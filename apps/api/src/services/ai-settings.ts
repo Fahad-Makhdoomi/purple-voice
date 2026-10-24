@@ -1,5 +1,5 @@
 import type { AiProvider, CredentialProvider, VoiceEngine } from '@prisma/client';
-import { requiredProviders } from '@pv/shared';
+import { requiredProviders, speechModelFor } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { getSetting } from './settings';
 import { keySource, type KeySource } from './ai-keys';
@@ -13,6 +13,8 @@ export interface AiSettings {
   voiceEngine: VoiceEngine;
   llmProvider: AiProvider;
   model: string;
+  /** The engine's text-to-speech model, resolved to its default ('' when it has none). */
+  speechModel: string;
   /** `workspace` when staff set this subscriber's AI, `platform` when it follows the default. */
   source: 'workspace' | 'platform';
 }
@@ -24,11 +26,16 @@ export async function getAiSettings(workspaceId: string): Promise<AiSettings> {
       voiceEngine: row.voiceEngine,
       llmProvider: row.llmProvider,
       model: row.model,
+      speechModel: speechModelFor(row.voiceEngine, row.speechModel),
       source: 'workspace',
     };
   }
   const platform = await getSetting('ai');
-  return { ...platform, source: 'platform' };
+  return {
+    ...platform,
+    speechModel: speechModelFor(platform.voiceEngine, platform.speechModel),
+    source: 'platform',
+  };
 }
 
 export interface AiKeyStatus {

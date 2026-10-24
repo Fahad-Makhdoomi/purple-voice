@@ -14,6 +14,8 @@ export interface AiSettingsView {
   voiceEngine: VoiceEngine;
   llmProvider: AiProvider;
   model: string;
+  /** Text-to-speech model (ElevenLabs, Sarvam); '' or null when the engine has no choice. */
+  speechModel?: string | null;
 }
 
 /** GET /api/app/ai — the subscriber's view. No vendor, model or key information. */

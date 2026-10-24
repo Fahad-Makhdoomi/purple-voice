@@ -1,6 +1,25 @@
-import { GoogleGenAI, type Content, type Part } from '@google/genai';
+import {
+  GoogleGenAI,
+  ThinkingLevel,
+  type Content,
+  type Part,
+  type ThinkingConfig,
+} from '@google/genai';
 import type { ToolDefinition } from '../tools';
 import { MAX_TOOL_ROUNDS, type LlmConversation, type TurnHandlers } from './types';
+
+/**
+ * As little thinking as each Gemini generation allows: on a phone call every
+ * second of thought is a second of silence. 2.5 Flash can switch it off;
+ * 2.5 Pro's floor is 128 tokens; Gemini 3 takes a level instead of a budget.
+ */
+export function callThinking(model: string): ThinkingConfig | undefined {
+  if (model.startsWith('gemini-2.5-pro')) return { thinkingBudget: 128 };
+  if (model.startsWith('gemini-2.5')) return { thinkingBudget: 0 };
+  if (/^gemini-[3-9]/.test(model))
+    return { thinkingLevel: model.includes('pro') ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL };
+  return undefined;
+}
 
 /** Google Gemini, streamed, with function declarations. */
 export class GeminiConversation implements LlmConversation {
@@ -31,6 +50,7 @@ export class GeminiConversation implements LlmConversation {
         config: {
           systemInstruction: this.system,
           abortSignal: h.signal,
+          thinkingConfig: callThinking(this.model),
           tools: this.tools.length
             ? [
                 {

@@ -3,10 +3,15 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
+import { sarvamChatClient } from '../../services/ai/sarvam-client';
 import type { ToolDefinition } from '../tools';
 import { MAX_TOOL_ROUNDS, type LlmConversation, type TurnHandlers } from './types';
 
-/** OpenAI Chat Completions, streamed, with function calling. */
+/**
+ * OpenAI Chat Completions, streamed, with function calling. Also drives
+ * Sarvam's OpenAI-compatible chat API (`vendor: 'SARVAM'`), with its
+ * reasoning switched off so the caller isn't kept waiting.
+ */
 export class OpenAIConversation implements LlmConversation {
   private readonly client: OpenAI;
   private readonly messages: ChatCompletionMessageParam[];
@@ -17,8 +22,12 @@ export class OpenAIConversation implements LlmConversation {
     private readonly model: string,
     system: string,
     tools: ToolDefinition[],
+    private readonly vendor: 'OPENAI' | 'SARVAM' = 'OPENAI',
   ) {
-    this.client = new OpenAI({ apiKey, timeout: 30_000 });
+    this.client =
+      vendor === 'SARVAM'
+        ? sarvamChatClient(apiKey, 30_000)
+        : new OpenAI({ apiKey, timeout: 30_000 });
     this.messages = [{ role: 'system', content: system }];
     this.tools = tools.map((t) => ({
       type: 'function',
@@ -41,6 +50,8 @@ export class OpenAIConversation implements LlmConversation {
           messages: this.messages,
           tools: this.tools.length ? this.tools : undefined,
           stream: true,
+          // Sarvam thinks by default; on a call that is seconds of silence.
+          ...(this.vendor === 'SARVAM' ? { reasoning_effort: null } : {}),
         },
         { signal: h.signal },
       );

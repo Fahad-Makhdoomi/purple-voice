@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  DEFAULT_VOICE,
+  defaultVoiceFor,
   languagesForEngine,
   voicesForEngine,
   type WorkspaceAiView,
@@ -24,8 +24,8 @@ aiRouter.get('/', async (req, res) => {
   const key = elevenLabs ? await findApiKey(wsId(req), 'ELEVENLABS') : null;
   const accountVoices = key ? await tryListElevenLabsVoices(key) : null;
   const view: WorkspaceAiView = {
-    voices: accountVoices ?? voicesForEngine(settings.voiceEngine),
-    defaultVoice: DEFAULT_VOICE[settings.voiceEngine],
+    voices: accountVoices ?? voicesForEngine(settings.voiceEngine, settings.speechModel),
+    defaultVoice: defaultVoiceFor(settings.voiceEngine, settings.speechModel),
     languages: [...languagesForEngine(settings.voiceEngine)],
     customVoice: elevenLabs,
     ready,

@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer } from 'ws';
 import type { AddressInfo } from 'node:net';
-import { sarvamLanguage, SARVAM_VOICES, voicesForEngine, GEMINI_LIVE_VOICES } from '@pv/shared';
+import {
+  GEMINI_LIVE_VOICES,
+  SARVAM_V2_VOICES,
+  SARVAM_VOICES,
+  sarvamLanguage,
+  speechModelFor,
+  voiceForEngine,
+  voicesForEngine,
+} from '@pv/shared';
 import { mulawEncode } from '../src/voice/audio';
 import {
   SarvamStt,
@@ -48,8 +56,25 @@ describe('Sarvam language and voices', () => {
   it('picks the Bulbul model from the voice', () => {
     expect(sarvamModelForVoice('shubh')).toBe('bulbul:v3');
     expect(sarvamModelForVoice('ritu_hi_sales')).toBe('bulbul:v4-flash');
-    expect(voicesForEngine('SARVAM')).toBe(SARVAM_VOICES);
     expect(SARVAM_VOICES.length).toBeGreaterThan(80);
+  });
+
+  it('lists the voices of the Bulbul model staff picked', () => {
+    expect(speechModelFor('SARVAM')).toBe('bulbul:v3');
+    expect(speechModelFor('SARVAM', 'bulbul:v9')).toBe('bulbul:v3');
+    expect(speechModelFor('CASCADED', 'bulbul:v3')).toBe('');
+    expect(voicesForEngine('SARVAM', 'bulbul:v3').map((v) => v.id)).toContain('shubh');
+    expect(voicesForEngine('SARVAM', 'bulbul:v3').some((v) => v.id.includes('_'))).toBe(false);
+    expect(voicesForEngine('SARVAM', 'bulbul:v4-flash').every((v) => v.id.includes('_'))).toBe(
+      true,
+    );
+    expect(voicesForEngine('SARVAM', 'bulbul:v2').map((v) => v.id)).toEqual(
+      SARVAM_V2_VOICES.map((v) => v.id),
+    );
+    // A v3 voice under v4-flash falls back to that model's first voice.
+    expect(voiceForEngine('SARVAM', 'shubh', 'bulbul:v4-flash')).toBe(
+      voicesForEngine('SARVAM', 'bulbul:v4-flash')[0]!.id,
+    );
   });
 
   it('offers all 30 Gemini voices', () => {
@@ -132,6 +157,7 @@ describe('sarvamSpeak', () => {
       (c) => chunks.push(Buffer.from(c, 'base64')),
       new AbortController().signal,
       'hi',
+      undefined,
       `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     );
     expect(seen.key).toBe('sk');
@@ -143,5 +169,16 @@ describe('sarvamSpeak', () => {
     });
     expect(chunks.every((c) => c.length === 160)).toBe(true);
     expect(Buffer.concat(chunks)).toEqual(mulawEncode(pcm));
+  });
+});
+
+describe('Gemini thinking on calls', () => {
+  it('uses the least thinking each generation allows', async () => {
+    const { callThinking } = await import('../src/voice/llm/gemini');
+    expect(callThinking('gemini-2.5-flash')).toEqual({ thinkingBudget: 0 });
+    expect(callThinking('gemini-2.5-pro')).toEqual({ thinkingBudget: 128 });
+    expect(callThinking('gemini-3-flash')?.thinkingLevel).toBe('MINIMAL');
+    expect(callThinking('gemini-3-pro')?.thinkingLevel).toBe('LOW');
+    expect(callThinking('gemini-2.0-flash')).toBeUndefined();
   });
 });

@@ -14,11 +14,11 @@ export const TELEPHONY_PROVIDER_LABELS: Record<TelephonyProvider, string> = {
 };
 
 /** Language-model vendors a workspace can bring its own key for. */
-export const AI_PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI'] as const;
+export const AI_PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI', 'SARVAM'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
-/** Speech vendors: Deepgram for the cascaded engine, ElevenLabs for its own voice agents. */
-export const SPEECH_PROVIDERS = ['DEEPGRAM', 'ELEVENLABS', 'SARVAM'] as const;
+/** Speech vendors for the speech-pipeline engines. Sarvam does speech and chat, so it is listed above. */
+export const SPEECH_PROVIDERS = ['DEEPGRAM', 'ELEVENLABS'] as const;
 export type SpeechProvider = (typeof SPEECH_PROVIDERS)[number];
 
 export const CREDENTIAL_PROVIDERS = [...AI_PROVIDERS, ...SPEECH_PROVIDERS] as const;
@@ -78,6 +78,7 @@ export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
   OPENAI: 'OpenAI',
   ANTHROPIC: 'Claude (Anthropic)',
   GEMINI: 'Google Gemini',
+  SARVAM: 'Sarvam AI',
 };
 
 export const AGENT_STATUSES = ['DRAFT', 'ACTIVE', 'PAUSED'] as const;

@@ -25,6 +25,14 @@ export const LLM_MODELS: Record<AiProvider, ModelOption[]> = {
     { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini', hint: 'Fast' },
     { id: 'gpt-4o', label: 'GPT-4o' },
   ],
+  SARVAM: [
+    {
+      id: 'sarvam-105b-conversations',
+      label: 'Sarvam 105B Conversations',
+      hint: 'Built for voice agents, Indian languages',
+    },
+    { id: 'sarvam-105b', label: 'Sarvam 105B', hint: 'Deeper reasoning, slower' },
+  ],
   GEMINI: [
     { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'Fast' },
@@ -35,6 +43,7 @@ export const DEFAULT_LLM_MODEL: Record<AiProvider, string> = {
   ANTHROPIC: 'claude-opus-5-5',
   OPENAI: 'gpt-4.1',
   GEMINI: 'gemini-2.5-flash',
+  SARVAM: 'sarvam-105b-conversations',
 };
 
 /** OpenAI Realtime (speech-to-speech) models for the REALTIME engine. */
@@ -119,7 +128,8 @@ export const ELEVENLABS_VOICES: ModelOption[] = [
 
 /**
  * Sarvam Bulbul voices for the SARVAM engine. Plain names are bulbul:v3 (any
- * supported language); name_language_style ids are bulbul:v4-flash personas.
+ * supported language); name_language_style ids are bulbul:v4-flash personas;
+ * bulbul:v2 has its own short list (SARVAM_V2_VOICES).
  */
 export const SARVAM_VOICES: ModelOption[] = [
   { id: 'shubh', label: 'Shubh', hint: 'All Indian languages' },
@@ -242,6 +252,50 @@ export const SARVAM_VOICES: ModelOption[] = [
   { id: 'pooja_te_conversation', label: 'Pooja — conversation', hint: 'Telugu persona' },
 ];
 
+/** bulbul:v2 speakers (the older model; pitch and loudness controls). */
+export const SARVAM_V2_VOICES: ModelOption[] = [
+  { id: 'anushka', label: 'Anushka', hint: 'female' },
+  { id: 'manisha', label: 'Manisha', hint: 'female' },
+  { id: 'vidya', label: 'Vidya', hint: 'female' },
+  { id: 'arya', label: 'Arya', hint: 'female' },
+  { id: 'abhilash', label: 'Abhilash', hint: 'male' },
+  { id: 'karun', label: 'Karun', hint: 'male' },
+  { id: 'hitesh', label: 'Hitesh', hint: 'male' },
+];
+
+/**
+ * The text-to-speech model the speech engines speak with, chosen by staff
+ * next to the LLM. Deepgram has none to choose: its voice ids name the model.
+ */
+export const SPEECH_MODELS: Partial<Record<VoiceEngine, ModelOption[]>> = {
+  SARVAM: [
+    { id: 'bulbul:v3', label: 'Bulbul v3', hint: '37 voices, every Indian language' },
+    {
+      id: 'bulbul:v4-flash',
+      label: 'Bulbul v4 Flash',
+      hint: 'Persona voices per language and style',
+    },
+    { id: 'bulbul:v2', label: 'Bulbul v2', hint: 'Older model, 7 voices' },
+  ],
+  ELEVENLABS: [
+    {
+      id: 'eleven_flash_v2_5',
+      label: 'Flash v2.5',
+      hint: 'Fastest, 32 languages (recommended for calls)',
+    },
+    { id: 'eleven_turbo_v2_5', label: 'Turbo v2.5', hint: 'Fast, a little richer' },
+    { id: 'eleven_multilingual_v2', label: 'Multilingual v2', hint: 'Best quality, slower' },
+    { id: 'eleven_v3', label: 'Eleven v3', hint: 'Most expressive, slowest' },
+  ],
+};
+
+/** The speech model an engine uses when staff haven't picked one ('' when it has no choice). */
+export function speechModelFor(engine: VoiceEngine, speechModel?: string | null): string {
+  const options = SPEECH_MODELS[engine];
+  if (!options) return '';
+  return speechModel && options.some((m) => m.id === speechModel) ? speechModel : options[0]!.id;
+}
+
 /** Deepgram Aura voices for the CASCADED engine. */
 export const CASCADED_VOICES: ModelOption[] = [
   { id: 'aura-2-thalia-en', label: 'Thalia — warm, clear (US)' },
@@ -346,8 +400,8 @@ export function isElevenLabsVoiceId(voice: string | null | undefined): voice is 
 
 // ── Per-engine helpers ──────────────────────────────────────────────────────
 
-/** The voices an agent can use under each engine. */
-export function voicesForEngine(engine: VoiceEngine): ModelOption[] {
+/** The voices an agent can use under each engine (Sarvam: for its Bulbul model). */
+export function voicesForEngine(engine: VoiceEngine, speechModel?: string | null): ModelOption[] {
   switch (engine) {
     case 'REALTIME':
       return REALTIME_VOICES;
@@ -357,8 +411,12 @@ export function voicesForEngine(engine: VoiceEngine): ModelOption[] {
       return CASCADED_VOICES;
     case 'ELEVENLABS':
       return ELEVENLABS_VOICES;
-    case 'SARVAM':
-      return SARVAM_VOICES;
+    case 'SARVAM': {
+      const model = speechModelFor('SARVAM', speechModel);
+      if (model === 'bulbul:v2') return SARVAM_V2_VOICES;
+      const persona = model === 'bulbul:v4-flash';
+      return SARVAM_VOICES.filter((v) => v.id.includes('_') === persona);
+    }
   }
 }
 
@@ -370,12 +428,22 @@ export const DEFAULT_VOICE: Record<VoiceEngine, string> = {
   SARVAM: 'shubh',
 };
 
+/** The default voice of an engine (Sarvam: the first voice of its Bulbul model). */
+export function defaultVoiceFor(engine: VoiceEngine, speechModel?: string | null): string {
+  if (engine !== 'SARVAM') return DEFAULT_VOICE[engine];
+  return voicesForEngine(engine, speechModel)[0]!.id;
+}
+
 /** The voice to use: the agent's own if the engine offers it, else the engine default. */
-export function voiceForEngine(engine: VoiceEngine, voice: string | null | undefined): string {
+export function voiceForEngine(
+  engine: VoiceEngine,
+  voice: string | null | undefined,
+  speechModel?: string | null,
+): string {
   if (engine === 'ELEVENLABS' && isElevenLabsVoiceId(voice)) return voice;
-  return voice && voicesForEngine(engine).some((v) => v.id === voice)
+  return voice && voicesForEngine(engine, speechModel).some((v) => v.id === voice)
     ? voice
-    : DEFAULT_VOICE[engine];
+    : defaultVoiceFor(engine, speechModel);
 }
 
 /** Model suggestions for an engine (CASCADED and ELEVENLABS: for their LLM vendor). */
@@ -418,6 +486,7 @@ export function requiredProviders(
   if (engine === 'REALTIME') return ['OPENAI'];
   if (engine === 'GEMINI_LIVE') return ['GEMINI'];
   if (engine === 'ELEVENLABS') return [llmProvider, 'ELEVENLABS'];
-  if (engine === 'SARVAM') return [llmProvider, 'SARVAM'];
+  // Sarvam can also be the LLM vendor; then one Sarvam key covers both.
+  if (engine === 'SARVAM') return llmProvider === 'SARVAM' ? ['SARVAM'] : [llmProvider, 'SARVAM'];
   return [llmProvider, 'DEEPGRAM'];
 }

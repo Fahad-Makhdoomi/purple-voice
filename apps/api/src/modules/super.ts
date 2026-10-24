@@ -336,6 +336,7 @@ async function platformAiView(): Promise<PlatformAiView> {
       voiceEngine: defaults.voiceEngine,
       llmProvider: defaults.llmProvider,
       model: defaults.model,
+      speechModel: defaults.speechModel ?? null,
     },
     keys: CREDENTIAL_PROVIDERS.map((provider) => {
       const row = rows.find((r) => r.provider === provider);

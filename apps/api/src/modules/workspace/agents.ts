@@ -49,10 +49,10 @@ async function assertAgentConfig(
  */
 async function assertVoice(workspaceId: string, voice: string | undefined) {
   if (voice === undefined) return;
-  const { voiceEngine } = await getAiSettings(workspaceId);
+  const { voiceEngine, speechModel } = await getAiSettings(workspaceId);
   // ElevenLabs: any voice id from the account (or the Voice Library) is fine.
   if (voiceEngine === 'ELEVENLABS' && isElevenLabsVoiceId(voice)) return;
-  if (!voicesForEngine(voiceEngine).some((v) => v.id === voice)) {
+  if (!voicesForEngine(voiceEngine, speechModel).some((v) => v.id === voice)) {
     throw badRequest('Choose one of the available voices');
   }
 }

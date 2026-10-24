@@ -8,6 +8,8 @@ import {
   VOICE_ENGINES,
   VOICE_ENGINE_DESCRIPTIONS,
   VOICE_ENGINE_LABELS,
+  SPEECH_MODELS,
+  speechModelFor,
   defaultModelForEngine,
   modelsForEngine,
   type AiCredentialInput,
@@ -35,7 +37,8 @@ export const KEY_USES: Record<CredentialProvider, string> = {
     'Hearing and speaking on the Cascaded engine only. Gemini Live and Realtime don’t use it.',
   ELEVENLABS:
     'Hearing and speaking on the ElevenLabs engine: realtime speech recognition and text-to-speech.',
-  SARVAM: 'Hearing and speaking on the Sarvam AI engine: Indian languages and voices.',
+  SARVAM:
+    'The Sarvam AI engine (hearing and speaking in Indian languages), and Sarvam 105B as the thinking model on any speech engine.',
 };
 
 const MODEL_LABEL: Record<VoiceEngine, string> = {
@@ -59,17 +62,36 @@ const LISTENS_AND_SPEAKS: Partial<Record<VoiceEngine, string>> = {
 
 /** Just the settings, without the API's `source` or anything else riding along. */
 export function pickAiSettings(v: AiSettingsView): AiSettingsView {
-  return { voiceEngine: v.voiceEngine, llmProvider: v.llmProvider, model: v.model };
+  return {
+    voiceEngine: v.voiceEngine,
+    llmProvider: v.llmProvider,
+    model: v.model,
+    speechModel: speechModelFor(v.voiceEngine, v.speechModel) || null,
+  };
 }
 
 export function sameAiSettings(a: AiSettingsView, b: AiSettingsView) {
-  return a.voiceEngine === b.voiceEngine && a.llmProvider === b.llmProvider && a.model === b.model;
+  return (
+    a.voiceEngine === b.voiceEngine &&
+    a.llmProvider === b.llmProvider &&
+    a.model === b.model &&
+    speechModelFor(a.voiceEngine, a.speechModel) === speechModelFor(b.voiceEngine, b.speechModel)
+  );
 }
 
 /** "Gemini Live · gemini-3.8-live", with the LLM vendor for Cascaded. */
 export function describeAiSettings(v: AiSettingsView) {
   return SPEECH_PIPELINES.includes(v.voiceEngine)
-    ? `${VOICE_ENGINE_LABELS[v.voiceEngine]} · ${AI_PROVIDER_LABELS[v.llmProvider]} · ${v.model}`
+    ? [
+        VOICE_ENGINE_LABELS[v.voiceEngine],
+        SPEECH_MODELS[v.voiceEngine]?.find(
+          (m) => m.id === speechModelFor(v.voiceEngine, v.speechModel),
+        )?.label,
+        AI_PROVIDER_LABELS[v.llmProvider],
+        v.model,
+      ]
+        .filter(Boolean)
+        .join(' · ')
     : `${VOICE_ENGINE_LABELS[v.voiceEngine]} · ${v.model}`;
 }
 
@@ -94,14 +116,19 @@ export function EngineModelFields({
   const known = options.find((m) => m.id === value.model);
   const [customMode, setCustomMode] = useState(false);
   const hasLlmVendor = SPEECH_PIPELINES.includes(value.voiceEngine);
+  const speechModels = SPEECH_MODELS[value.voiceEngine];
   const custom = customMode || !known;
 
   const setEngine = (voiceEngine: VoiceEngine) => {
     setCustomMode(false);
+    // Sarvam's engine thinks fastest on Sarvam's own model, with one key.
+    const llmProvider = voiceEngine === 'SARVAM' ? 'SARVAM' : value.llmProvider;
     onChange({
       ...value,
       voiceEngine,
-      model: defaultModelForEngine(voiceEngine, value.llmProvider),
+      llmProvider,
+      model: defaultModelForEngine(voiceEngine, llmProvider),
+      speechModel: speechModelFor(voiceEngine) || null,
     });
   };
   const setProvider = (llmProvider: AiProvider) => {
@@ -151,6 +178,31 @@ export function EngineModelFields({
       </fieldset>
 
       <div className="grid gap-5 sm:grid-cols-2">
+        {speechModels && (
+          <Field
+            id={`${idPrefix}-speech-model`}
+            label="Voice model"
+            help={
+              speechModels.find(
+                (m) => m.id === speechModelFor(value.voiceEngine, value.speechModel),
+              )?.hint ?? 'The text-to-speech model the agent speaks with.'
+            }
+          >
+            <select
+              id={`${idPrefix}-speech-model`}
+              className="select"
+              value={speechModelFor(value.voiceEngine, value.speechModel)}
+              disabled={disabled}
+              onChange={(e) => onChange({ ...value, speechModel: e.target.value })}
+            >
+              {speechModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {hasLlmVendor && (
           <Field
             id={`${idPrefix}-provider`}

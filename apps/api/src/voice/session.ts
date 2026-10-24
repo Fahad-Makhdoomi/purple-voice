@@ -196,7 +196,7 @@ export class CallSession {
     const settings = await getAiSettings(this.call.workspaceId);
     const engineConfig = {
       model: settings.model,
-      voice: voiceForEngine(settings.voiceEngine, agent.voice),
+      voice: voiceForEngine(settings.voiceEngine, agent.voice, settings.speechModel),
       language: agent.language,
       instructions,
       greeting,
@@ -226,7 +226,14 @@ export class CallSession {
           this.requireKey(speech),
         ]);
         return new CascadedEngine(
-          { ...engineConfig, provider: settings.llmProvider, apiKey, speechApiKey, speech },
+          {
+            ...engineConfig,
+            provider: settings.llmProvider,
+            apiKey,
+            speechApiKey,
+            speech,
+            speechModel: settings.speechModel || undefined,
+          },
           callbacks,
         );
       }

@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { sarvamChatClient } from './sarvam-client';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { FOLLOW_UP_SEGMENTS, FOLLOW_UP_SEGMENT_INFO, summaryModelForEngine } from '@pv/shared';
@@ -219,8 +220,11 @@ export async function generateCampaignReport(
       return reportSchema.parse(JSON.parse(text));
     }
 
-    if (provider === 'OPENAI') {
-      const client = new OpenAI({ apiKey, timeout: 120_000 });
+    if (provider === 'OPENAI' || provider === 'SARVAM') {
+      const client =
+        provider === 'SARVAM'
+          ? sarvamChatClient(apiKey, 120_000)
+          : new OpenAI({ apiKey, timeout: 120_000 });
       const completion = await client.chat.completions.create({
         model,
         messages: [
