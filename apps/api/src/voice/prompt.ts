@@ -11,9 +11,17 @@ import { describe, isValidTimeZone } from './time';
 export function fillVariables(text: string, vars: Record<string, string>): string {
   return text
     .replace(
-      /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}|\{\s*([a-zA-Z0-9_]+)\s*\}/g,
-      (_m, double: string | undefined, single: string | undefined) =>
-        vars[(double ?? single)!.toLowerCase()] ?? '',
+      // A missing name takes its honorific with it ("{name} ji" → "", not "ji").
+      /(?:\{\{\s*([a-zA-Z0-9_]+)\s*\}\}|\{\s*([a-zA-Z0-9_]+)\s*\})(\s+(?:ji|जी|sir|madam|sahab|saab|bhai)(?=[\s,.!?।]|$))?/gi,
+      (
+        _m,
+        double: string | undefined,
+        single: string | undefined,
+        honorific: string | undefined,
+      ) => {
+        const value = vars[(double ?? single)!.toLowerCase()] ?? '';
+        return value ? value + (honorific ?? '') : '';
+      },
     )
     .replace(/[ \t]+([,.!?।])/g, '$1')
     .replace(/[ \t]{2,}/g, ' ');

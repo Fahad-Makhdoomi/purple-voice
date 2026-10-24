@@ -109,3 +109,14 @@ describe('single-brace variables', () => {
     expect(fillVariables('Hello {name}, ek second?', {})).toBe('Hello, ek second?');
   });
 });
+
+describe('honorifics after a missing name', () => {
+  it('drops "ji" with an empty name and keeps it with a real one', () => {
+    expect(fillVariables('Kya main {name} ji se baat kar rahi hoon?', {})).toBe(
+      'Kya main se baat kar rahi hoon?',
+    );
+    expect(fillVariables('Kya main {{name}} ji se baat kar rahi hoon?', { name: 'Ravi' })).toBe(
+      'Kya main Ravi ji se baat kar rahi hoon?',
+    );
+  });
+});

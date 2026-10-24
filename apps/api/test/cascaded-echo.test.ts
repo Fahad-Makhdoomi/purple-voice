@@ -94,3 +94,18 @@ describe('cascaded engine echo suppression', () => {
     e.close();
   });
 });
+
+describe('cascaded engine turn-taking', () => {
+  it('answers a short reply right after the agent spoke, even with its own words', async () => {
+    const { e } = engine();
+    await e.start();
+    await tick();
+    // The greeting (2 s of audio) asked "Do you have a minute?"; the caller says "a minute, yes".
+    await new Promise((r) => setTimeout(r, 2100));
+    h.stt!.events.onTranscript('a minute', true);
+    h.stt!.events.onUtteranceEnd();
+    await tick();
+    expect(h.turns).toEqual(['a minute']);
+    e.close();
+  });
+});

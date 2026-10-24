@@ -66,15 +66,20 @@ export class OpenAIConversation implements LlmConversation {
           h.onText(delta.content);
         }
         for (const tc of delta.tool_calls ?? []) {
-          const entry = calls.get(tc.index) ?? { id: '', name: '', args: '' };
+          // OpenAI-compatible servers (Sarvam) may leave out the index or repeat
+          // the name on every chunk; take the name once.
+          const index = tc.index ?? 0;
+          const entry = calls.get(index) ?? { id: '', name: '', args: '' };
           if (tc.id) entry.id = tc.id;
-          if (tc.function?.name) entry.name += tc.function.name;
+          if (tc.function?.name && !entry.name) entry.name = tc.function.name;
           if (tc.function?.arguments) entry.args += tc.function.arguments;
-          calls.set(tc.index, entry);
+          calls.set(index, entry);
         }
       }
 
-      const toolCalls = [...calls.values()];
+      const toolCalls = [...calls.values()]
+        .filter((c) => c.name)
+        .map((c, i) => ({ ...c, id: c.id || `call_${Date.now()}_${i}` }));
       this.messages.push({
         role: 'assistant',
         content: text || null,

@@ -25,6 +25,20 @@ const ECHO_TAIL_MS = 1500;
 const ECHO_MEMORY_MS = 20_000;
 /** Share of a heard phrase that must be the agent's own recent words to count as echo. */
 const ECHO_OVERLAP = 0.6;
+/** No reply text this long after the caller finished: say a short filler so the line isn't dead. */
+const FILLER_AFTER_MS = 2200;
+/** Silence on both sides this long: check the caller is still there (at most twice in a row). */
+const NUDGE_AFTER_MS = 8000;
+const MAX_NUDGES = 2;
+
+const FILLERS: Record<'hi' | 'en', string[]> = {
+  hi: ['Hmm, ek second.', 'Achha, ek pal.', 'Ji, dekhti hoon.'],
+  en: ['Hmm, one moment.', 'Okay, let me check.', 'Sure, one second.'],
+};
+const NUDGES: Record<'hi' | 'en', string> = {
+  hi: 'Hello, kya aap mujhe sun pa rahe hain?',
+  en: 'Hello, can you hear me?',
+};
 
 export function words(text: string): string[] {
   return text
@@ -61,6 +75,11 @@ export class CascadedEngine implements VoiceEngine {
   private recentSpeech: { words: Set<string>; at: number }[] = [];
   /** Keeps markdown, labels and read-back instructions out of the voice. */
   private readonly filter: SpeechFilter;
+  /** The last time anyone spoke (the caller started, or the agent's audio ended). */
+  private lastActivity = Date.now();
+  private nudges = 0;
+  private fillerIndex = 0;
+  private idleTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly config: EngineConfig & {
@@ -85,6 +104,7 @@ export class CascadedEngine implements VoiceEngine {
         // recogniser. Heard that way it is not the caller: answering it is
         // how an agent ends up talking to itself.
         if (this.isEcho(text)) return;
+        this.heard();
         if (final) this.pendingUserText = `${this.pendingUserText} ${text}`.trim();
         // Only real words over the agent's voice interrupt it: a cough or a
         // stray background word doesn't. Noisier settings need more words.
@@ -93,7 +113,7 @@ export class CascadedEngine implements VoiceEngine {
           this.interrupt();
       },
       onUtteranceEnd: () => this.onUtteranceEnd(),
-      onSpeechStarted: () => undefined,
+      onSpeechStarted: () => this.heard(),
       onError: (err) => this.cb.onError(err),
     });
 
@@ -114,6 +134,7 @@ export class CascadedEngine implements VoiceEngine {
 
   async start(): Promise<void> {
     await this.stt.connect();
+    this.idleTimer = setInterval(() => this.checkIdle(), 1000);
     if (this.config.greeting) {
       this.cb.onTranscript('agent', this.config.greeting);
       this.say(this.config.greeting, new AbortController().signal);
@@ -129,12 +150,39 @@ export class CascadedEngine implements VoiceEngine {
 
   close() {
     this.closed = true;
+    clearInterval(this.idleTimer);
     this.turnAbort?.abort();
     this.stt.close();
   }
 
   private isSpeaking() {
     return this.synthesizing || Date.now() < this.playbackEndsAt;
+  }
+
+  private get lang(): 'hi' | 'en' {
+    return isoLanguage(this.config.language) === 'hi' ? 'hi' : 'en';
+  }
+
+  /** The caller made a sound worth counting: they are there. */
+  private heard() {
+    this.lastActivity = Date.now();
+    this.nudges = 0;
+  }
+
+  /**
+   * A call where nobody speaks for a while is stuck: the caller didn't hear
+   * the question, or their answer got lost. Ask if they can hear, twice at most.
+   */
+  private checkIdle() {
+    if (this.closed || this.turnAbort || this.isSpeaking() || this.nudges >= MAX_NUDGES) return;
+    const quietSince = Math.max(this.lastActivity, this.playbackEndsAt);
+    if (Date.now() - quietSince < NUDGE_AFTER_MS) return;
+    this.nudges++;
+    this.lastActivity = Date.now();
+    const line = NUDGES[this.lang];
+    this.cb.onTranscript('agent', line);
+    this.llm.noteInterrupted(line.replace(/[?]$/, ''));
+    this.say(line, new AbortController().signal);
   }
 
   /** Mostly the agent's own recent words, heard while (or just after) it spoke. */
@@ -145,6 +193,11 @@ export class CascadedEngine implements VoiceEngine {
     const heard = words(text);
     if (!heard.length) return true;
     const own = (w: string) => this.recentSpeech.some((s) => s.words.has(w));
+    // A short answer ("yes", "haan ji", "okay") right after the agent asked
+    // something is the caller replying, even when the agent used that word:
+    // treating it as echo leaves the agent waiting in silence.
+    // Only well before the agent finishes is a short phrase of its own words echo.
+    if (heard.length < 3) return this.playbackEndsAt - now > 1000 && heard.every(own);
     return heard.filter(own).length / heard.length >= ECHO_OVERLAP;
   }
 
@@ -177,6 +230,17 @@ export class CascadedEngine implements VoiceEngine {
     this.spokenThisTurn = '';
     let buffer = '';
     let full = '';
+    const startedAt = Date.now();
+    let firstTextAt = 0;
+    // A slow model shouldn't leave the caller in silence: a short filler first.
+    const filler =
+      userText === 'Hello?'
+        ? undefined
+        : setTimeout(() => {
+            if (abort.signal.aborted || full || this.isSpeaking()) return;
+            const options = FILLERS[this.lang];
+            this.say(options[this.fillerIndex++ % options.length]!, abort.signal);
+          }, FILLER_AFTER_MS);
 
     const flush = (force: boolean) => {
       // Speak whole sentences (or lines) as soon as they're complete.
@@ -203,6 +267,7 @@ export class CascadedEngine implements VoiceEngine {
       await this.llm.turn(userText, {
         signal: abort.signal,
         onText: (delta) => {
+          if (!firstTextAt) firstTextAt = Date.now();
           buffer += delta;
           flush(false);
         },
@@ -214,7 +279,17 @@ export class CascadedEngine implements VoiceEngine {
         },
       });
       flush(true);
+      clearTimeout(filler);
       await this.speechQueue;
+      logger.info(
+        {
+          provider: this.config.provider,
+          speech: this.config.speech ?? 'DEEPGRAM',
+          firstTextMs: firstTextAt ? firstTextAt - startedAt : null,
+          turnMs: Date.now() - startedAt,
+        },
+        'Cascaded turn timing',
+      );
       if (!abort.signal.aborted && full.trim()) {
         this.cb.onTranscript('agent', full.trim());
         // Logged in full: a later interruption mustn't log this turn a second time.
@@ -227,50 +302,83 @@ export class CascadedEngine implements VoiceEngine {
         this.say("Sorry, I didn't catch that. Could you say it again?", abort.signal);
       }
     } finally {
+      clearTimeout(filler);
       if (this.turnAbort === abort) this.turnAbort = null;
     }
   }
 
-  /** Queues a sentence for synthesis; sentences play strictly in order. */
+  /**
+   * Queues a sentence. Synthesis starts at once, so while one sentence plays
+   * the next is already being made; playback stays strictly in order.
+   */
   private say(text: string, signal: AbortSignal) {
+    const chunks: string[] = [];
+    let done = false;
+    let failed: unknown;
+    let wake: (() => void) | null = null;
+    void this.synthesize(
+      text,
+      (chunk) => {
+        chunks.push(chunk);
+        wake?.();
+      },
+      signal,
+    )
+      .catch((err) => {
+        failed = err;
+      })
+      .finally(() => {
+        done = true;
+        wake?.();
+      });
+
     this.speechQueue = this.speechQueue.then(async () => {
       if (signal.aborted || this.closed) return;
       this.synthesizing = true;
       this.recentSpeech.push({ words: new Set(words(text)), at: Date.now() });
       try {
-        const onChunk = (chunk: string) => {
-          this.playbackEndsAt = Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
-          this.cb.onAudio(chunk);
-        };
-        if (this.config.speech === 'ELEVENLABS') {
-          await elevenLabsSpeak(
-            this.config.speechApiKey,
-            this.config.voice,
-            text,
-            onChunk,
-            signal,
-            isoLanguage(this.config.language),
-            this.config.speechModel,
-          );
-        } else if (this.config.speech === 'SARVAM') {
-          await sarvamSpeak(
-            this.config.speechApiKey,
-            this.config.voice,
-            text,
-            onChunk,
-            signal,
-            this.config.language,
-            this.config.speechModel,
-          );
-        } else {
-          await deepgramSpeak(this.config.speechApiKey, this.config.voice, text, onChunk, signal);
+        while (!signal.aborted) {
+          while (chunks.length && !signal.aborted) {
+            const chunk = chunks.shift()!;
+            this.playbackEndsAt =
+              Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(chunk);
+            this.cb.onAudio(chunk);
+          }
+          if (done) break;
+          await new Promise<void>((resolve) => (wake = resolve));
+          wake = null;
         }
-        if (!signal.aborted) this.spokenThisTurn += ` ${text}`;
-      } catch (err) {
-        if (!signal.aborted) logger.warn({ err }, 'Text-to-speech failed');
+        if (failed && !signal.aborted) logger.warn({ err: failed }, 'Text-to-speech failed');
+        else if (!signal.aborted) this.spokenThisTurn += ` ${text}`;
       } finally {
         this.synthesizing = false;
       }
     });
+  }
+
+  private synthesize(text: string, onChunk: (chunk: string) => void, signal: AbortSignal) {
+    if (this.config.speech === 'ELEVENLABS') {
+      return elevenLabsSpeak(
+        this.config.speechApiKey,
+        this.config.voice,
+        text,
+        onChunk,
+        signal,
+        isoLanguage(this.config.language),
+        this.config.speechModel,
+      );
+    }
+    if (this.config.speech === 'SARVAM') {
+      return sarvamSpeak(
+        this.config.speechApiKey,
+        this.config.voice,
+        text,
+        onChunk,
+        signal,
+        this.config.language,
+        this.config.speechModel,
+      );
+    }
+    return deepgramSpeak(this.config.speechApiKey, this.config.voice, text, onChunk, signal);
   }
 }
