@@ -83,6 +83,8 @@ const schema = z.object({
   /** Where uploaded media lives: local disk (served by nginx) or S3-compatible storage (R2, S3, B2). */
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_PATH: z.string().default('../../storage/uploads'),
+  /** Call recordings on local disk: private, never under the public uploads directory. */
+  RECORDINGS_LOCAL_PATH: z.string().default('../../storage/recordings'),
   /** Public URL prefix for stored files, e.g. https://purplevoice.ai/uploads */
   STORAGE_PUBLIC_URL: optionalString,
   S3_BUCKET: optionalString,

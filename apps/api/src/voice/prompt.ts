@@ -75,6 +75,8 @@ export function buildInstructions(input: {
   /** Set when an inbound caller is someone this agent called before. */
   previous?: PreviousCall | null;
   toolNames: string[];
+  /** The call is being recorded (the workspace's plan records calls). */
+  recorded?: boolean;
 }): { instructions: string; greeting: string; opening: string; kind: CallKind } {
   const { agent, workspace, call, contact, previous } = input;
   const kind: CallKind =
@@ -176,6 +178,8 @@ export function buildInstructions(input: {
         `- Speak in ${languageLabel(agent.language)}, the everyday way people talk on the phone, not formal or bookish. If the person answers in another language (or mixes, like Hinglish), reply in the language they used in their last message.`,
         '- Never repeat a question you just asked word for word. If they only say hello or hmm, they may not have heard you: say it again more briefly in other words.',
         `- If asked, say honestly that you are an AI assistant ${kind === 'outbound' ? 'calling' : 'answering'} on behalf of ${workspace.name}.`,
+        input.recorded &&
+          '- This call is recorded. If the person asks, say yes, it is recorded for quality and training.',
         '- If the person asks not to be called again, apologise, confirm they will not be contacted, then end the call.',
         kind === 'outbound' &&
           '- If you reach voicemail or an answering machine, leave no message and end the call.',

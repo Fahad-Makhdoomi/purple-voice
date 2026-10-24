@@ -8,6 +8,8 @@ import {
 } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
+import { CallRecorder } from './recorder';
+import { recordsCalls, saveRecording } from '../services/recordings';
 import { emitEvent } from '../events';
 import { applyCallStatus, isTerminal } from '../services/calls';
 import { adapterForAccount } from '../telephony';
@@ -48,6 +50,10 @@ export interface BridgeDeps {
   onAnswered?(): void;
   /** The bridge is over; `reason` is what the browser was told. */
   onEnded?(reason: DialerEndReason): void;
+  /** Audio from the person called (μ-law base64), for the recording. */
+  onRemoteAudio?(payloadB64: string): void;
+  /** Audio from the dialer user (μ-law base64), for the recording. */
+  onLocalAudio?(payloadB64: string): void;
 }
 
 export interface BridgeTimings {
@@ -179,6 +185,7 @@ export class DialerBridge {
     });
     transport.onAudio((payload) => {
       if (transport !== this.carrier) return;
+      this.deps.onRemoteAudio?.(payload);
       const browser = this.browser;
       if (browser?.readyState === OPEN) browser.send(Buffer.from(payload, 'base64'));
     });
@@ -215,7 +222,9 @@ export class DialerBridge {
       // Until the carrier's stream has started it has no stream id to play into.
       if (!this.answered || !this.carrier) return;
       if (buf.length === 0 || buf.length > MAX_BROWSER_FRAME) return;
-      this.carrier.sendAudio(buf.toString('base64'));
+      const payload = buf.toString('base64');
+      this.deps.onLocalAudio?.(payload);
+      this.carrier.sendAudio(payload);
       return;
     }
     let msg: unknown;
@@ -401,7 +410,11 @@ async function settle(callId: string, reason: DialerEndReason) {
 }
 
 function databaseDeps(callId: string): BridgeDeps {
+  // Kept for every dialer call; stored at the end only if the plan records calls.
+  const recorder = new CallRecorder();
   return {
+    onRemoteAudio: (payload) => recorder.remote(payload),
+    onLocalAudio: (payload) => recorder.local(payload),
     callStatus: async () =>
       (await prisma.call.findUnique({ where: { id: callId }, select: { status: true } }))?.status ??
       null,
@@ -410,11 +423,26 @@ function databaseDeps(callId: string): BridgeDeps {
       void announceAnswered(callId).catch((err) =>
         logger.warn({ err, callId }, 'call.started event failed'),
       ),
-    onEnded: (reason) =>
+    onEnded: (reason) => {
       void settle(callId, reason).catch((err) =>
         logger.error({ err, callId }, 'Could not record dialer call end'),
-      ),
+      );
+      void saveDialerRecording(callId, recorder);
+    },
   };
+}
+
+async function saveDialerRecording(callId: string, recorder: CallRecorder) {
+  try {
+    const call = await prisma.call.findUnique({
+      where: { id: callId },
+      select: { workspaceId: true },
+    });
+    if (call && (await recordsCalls(call.workspaceId)))
+      await saveRecording(callId, recorder.toWav());
+  } catch (err) {
+    logger.error({ err, callId }, 'Could not save dialer recording');
+  }
 }
 
 export const dialerBridges = new DialerRegistry(databaseDeps);

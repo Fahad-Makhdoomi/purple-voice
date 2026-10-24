@@ -16,6 +16,7 @@ import {
 import type { User } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
+import { deleteWorkspaceRecordings } from '../services/recordings';
 import { hashPassword, hasUsablePassword, verifyPassword } from '../lib/password';
 import { randomToken, sha256 } from '../lib/crypto';
 import { signAccessToken } from '../lib/jwt';
@@ -433,13 +434,15 @@ authRouter.delete('/me', authenticate, async (req, res) => {
   if (live) throw badRequest('A call is in progress. Try again once it has ended.');
 
   await audit(req, 'privacy.account_deleted', { meta: { email: sha256(user.email) } });
-  // Everything customer-owned cascades from the workspace, the user included.
+  // Everything customer-owned cascades from the workspace, the user included;
+  // recordings live in storage, so they go first.
+  await deleteWorkspaceRecordings(workspaceId);
   await prisma.workspace.delete({ where: { id: workspaceId } });
   clearSession(res);
   void sendMail({
     to: user.email,
     subject: 'Your Purple Voice account has been deleted',
-    text: `Hi ${user.name},\n\nAs you asked, your Purple Voice account and workspace have been deleted, with your agents, campaigns, contacts, call transcripts and settings. Nightly backups that still hold it are deleted within 14 days.\n\nIf you didn't ask for this, reply to this email straight away.`,
+    text: `Hi ${user.name},\n\nAs you asked, your Purple Voice account and workspace have been deleted, with your agents, campaigns, contacts, call transcripts, recordings and settings. Nightly backups that still hold it are deleted within 14 days.\n\nIf you didn't ask for this, reply to this email straight away.`,
   });
   res.json({ ok: true });
 });

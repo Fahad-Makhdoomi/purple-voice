@@ -61,6 +61,8 @@ export interface PlanFeatures {
   advancedAutomations: boolean;
   /** Lead pipeline: campaign wins land in it, new leads get an agent call. */
   crm: boolean;
+  /** Every call is recorded and can be played back from the call's page. */
+  callRecording: boolean;
 }
 
 export type FeatureKey = keyof PlanFeatures;
@@ -98,6 +100,7 @@ const NO_FEATURES: PlanFeatures = {
   prioritySupport: false,
   advancedAutomations: false,
   crm: false,
+  callRecording: false,
 };
 
 const ALL_FEATURES: PlanFeatures = Object.fromEntries(
@@ -211,6 +214,7 @@ export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
       'Priority support',
       'Advanced automations',
       'CRM with lead pipeline',
+      'Every call recorded',
       'Unlimited calling campaigns',
       'Unlimited contacts per campaign',
       'Up to 20,000 call minutes / month',
@@ -265,6 +269,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   prioritySupport: 'Priority support',
   advancedAutomations: 'Advanced automations',
   crm: 'CRM and lead pipeline',
+  callRecording: 'Call recording',
 };
 
 export const LIMIT_LABELS: Record<LimitKey, string> = {

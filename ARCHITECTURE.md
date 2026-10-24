@@ -346,6 +346,16 @@ and are validated before use, and server-side fallback is on (`fallbacks: "defau
 not for Haiku) so a policy decline is retried on Anthropic's recommended model
 instead of leaving the caller in silence.
 
+### Call recording (`voice/recorder.ts`, `services/recordings.ts`)
+Plans with the `callRecording` feature (Pro and Enterprise by default) record every call:
+AI calls and browser-dialer calls. Both sides already pass through the server as μ-law, so
+the recorder lays them on one timeline (the agent's queued audio from where the last chunk
+ends; what a barge-in cleared is dropped) and mixes a mono 8 kHz WAV when the call ends.
+Recordings are private: local disk under `RECORDINGS_LOCAL_PATH` (not served by nginx) or
+`recordings/` in the S3 bucket, read back only by `GET /api/app/calls/:id/recording` for
+people in the call's workspace. `Call.recordingUrl` holds the storage key. Deleting an
+account deletes its recordings. Agents say the call is recorded when asked.
+
 ### Agent tools (`voice/tools.ts`, executed in `voice/session.ts`)
 `check_availability` and `book_appointment` (Google Calendar free/busy + events, plus
 clash checks against existing appointments), `transfer_call` (carrier transfer to the

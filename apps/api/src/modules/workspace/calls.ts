@@ -9,6 +9,7 @@ import { requireFeature } from '../../middleware/entitlements';
 import { getEntitlements, getUsage } from '../../services/entitlements';
 import { getAiStatus } from '../../services/ai-settings';
 import { forceEndCall } from '../../services/calls';
+import { readRecording } from '../../services/recordings';
 
 export const callsRouter = Router();
 
@@ -174,7 +175,38 @@ callsRouter.get('/calls/:id', async (req, res) => {
     },
   });
   if (!call) throw notFound('Call');
-  res.json({ call });
+  // The storage key stays on the server; the page only needs to know there is one.
+  const { recordingUrl, ...rest } = call;
+  res.json({ call: { ...rest, hasRecording: !!recordingUrl } });
+});
+
+/** The call's recording as a WAV file, for people in the call's workspace only. */
+callsRouter.get('/calls/:id/recording', async (req, res) => {
+  const call = await prisma.call.findFirst({
+    where: { id: req.params.id, workspaceId: wsId(req) },
+    select: { recordingUrl: true },
+  });
+  const audio = call?.recordingUrl ? await readRecording(call.recordingUrl) : null;
+  if (!audio) throw notFound('Recording');
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Content-Disposition', `inline; filename="call-${req.params.id}.wav"`);
+  res.setHeader('Accept-Ranges', 'bytes');
+  // Ranges let the player seek and show the length.
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+  if (range && (range[1] || range[2])) {
+    const start = range[1] ? Number(range[1]) : Math.max(0, audio.length - Number(range[2]));
+    const end =
+      range[1] && range[2] ? Math.min(Number(range[2]), audio.length - 1) : audio.length - 1;
+    if (start >= audio.length || start > end) {
+      res.status(416).setHeader('Content-Range', `bytes */${audio.length}`).end();
+      return;
+    }
+    res.status(206).setHeader('Content-Range', `bytes ${start}-${end}/${audio.length}`);
+    res.end(audio.subarray(start, end + 1));
+    return;
+  }
+  res.end(audio);
 });
 
 /** Force-ends a stuck call. */

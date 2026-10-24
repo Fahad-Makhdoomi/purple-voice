@@ -9,6 +9,7 @@ import { useSession } from '@/lib/session';
 import { Loading, PageHeader, Section, StatusBadge, useAction } from '@/components/ui';
 import { formatDateTime, formatDuration, humanize } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import { CallRecording } from '@/components/dashboard/CallRecording';
 
 interface CallDetail {
   call: {
@@ -26,6 +27,8 @@ interface CallDetail {
     endReason: string | null;
     errorMessage: string | null;
     createdAt: string;
+    /** The plan records calls and this one was kept. */
+    hasRecording: boolean;
     transcript: Array<{ role: 'agent' | 'caller' | 'system'; text: string; at: string }>;
     agent: { id: string; name: string } | null;
     /** Set when a person called from the browser dialer; no agent, transcript or summary. */
@@ -121,6 +124,11 @@ export default function CallPage() {
         </Section>
 
         <aside className="space-y-6">
+          {call.hasRecording && (
+            <Section title="Recording">
+              <CallRecording callId={call.id} />
+            </Section>
+          )}
           <Section title="Summary">
             {call.summary ? (
               <p className="whitespace-pre-line text-sm leading-relaxed text-ink-soft">

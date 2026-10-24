@@ -24,6 +24,8 @@ import type { TranscriptLine } from '../services/ai/summarize';
 import { adapterForAccount, type TelephonyAdapter } from '../telephony';
 import { buildInstructions, type PreviousCall } from './prompt';
 import { createNoiseGate } from './noise-gate';
+import { CallRecorder } from './recorder';
+import { recordsCalls, saveRecording } from '../services/recordings';
 import { TOOL_SCHEMAS, toolsForAgent, type ToolName } from './tools';
 import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from './time';
 import { mulawDurationMs, type MediaTransport } from './transports';
@@ -62,6 +64,8 @@ export class CallSession {
   private flushTimer?: NodeJS.Timeout;
   private providerCallId?: string;
   private sent = { EMAIL: 0, WHATSAPP: 0 };
+  /** Set when the workspace's plan records calls. */
+  private recorder?: CallRecorder;
 
   constructor(
     private readonly callId: string,
@@ -97,9 +101,12 @@ export class CallSession {
     this.transport.onStop(() => void this.end('stream_closed'));
 
     try {
+      if (await recordsCalls(call.workspaceId)) this.recorder = new CallRecorder();
       this.engine = await this.createEngine(call.agent);
       const gate = createNoiseGate(call.agent.noiseFilter);
       this.transport.onAudio((payload) => {
+        // The recording keeps what the caller actually said, before the noise gate.
+        this.recorder?.remote(payload);
         const audio = gate ? gate.push(payload, Date.now() < this.playbackEndsAt) : payload;
         if (audio) this.engine?.pushAudio(audio);
       });
@@ -171,13 +178,16 @@ export class CallSession {
       personalization: this.call.campaign?.personalization,
       previous: await this.previousCall(agent),
       toolNames: tools.map((t) => t.name),
+      recorded: !!this.recorder,
     });
     const callbacks = {
       onAudio: (payload: string) => {
+        this.recorder?.local(payload);
         this.playbackEndsAt = Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(payload);
         this.transport.sendAudio(payload);
       },
       onInterrupt: () => {
+        this.recorder?.interrupt();
         this.playbackEndsAt = 0;
         this.transport.clearAudio();
       },
@@ -511,6 +521,8 @@ export class CallSession {
     try {
       await saveTranscript(this.callId, this.transcript);
       await prisma.call.update({ where: { id: this.callId }, data: { endReason: reason } });
+      await saveRecording(this.callId, this.recorder?.toWav() ?? null);
+      this.recorder = undefined;
       // The carrier's status callback normally closes the call. If it never
       // arrives (misconfigured webhook), close it ourselves.
       setTimeout(async () => {

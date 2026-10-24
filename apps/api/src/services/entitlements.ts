@@ -41,6 +41,7 @@ const NO_FEATURES: PlanFeatures = {
   prioritySupport: false,
   advancedAutomations: false,
   crm: false,
+  callRecording: false,
 };
 
 /**
