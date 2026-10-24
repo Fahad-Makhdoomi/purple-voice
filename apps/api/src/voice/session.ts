@@ -25,6 +25,7 @@ import { adapterForAccount, type TelephonyAdapter } from '../telephony';
 import { buildInstructions, type PreviousCall } from './prompt';
 import { createNoiseGate } from './noise-gate';
 import { CallRecorder } from './recorder';
+import { EchoGuard } from './echo-guard';
 import { recordsCalls, saveRecording } from '../services/recordings';
 import { TOOL_SCHEMAS, toolsForAgent, type ToolName } from './tools';
 import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from './time';
@@ -66,6 +67,8 @@ export class CallSession {
   private sent = { EMAIL: 0, WHATSAPP: 0 };
   /** Set when the workspace's plan records calls. */
   private recorder?: CallRecorder;
+  /** Mutes the agent's own voice when the caller's line sends it back. */
+  private readonly echo = new EchoGuard();
 
   constructor(
     private readonly callId: string,
@@ -107,7 +110,8 @@ export class CallSession {
       this.transport.onAudio((payload) => {
         // The recording keeps what the caller actually said, before the noise gate.
         this.recorder?.remote(payload);
-        const audio = gate ? gate.push(payload, Date.now() < this.playbackEndsAt) : payload;
+        const heard = this.echo.process(payload);
+        const audio = gate ? gate.push(heard, Date.now() < this.playbackEndsAt) : heard;
         if (audio) this.engine?.pushAudio(audio);
       });
       await this.engine.start();
@@ -183,11 +187,14 @@ export class CallSession {
     const callbacks = {
       onAudio: (payload: string) => {
         this.recorder?.local(payload);
-        this.playbackEndsAt = Math.max(Date.now(), this.playbackEndsAt) + mulawDurationMs(payload);
+        const playAt = Math.max(Date.now(), this.playbackEndsAt);
+        this.echo.agentAudio(payload, playAt);
+        this.playbackEndsAt = playAt + mulawDurationMs(payload);
         this.transport.sendAudio(payload);
       },
       onInterrupt: () => {
         this.recorder?.interrupt();
+        this.echo.agentStopped();
         this.playbackEndsAt = 0;
         this.transport.clearAudio();
       },
@@ -335,6 +342,16 @@ export class CallSession {
       }
     } catch (err) {
       logger.warn({ err, tool: name, callId: this.callId }, 'Tool failed');
+      // Staff see why on the call page (a carrier refusing a transfer, a calendar error).
+      this.note(`${name.replace(/_/g, ' ')} failed: ${(err as Error).message}`);
+      if (name === 'transfer_call') {
+        await prisma.call
+          .update({
+            where: { id: this.callId },
+            data: { status: 'IN_PROGRESS', transferredTo: null, outcome: null },
+          })
+          .catch(() => undefined);
+      }
       return `Error: ${(err as Error).message}`;
     }
     return 'Error: unhandled tool';
