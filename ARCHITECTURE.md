@@ -233,9 +233,10 @@ and refresh tokens are stored as SHA-256 hashes.
 | `/api/integrations/google/callback` | signed OAuth state | Google Calendar connection |
 | `/api/admin/*` | staff | overview, staff list, leads, tickets, subscribers (incl. `/:id/ai` settings and keys), cms (pages, posts, faqs, settings, media, AI SEO) |
 | `/api/admin/super/*` | super admin | insights, plans, staff, security and appearance (website theme) settings, audit, ai (platform keys + default AI) |
-| `/api/telephony/:carrier/*` | signed URL | inbound, voice (answered), status, transfer |
+| `/api/telephony/:carrier/*` | signed URL | inbound, voice (answered), status, leg-voice and leg-status (the call to a transfer number) |
 | `/api/v1/*` | `Bearer pv_live_…` (Pro) | agents, calls, place a call, campaigns, add contacts |
 | `ws /ws/:carrier/:call/:sig` | signed path | live call audio |
+| `ws /ws/leg/:carrier/:call/:sig` | signed path | audio of the person a call is transferred to |
 
 Errors are always `{ error: { code, message, details? } }`. Codes the UI relies on:
 `validation_error`, `subscription_required` (402), `plan_limit` (403), `unauthorized`.
@@ -358,9 +359,16 @@ account deletes its recordings. Agents say the call is recorded when asked.
 
 ### Agent tools (`voice/tools.ts`, executed in `voice/session.ts`)
 `check_availability` and `book_appointment` (Google Calendar free/busy + events, plus
-clash checks against existing appointments), `transfer_call` (carrier transfer to the
-agent's transfer number), `end_call`. Inputs are validated with zod whatever the
-vendor sent. Hangups and transfers wait for the last sentence to finish playing.
+clash checks against existing appointments), `transfer_call`, `end_call`. Inputs are
+validated with zod whatever the vendor sent. Hangups and transfers wait for the last
+sentence to finish playing.
+
+Transfers don't use the carrier's own transfer (`voice/transfer-bridge.ts`): the session
+places an ordinary outbound call to the agent's transfer number from the call's own
+number, plays the caller a ringing tone, says who is coming through to the person who
+answers, then joins the two media streams itself. If nobody answers, the tool returns
+an error and the agent carries on with the caller; a hang-up or transfer that went
+through is the only tool result after which the model stops talking.
 
 ### Prompt assembly (`voice/prompt.ts`)
 Three kinds of call: **outbound** (the opening line and goal), **inbound** (the agent's

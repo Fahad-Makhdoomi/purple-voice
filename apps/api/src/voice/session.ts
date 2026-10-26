@@ -30,6 +30,12 @@ import { recordsCalls, saveRecording } from '../services/recordings';
 import { TOOL_SCHEMAS, toolsForAgent, type ToolName } from './tools';
 import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from './time';
 import { mulawDurationMs, type MediaTransport } from './transports';
+import {
+  TRANSFER_RING_SECONDS,
+  TransferLeg,
+  transferLegs,
+  type TransferFailure,
+} from './transfer-bridge';
 import { OpenAIRealtimeEngine } from './engines/openai-realtime';
 import { GeminiLiveEngine } from './engines/gemini-live';
 import { CascadedEngine } from './engines/cascaded';
@@ -48,6 +54,16 @@ const BUSINESS_HOURS = { start: '09:00', end: '17:00' };
 /** Emails and WhatsApp messages an agent may send on one call (abuse guard). */
 const MAX_MESSAGES_PER_CHANNEL = 3;
 const TRANSCRIPT_FLUSH_MS = 15_000;
+/** Longest call once transferred to a person; nginx holds /ws/ connections for a little over an hour. */
+const TRANSFERRED_CALL_MAX_MS = 60 * 60_000;
+
+const TRANSFER_FAILURES: Record<TransferFailure, string> = {
+  no_answer: 'nobody answered',
+  busy: 'the line was busy',
+  failed: 'the call to the team could not be connected',
+  timeout: 'nobody answered',
+  caller_left: 'the caller hung up while it rang',
+};
 
 /**
  * One live call: the carrier's audio stream on one side, a voice engine on
@@ -69,6 +85,9 @@ export class CallSession {
   private recorder?: CallRecorder;
   /** Mutes the agent's own voice when the caller's line sends it back. */
   private readonly echo = new EchoGuard();
+  /** A transfer to a person: ringing, or connected and carrying the call. */
+  private leg?: TransferLeg;
+  private startedAt = Date.now();
 
   constructor(
     private readonly callId: string,
@@ -110,6 +129,8 @@ export class CallSession {
       this.transport.onAudio((payload) => {
         // The recording keeps what the caller actually said, before the noise gate.
         this.recorder?.remote(payload);
+        // While a transfer rings the agent hears nothing; once connected, the person does.
+        if (this.leg) return this.leg.fromCaller(payload);
         const heard = this.echo.process(payload);
         const audio = gate ? gate.push(heard, Date.now() < this.playbackEndsAt) : heard;
         if (audio) this.engine?.pushAudio(audio);
@@ -186,6 +207,8 @@ export class CallSession {
     });
     const callbacks = {
       onAudio: (payload: string) => {
+        // During a transfer the caller hears the ringing tone, then the person.
+        if (this.leg) return;
         this.recorder?.local(payload);
         const playAt = Math.max(Date.now(), this.playbackEndsAt);
         this.echo.agentAudio(payload, playAt);
@@ -193,6 +216,7 @@ export class CallSession {
         this.transport.sendAudio(payload);
       },
       onInterrupt: () => {
+        if (this.leg) return;
         this.recorder?.interrupt();
         this.echo.agentStopped();
         this.playbackEndsAt = 0;
@@ -302,28 +326,8 @@ export class CallSession {
           };
           return await this.book(agent, input, tz);
         }
-        case 'transfer_call': {
-          if (!agent.transferNumber || !this.providerCallId)
-            return 'Error: transfer is not available on this call';
-          this.note(
-            `Transferring to ${agent.transferNumber}: ${(parsed.data as { reason: string }).reason}`,
-          );
-          await prisma.call.update({
-            where: { id: this.callId },
-            data: {
-              status: 'TRANSFERRED',
-              transferredTo: agent.transferNumber,
-              outcome: 'TRANSFERRED',
-            },
-          });
-          await this.waitForPlayback();
-          await this.adapter.transferCall(
-            this.providerCallId,
-            agent.transferNumber,
-            signedCallbackUrl(this.call.provider, 'transfer', 'callId', this.callId),
-          );
-          return 'Transferred.';
-        }
+        case 'transfer_call':
+          return await this.transfer(agent, (parsed.data as { reason: string }).reason);
         case 'send_email': {
           const input = parsed.data as { to: string; subject: string; message: string };
           return await this.sendMessage(agent, 'EMAIL', input.to, input.message, input.subject);
@@ -344,17 +348,91 @@ export class CallSession {
       logger.warn({ err, tool: name, callId: this.callId }, 'Tool failed');
       // Staff see why on the call page (a carrier refusing a transfer, a calendar error).
       this.note(`${name.replace(/_/g, ' ')} failed: ${(err as Error).message}`);
-      if (name === 'transfer_call') {
-        await prisma.call
-          .update({
-            where: { id: this.callId },
-            data: { status: 'IN_PROGRESS', transferredTo: null, outcome: null },
-          })
-          .catch(() => undefined);
-      }
       return `Error: ${(err as Error).message}`;
     }
     return 'Error: unhandled tool';
+  }
+
+  /**
+   * Puts the caller through to the agent's transfer number by calling it
+   * ourselves and joining the two calls (transfer-bridge.ts), not through
+   * the carrier's transfer. The agent drops out once the person answers; if
+   * nobody does, the agent hears why and carries on with the caller.
+   */
+  private async transfer(agent: Agent, reason: string): Promise<string> {
+    const to = agent.transferNumber;
+    const from = this.call.phoneNumber?.e164;
+    if (!to || !from || this.leg || this.ended)
+      return 'Error: transfer is not available on this call';
+    this.note(`Transferring to ${to}: ${reason}`);
+    await this.waitForPlayback();
+    if (this.ended) return 'Error: the caller hung up';
+
+    const provider = this.call.provider;
+    const caller = this.call.direction === 'OUTBOUND' ? this.call.toNumber : this.call.fromNumber;
+    // The person hears who is being put through and why before the caller joins.
+    const plainReason = /^[\p{Script=Latin}\p{N}\p{P}\s]+$/u.test(reason) ? ` ${reason}.` : '';
+    const leg = new TransferLeg(
+      this.callId,
+      caller,
+      `Call from ${agent.name} at ${this.call.workspace.name}.${plainReason} Connecting you now.`,
+      {
+        dial: async () =>
+          (
+            await this.adapter.placeCall({
+              from,
+              to,
+              answerUrl: signedCallbackUrl(provider, 'leg-voice', 'callId', this.callId),
+              statusUrl: signedCallbackUrl(provider, 'leg-status', 'callId', this.callId),
+              ringTimeoutSec: TRANSFER_RING_SECONDS,
+            })
+          ).providerCallId,
+        hangup: (id) => this.adapter.hangup(id),
+        toCaller: (payload) => this.transport.sendAudio(payload),
+        clearCaller: () => this.transport.clearAudio(),
+        onPersonAudio: (payload) => this.recorder?.local(payload),
+        onPersonLeft: () => {
+          this.note(`${to} hung up`);
+          void this.hangup();
+        },
+      },
+    );
+    this.leg = leg;
+    transferLegs.set(this.callId, leg);
+    const outcome = await leg.connect().catch((err: unknown) => {
+      this.dropLeg(leg);
+      throw err;
+    });
+
+    if (!outcome.connected) {
+      this.dropLeg(leg);
+      const why = TRANSFER_FAILURES[outcome.reason];
+      this.note(`Transfer to ${to} did not connect: ${why}`);
+      return `Error: the transfer did not go through (${why}). You are still on the call with them: say the team could not pick up just now, and offer a call back or to take a message.`;
+    }
+
+    // The person has the caller now; the agent's part is over.
+    this.note(`Connected to ${to}`);
+    this.engine?.close();
+    this.engine = undefined;
+    clearTimeout(this.maxDurationTimer);
+    this.maxDurationTimer = setTimeout(
+      () => {
+        this.note('Maximum call duration reached');
+        void this.hangup();
+      },
+      Math.max(0, this.startedAt + TRANSFERRED_CALL_MAX_MS - Date.now()),
+    );
+    await prisma.call.update({
+      where: { id: this.callId },
+      data: { status: 'TRANSFERRED', transferredTo: to, outcome: 'TRANSFERRED' },
+    });
+    return 'Transferred.';
+  }
+
+  private dropLeg(leg: TransferLeg) {
+    if (this.leg === leg) this.leg = undefined;
+    if (transferLegs.get(this.callId) === leg) transferLegs.delete(this.callId);
   }
 
   /** Sends an email or WhatsApp message the caller asked for, and says what happened. */
@@ -535,6 +613,11 @@ export class CallSession {
     clearTimeout(this.maxDurationTimer);
     clearInterval(this.flushTimer);
     this.engine?.close();
+    // The caller is gone: hang up on the person they were being put through to.
+    if (this.leg) {
+      this.leg.end();
+      this.dropLeg(this.leg);
+    }
     try {
       await saveTranscript(this.callId, this.transcript);
       await prisma.call.update({ where: { id: this.callId }, data: { endReason: reason } });

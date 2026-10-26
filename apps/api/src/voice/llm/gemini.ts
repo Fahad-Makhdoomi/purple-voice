@@ -5,7 +5,7 @@ import {
   type Part,
   type ThinkingConfig,
 } from '@google/genai';
-import type { ToolDefinition } from '../tools';
+import { agentLeftCall, type ToolDefinition } from '../tools';
 import { MAX_TOOL_ROUNDS, type LlmConversation, type TurnHandlers } from './types';
 
 /**
@@ -78,14 +78,16 @@ export class GeminiConversation implements LlmConversation {
       if (!calls.length) return;
 
       const responses: Part[] = [];
+      let left = false;
       for (const call of calls) {
         const output = await h.onToolCall(call.name ?? '', call.args ?? {});
+        left ||= agentLeftCall(call.name ?? '', output);
         responses.push({
           functionResponse: { id: call.id, name: call.name, response: { result: output } },
         });
       }
       this.contents.push({ role: 'user', parts: responses });
-      if (calls.some((c) => c.name === 'end_call' || c.name === 'transfer_call')) return;
+      if (left) return;
     }
   }
 }

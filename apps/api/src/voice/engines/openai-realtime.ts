@@ -2,6 +2,7 @@ import WebSocket from 'ws';
 import type { NoiseFilter } from '@prisma/client';
 import { logger } from '../../lib/logger';
 import { mulawDurationMs } from '../transports';
+import { agentLeftCall } from '../tools';
 import {
   DEFAULT_OPENING,
   type EngineCallbacks,
@@ -212,7 +213,7 @@ export class OpenAIRealtimeEngine implements VoiceEngine {
         item: { type: 'function_call_output', call_id: item.call_id, output: result },
       });
       // After hanging up or transferring there is nobody left to talk to.
-      if (item.name !== 'end_call' && item.name !== 'transfer_call') continueConversation = true;
+      if (!agentLeftCall(item.name, result)) continueConversation = true;
     }
     if (continueConversation) this.send({ type: 'response.create' });
   }

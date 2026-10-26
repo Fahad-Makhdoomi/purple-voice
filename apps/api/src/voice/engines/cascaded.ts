@@ -35,10 +35,28 @@ const FILLERS: Record<'hi' | 'en', string[]> = {
   hi: ['Hmm, ek second.', 'Achha, ek pal.', 'Ji, dekhti hoon.'],
   en: ['Hmm, one moment.', 'Okay, let me check.', 'Sure, one second.'],
 };
-const NUDGES: Record<'hi' | 'en', string> = {
-  hi: 'Hello, kya aap mujhe sun pa rahe hain?',
-  en: 'Hello, can you hear me?',
+// Never "can you hear me?": asked on a working line it tells the caller the
+// line is bad, and the model takes it up from the history and says so again.
+const NUDGES: Record<'hi' | 'en', string[]> = {
+  hi: ['Hello ji?', 'Ji, aap boliye, main sun rahi hoon.'],
+  en: ['Hello?', "Take your time, I'm listening."],
 };
+
+/**
+ * What people say while listening ("haan ji", "achha", "okay", "boliye").
+ * Over the agent's voice it means "go on", not "stop": it never cuts the
+ * agent off and never becomes a turn of its own. Latin and Devanagari both,
+ * since recognisers write Hindi either way.
+ */
+const BACKCHANNEL = new Set(
+  (
+    'haan han haa ha hanji haanji ji jee ha ji achha acha accha achcha achchha ok okay okey ohk ' +
+    'hmm hm hmmm mm mhm uh huh um oh ah aha theek thik hai sahi bilkul right yes yeah yep yup ' +
+    'sure alright fine got it go on ahead please boliye bolo bataiye batao batayiye ' +
+    'हाँ हां हा हाँजी जी अच्छा अच्छे ओके ठीक है सही बिल्कुल बिलकुल हम्म हम हूँ हूं हुम ओह आह ' +
+    'बोलिए बोलिये बोलो बताइए बताइये बताओ'
+  ).split(' '),
+);
 
 export function words(text: string): string[] {
   return text
@@ -47,6 +65,49 @@ export function words(text: string): string[] {
     .replace(/[^\p{L}\p{M}\p{N}\s']/gu, ' ')
     .split(/\s+/)
     .filter(Boolean);
+}
+
+/** Nothing but listening noises: "haan ji", "achha theek hai", "okay". */
+export function isBackchannel(text: string): boolean {
+  const heard = words(text);
+  return heard.length > 0 && heard.every((w) => BACKCHANNEL.has(w));
+}
+
+/** Devanagari consonants (and nasal signs) as Latin; vowels drop out of sound keys anyway. */
+const DEVANAGARI: Record<string, string> = Object.fromEntries(
+  (
+    'क:k ख:kh ग:g घ:gh ङ:n च:ch छ:chh ज:j झ:jh ञ:n ट:t ठ:th ड:d ढ:dh ण:n त:t थ:th द:d ध:dh ' +
+    'न:n प:p फ:ph ब:b भ:bh म:m य:y र:r ल:l व:v श:sh ष:sh स:s ह:h ळ:l ं:n ँ:n'
+  )
+    .split(' ')
+    .map((pair) => pair.split(':')),
+);
+
+/**
+ * A word as it sounds, the same whichever script it was written in: the
+ * model may write "bahut badhiya" while the recogniser hears "बहुत बढ़िया".
+ * Consonants only, with near-identical sounds merged, so "bahut" and "बहुत"
+ * are both "bt". Coarse on purpose: it only has to tell the agent's own
+ * words coming back from the words of someone else. Words with fewer than
+ * two consonants ("haan", "hai", "ji") would all sound alike that way, so
+ * they stay as written and only match themselves.
+ */
+export function soundKey(word: string): string {
+  const latin = [...word.normalize('NFKC')]
+    .map((ch) => DEVANAGARI[ch] ?? (/\p{Script=Devanagari}/u.test(ch) ? '' : ch))
+    .join('')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+  const key = latin
+    .replace(/[aeiouh]/g, '')
+    .replace(/w/g, 'v')
+    .replace(/z/g, 'j')
+    .replace(/[qc]/g, 'k')
+    .replace(/x/g, 'ks')
+    .replace(/f/g, 'p')
+    .replace(/(.)\1+/g, '$1');
+  return key.length >= 2 ? key : word;
 }
 
 /**
@@ -106,11 +167,7 @@ export class CascadedEngine implements VoiceEngine {
         if (this.isEcho(text)) return;
         this.heard();
         if (final) this.pendingUserText = `${this.pendingUserText} ${text}`.trim();
-        // Only real words over the agent's voice interrupt it: a cough or a
-        // stray background word doesn't. Noisier settings need more words.
-        const count = text.trim().split(/\s+/).filter(Boolean).length;
-        if (this.isSpeaking() && count >= INTERRUPT_WORDS[config.noiseFilter ?? 'STANDARD'])
-          this.interrupt();
+        if (this.isSpeaking() && this.isBargeIn(text)) this.interrupt();
       },
       onUtteranceEnd: () => this.onUtteranceEnd(),
       onSpeechStarted: () => this.heard(),
@@ -177,12 +234,26 @@ export class CascadedEngine implements VoiceEngine {
     if (this.closed || this.turnAbort || this.isSpeaking() || this.nudges >= MAX_NUDGES) return;
     const quietSince = Math.max(this.lastActivity, this.playbackEndsAt);
     if (Date.now() - quietSince < NUDGE_AFTER_MS) return;
+    const line = NUDGES[this.lang][this.nudges]!;
     this.nudges++;
     this.lastActivity = Date.now();
-    const line = NUDGES[this.lang];
     this.cb.onTranscript('agent', line);
     this.llm.noteInterrupted(line.replace(/[?]$/, ''));
     this.say(line, new AbortController().signal);
+  }
+
+  /**
+   * Whether words heard over the agent's voice should stop it: enough real
+   * words (noisier settings need more), and not just the caller listening
+   * along ("haan ji", "achha", "okay"). A cough, a stray background word or
+   * a backchannel lets the agent finish; cutting it off for those is what
+   * left it apologising for a bad line.
+   */
+  private isBargeIn(text: string): boolean {
+    return (
+      words(text).length >= INTERRUPT_WORDS[this.config.noiseFilter ?? 'STANDARD'] &&
+      !isBackchannel(text)
+    );
   }
 
   /** Mostly the agent's own recent words, heard while (or just after) it spoke. */
@@ -190,7 +261,7 @@ export class CascadedEngine implements VoiceEngine {
     const now = Date.now();
     if (!this.isSpeaking() && now > this.playbackEndsAt + ECHO_TAIL_MS) return false;
     this.recentSpeech = this.recentSpeech.filter((s) => now - s.at < ECHO_MEMORY_MS);
-    const heard = words(text);
+    const heard = words(text).map(soundKey);
     if (!heard.length) return true;
     const own = (w: string) => this.recentSpeech.some((s) => s.words.has(w));
     // A short answer ("yes", "haan ji", "okay") right after the agent asked
@@ -216,9 +287,17 @@ export class CascadedEngine implements VoiceEngine {
     const text = this.pendingUserText.trim();
     this.pendingUserText = '';
     if (!text || this.closed) return;
-    // The caller finished a turn over the agent: stop the agent properly
-    // (carrier queue cleared) before answering, so two replies never overlap.
-    if (this.isSpeaking()) this.interrupt();
+    if (this.isSpeaking()) {
+      // Over the agent's voice only a real barge-in is a turn; "haan ji" while
+      // it talks is the caller listening, and the agent carries on.
+      if (!this.isBargeIn(text)) return;
+      // The caller finished a turn over the agent: stop the agent properly
+      // (carrier queue cleared) before answering, so two replies never overlap.
+      this.interrupt();
+    } else if (this.turnAbort && isBackchannel(text)) {
+      // A reply to what they said is on its way; "haan ji" doesn't replace it.
+      return;
+    }
     this.cb.onTranscript('caller', text);
     void this.respond(text);
   }
@@ -335,7 +414,7 @@ export class CascadedEngine implements VoiceEngine {
     this.speechQueue = this.speechQueue.then(async () => {
       if (signal.aborted || this.closed) return;
       this.synthesizing = true;
-      this.recentSpeech.push({ words: new Set(words(text)), at: Date.now() });
+      this.recentSpeech.push({ words: new Set(words(text).map(soundKey)), at: Date.now() });
       try {
         while (!signal.aborted) {
           while (chunks.length && !signal.aborted) {

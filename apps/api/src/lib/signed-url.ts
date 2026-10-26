@@ -8,8 +8,13 @@ import { hmacSha256Hex, safeEqual } from './crypto';
  * signature scheme, and stops anyone who guesses a call id from driving it.
  */
 
-/** `dialer` signs the browser's own audio socket for a call it placed (voice/dialer-bridge.ts). */
-export type SignedPurpose = 'voice' | 'status' | 'media' | 'transfer' | 'inbound' | 'dialer';
+/**
+ * `dialer` signs the browser's own audio socket for a call it placed
+ * (voice/dialer-bridge.ts); `leg-*` the call to a person an AI call is
+ * being transferred to (voice/transfer-bridge.ts), signed for the AI call.
+ */
+export type SignedPurpose =
+  'voice' | 'status' | 'media' | 'inbound' | 'dialer' | 'leg-voice' | 'leg-status' | 'leg-media';
 
 export function signSubject(purpose: SignedPurpose, subject: string): string {
   return hmacSha256Hex(env.URL_SIGNING_SECRET, `${purpose}:${subject}`).slice(0, 40);

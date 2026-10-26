@@ -51,20 +51,12 @@ export class SuperPhoneAdapter implements TelephonyAdapter {
     this.unavailable();
   }
 
-  async transferCall(): Promise<void> {
-    this.unavailable();
-  }
-
   async hangup(): Promise<void> {
     this.unavailable();
   }
 
   streamDocument(): VoiceDocument {
     this.unavailable();
-  }
-
-  transferDocument(to: string): VoiceDocument {
-    return { contentType: 'text/xml', body: `<Response><Dial>${escapeXml(to)}</Dial></Response>` };
   }
 
   sayAndHangupDocument(message: string): VoiceDocument {

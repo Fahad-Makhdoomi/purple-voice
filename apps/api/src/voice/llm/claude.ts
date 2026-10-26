@@ -1,5 +1,5 @@
 import { Anthropic, claudeClient, claudeExtras } from '../../services/ai/claude';
-import type { ToolDefinition } from '../tools';
+import { agentLeftCall, type ToolDefinition } from '../tools';
 import { MAX_TOOL_ROUNDS, type LlmConversation, type TurnHandlers } from './types';
 
 /**
@@ -73,9 +73,11 @@ export class ClaudeConversation implements LlmConversation {
       if (final.stop_reason !== 'tool_use') return;
 
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+      let left = false;
       for (const block of final.content) {
         if (block.type !== 'tool_use') continue;
         const output = await h.onToolCall(block.name, block.input);
+        left ||= agentLeftCall(block.name, output);
         results.push({
           type: 'tool_result',
           tool_use_id: block.id,
@@ -84,13 +86,7 @@ export class ClaudeConversation implements LlmConversation {
         });
       }
       this.messages.push({ role: 'user', content: results });
-      if (
-        final.content.some(
-          (b) => b.type === 'tool_use' && (b.name === 'end_call' || b.name === 'transfer_call'),
-        )
-      ) {
-        return;
-      }
+      if (left) return;
     }
   }
 }

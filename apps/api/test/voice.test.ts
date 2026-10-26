@@ -92,7 +92,13 @@ describe('telephony documents', () => {
     const doc = plivo.streamDocument('wss://x/ws/plivo/c/s');
     expect(doc.body).toContain('bidirectional="true"');
     expect(doc.body).toContain('audio/x-mulaw;rate=8000');
-    expect(plivo.transferDocument('+14155550100').body).toContain('<Number>14155550100</Number>');
+    // A transferred call's person hears who is coming through before the stream joins them.
+    expect(
+      twilio.streamDocument('wss://x/ws/leg/twilio/c/s', 'Call from Ava & co.').body,
+    ).toContain('<Say>Call from Ava &amp; co.</Say><Connect>');
+    expect(plivo.streamDocument('wss://x/ws/leg/plivo/c/s', 'Call from Ava.').body).toContain(
+      '<Speak>Call from Ava.</Speak><Stream',
+    );
   });
 
   it('measures μ-law audio duration', () => {

@@ -60,13 +60,11 @@ export interface TelephonyAdapter {
     existingAppId?: string | null;
   }): Promise<{ providerNumberId?: string; appId?: string }>;
   placeCall(input: PlaceCallInput): Promise<{ providerCallId: string }>;
-  /** Moves the live call to a human. `documentUrl` serves transferDocument() if the provider needs a URL. */
-  transferCall(providerCallId: string, to: string, documentUrl: string): Promise<void>;
+  /** Ends a call, or cancels one that is still ringing. */
   hangup(providerCallId: string): Promise<void>;
 
-  /** Connect the call's audio to our media WebSocket. */
-  streamDocument(wsUrl: string): VoiceDocument;
-  transferDocument(to: string, callerId?: string): VoiceDocument;
+  /** Connect the call's audio to our media WebSocket, after saying `intro` if given. */
+  streamDocument(wsUrl: string, intro?: string): VoiceDocument;
   sayAndHangupDocument(message: string): VoiceDocument;
 }
 

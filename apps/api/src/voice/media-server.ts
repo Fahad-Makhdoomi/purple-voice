@@ -11,8 +11,10 @@ import { isTerminal } from '../services/calls';
 import { createTransport } from './transports';
 import { CallSession } from './session';
 import { dialerBridges, endReasonFor, type DialerBridge } from './dialer-bridge';
+import { transferLegs } from './transfer-bridge';
 
 const CARRIER_PATH = /^\/ws\/(twilio|plivo)\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
+const LEG_PATH = /^\/ws\/leg\/(twilio|plivo)\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
 const DIALER_PATH = /^\/ws\/dialer\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
 /** A browser that misses a ping for this long is gone. */
 const HEARTBEAT_MS = 10_000;
@@ -47,6 +49,9 @@ function cookie(header: string | undefined, name: string): string | null {
  *     minted when we answered the call, so only the carrier we handed the URL
  *     to can open the stream. Calls placed from the browser dialer go to the
  *     dialer bridge; every other call gets an AI CallSession.
+ *   /ws/leg/<provider>/<callId>/<sig>  the person an AI call is being
+ *     transferred to, joined to that call (transfer-bridge.ts). The id and
+ *     signature are the AI call's.
  *   /ws/dialer/<callId>/<sig>      the browser of the person who placed a
  *     dialer call. It needs the signature returned when the call was placed
  *     and that same person's session cookie.
@@ -142,6 +147,20 @@ export function attachMediaServer(server: Server) {
       acceptBrowser(req, socket, head, callId).catch((err) => {
         logger.error({ err, callId }, 'Dialer socket failed to open');
         reject(socket, 500);
+      });
+      return;
+    }
+
+    const leg = url.pathname.match(LEG_PATH);
+    if (leg) {
+      const [, provider, callId, sig] = leg;
+      if (!verifySubject('leg-media', callId, sig)) return reject(socket, 403);
+      const transfer = transferLegs.get(callId);
+      if (!transfer) return reject(socket, 404);
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        const transport = createTransport(provider, ws);
+        if (transport) transfer.attach(transport);
+        else ws.close();
       });
       return;
     }

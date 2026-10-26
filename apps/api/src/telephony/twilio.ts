@@ -95,29 +95,16 @@ export class TwilioAdapter implements TelephonyAdapter {
     return { providerCallId: call.sid };
   }
 
-  async transferCall(providerCallId: string, to: string) {
-    await this.request('POST', `/Calls/${providerCallId}.json`, {
-      Twiml: this.transferDocument(to).body,
-    });
-  }
-
   async hangup(providerCallId: string) {
     await this.request('POST', `/Calls/${providerCallId}.json`, { Status: 'completed' });
   }
 
   /** Twilio ignores query strings on stream URLs, so call id and signature travel in the path. */
-  streamDocument(wsUrl: string): VoiceDocument {
+  streamDocument(wsUrl: string, intro?: string): VoiceDocument {
+    const say = intro ? `<Say>${escapeXml(intro)}</Say>` : '';
     return {
       contentType: 'text/xml',
-      body: `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="${escapeXml(wsUrl)}"/></Connect></Response>`,
-    };
-  }
-
-  transferDocument(to: string, callerId?: string): VoiceDocument {
-    const attr = callerId ? ` callerId="${escapeXml(callerId)}"` : '';
-    return {
-      contentType: 'text/xml',
-      body: `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${attr}>${escapeXml(to)}</Dial></Response>`,
+      body: `<?xml version="1.0" encoding="UTF-8"?><Response>${say}<Connect><Stream url="${escapeXml(wsUrl)}"/></Connect></Response>`,
     };
   }
 

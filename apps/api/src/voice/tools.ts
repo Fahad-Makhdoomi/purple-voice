@@ -183,3 +183,12 @@ export function toolsForAgent(
 
 /** Runs a tool call coming from any engine; returns the text the model sees as the result. */
 export type ToolExecutor = (name: string, rawInput: unknown) => Promise<string>;
+
+/**
+ * Whether a tool call took the agent off the call. A hang-up or transfer
+ * that went through leaves nobody to talk to; one that failed must be
+ * followed by the model telling the caller, or they sit in silence.
+ */
+export function agentLeftCall(name: string, result: string): boolean {
+  return (name === 'end_call' || name === 'transfer_call') && !result.startsWith('Error');
+}

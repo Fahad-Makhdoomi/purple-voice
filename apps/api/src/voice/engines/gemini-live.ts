@@ -21,6 +21,7 @@ import {
   mulawEncode,
   pcm16ToBuffer,
 } from '../audio';
+import { agentLeftCall } from '../tools';
 import {
   DEFAULT_OPENING,
   type EngineCallbacks,
@@ -411,9 +412,7 @@ export class GeminiLiveEngine implements VoiceEngine {
         .onToolCall(name, call.args ?? {})
         .catch((err: Error) => `Error: ${err.message}`);
       functionResponses.push({ id: call.id, name, response: { result } });
-      if ((name === 'end_call' || name === 'transfer_call') && !result.startsWith('Error')) {
-        finished = true;
-      }
+      if (agentLeftCall(name, result)) finished = true;
     }
     // After hanging up or transferring there is nobody left to talk to: an
     // unanswered blocking call keeps the model quiet while the line closes.

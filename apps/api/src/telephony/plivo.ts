@@ -101,30 +101,24 @@ export class PlivoAdapter implements TelephonyAdapter {
     return { providerCallId: id };
   }
 
-  async transferCall(providerCallId: string, _to: string, documentUrl: string) {
-    await this.request('POST', `/Call/${providerCallId}/`, {
-      legs: 'aleg',
-      aleg_url: documentUrl,
-      aleg_method: 'POST',
-    });
-  }
-
+  /**
+   * Until it is answered a Plivo call is only a request (placeCall's id), which
+   * the Call endpoint doesn't know: a ringing call is cancelled as a request.
+   */
   async hangup(providerCallId: string) {
-    await this.request('DELETE', `/Call/${providerCallId}/`);
+    try {
+      await this.request('DELETE', `/Call/${providerCallId}/`);
+    } catch (err) {
+      if (!(err instanceof TelephonyError) || err.status !== 404) throw err;
+      await this.request('DELETE', `/Request/${providerCallId}/`);
+    }
   }
 
-  streamDocument(wsUrl: string): VoiceDocument {
+  streamDocument(wsUrl: string, intro?: string): VoiceDocument {
+    const speak = intro ? `<Speak>${escapeXml(intro)}</Speak>` : '';
     return {
       contentType: 'application/xml',
-      body: `<?xml version="1.0" encoding="UTF-8"?><Response><Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">${escapeXml(wsUrl)}</Stream></Response>`,
-    };
-  }
-
-  transferDocument(to: string, callerId?: string): VoiceDocument {
-    const attr = callerId ? ` callerId="${escapeXml(digits(callerId))}"` : '';
-    return {
-      contentType: 'application/xml',
-      body: `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${attr}><Number>${escapeXml(digits(to))}</Number></Dial></Response>`,
+      body: `<?xml version="1.0" encoding="UTF-8"?><Response>${speak}<Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">${escapeXml(wsUrl)}</Stream></Response>`,
     };
   }
 

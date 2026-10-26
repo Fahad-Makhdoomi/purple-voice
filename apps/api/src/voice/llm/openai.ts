@@ -4,7 +4,7 @@ import type {
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
 import { sarvamChatClient } from '../../services/ai/sarvam-client';
-import type { ToolDefinition } from '../tools';
+import { agentLeftCall, type ToolDefinition } from '../tools';
 import { MAX_TOOL_ROUNDS, type LlmConversation, type TurnHandlers } from './types';
 
 /**
@@ -95,6 +95,7 @@ export class OpenAIConversation implements LlmConversation {
       });
       if (!toolCalls.length) return;
 
+      let left = false;
       for (const c of toolCalls) {
         let input: unknown;
         try {
@@ -103,9 +104,10 @@ export class OpenAIConversation implements LlmConversation {
           input = { __invalid: c.args };
         }
         const output = await h.onToolCall(c.name, input);
+        left ||= agentLeftCall(c.name, output);
         this.messages.push({ role: 'tool', tool_call_id: c.id, content: output });
       }
-      if (toolCalls.some((c) => c.name === 'end_call' || c.name === 'transfer_call')) return;
+      if (left) return;
     }
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SttEvents } from '../src/voice/engines/deepgram';
-import { CascadedEngine, words } from '../src/voice/engines/cascaded';
+import { CascadedEngine, isBackchannel, soundKey, words } from '../src/voice/engines/cascaded';
 
 // vi.mock calls below are hoisted above these imports.
 const h = vi.hoisted(() => ({
@@ -34,7 +34,7 @@ vi.mock('../src/voice/llm/openai', () => ({
   },
 }));
 
-function engine() {
+function engine(greeting = 'Hi, this is Ava from Sunrise Solar. Do you have a minute?') {
   h.turns = [];
   const interrupts: number[] = [];
   const e = new CascadedEngine(
@@ -44,7 +44,7 @@ function engine() {
       voice: 'v',
       language: 'en-US',
       instructions: '',
-      greeting: 'Hi, this is Ava from Sunrise Solar. Do you have a minute?',
+      greeting,
       tools: [],
       provider: 'OPENAI',
       speechApiKey: 'xi',
@@ -106,6 +106,72 @@ describe('cascaded engine turn-taking', () => {
     h.stt!.events.onUtteranceEnd();
     await tick();
     expect(h.turns).toEqual(['a minute']);
+    e.close();
+  });
+});
+
+describe('cascaded engine listening noises', () => {
+  it('lets the agent finish over "haan ji" or a stray word, and never answers them', async () => {
+    const { e, interrupts } = engine();
+    await e.start();
+    await tick();
+    for (const heard of ['haan ji', 'हाँ जी', 'achha theek hai', 'okay', 'hello']) {
+      h.stt!.events.onTranscript(heard, true);
+      h.stt!.events.onUtteranceEnd();
+    }
+    await tick();
+    expect(interrupts).toHaveLength(0);
+    expect(h.turns).toHaveLength(0);
+    e.close();
+  });
+
+  it('still answers "haan ji" once the agent has finished', async () => {
+    const { e } = engine();
+    await e.start();
+    await new Promise((r) => setTimeout(r, 2100));
+    h.stt!.events.onTranscript('haan ji', true);
+    h.stt!.events.onUtteranceEnd();
+    await tick();
+    expect(h.turns).toEqual(['haan ji']);
+    e.close();
+  });
+
+  it('knows a listening noise from a reply', () => {
+    expect(isBackchannel('Haan ji, boliye.')).toBe(true);
+    expect(isBackchannel('ठीक है')).toBe(true);
+    expect(isBackchannel('haan, kitne ka hai?')).toBe(false);
+    expect(isBackchannel('')).toBe(false);
+  });
+});
+
+describe('cascaded engine echo across scripts', () => {
+  it('hears a word the same in Latin and Devanagari', () => {
+    for (const [latin, devanagari] of [
+      ['bahut', 'बहुत'],
+      ['badhiya', 'बढ़िया'],
+      ['kashmir', 'कश्मीर'],
+      ['booking', 'बुकिंग'],
+      ['travels', 'ट्रैवल्स'],
+      ['namaste', 'नमस्ते'],
+    ]) {
+      expect(soundKey(latin!)).toBe(soundKey(devanagari!));
+    }
+    // Short words would all sound alike, so they only match themselves.
+    expect(soundKey('haan')).not.toBe(soundKey('hain'));
+    expect(soundKey('nahi')).not.toBe(soundKey('booking'));
+  });
+
+  it('ignores its Hinglish greeting echoed back in Devanagari', async () => {
+    const { e, interrupts } = engine(
+      'Namaste, main Ava bol rahi hoon, aapka Kashmir trip kaisa raha?',
+    );
+    await e.start();
+    await tick();
+    h.stt!.events.onTranscript('नमस्ते मैं आवा बोल रही हूं आपका कश्मीर ट्रिप कैसा रहा', true);
+    h.stt!.events.onUtteranceEnd();
+    await tick();
+    expect(interrupts).toHaveLength(0);
+    expect(h.turns).toHaveLength(0);
     e.close();
   });
 });
