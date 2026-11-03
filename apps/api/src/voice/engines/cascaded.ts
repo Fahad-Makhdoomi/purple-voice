@@ -23,6 +23,13 @@ const INTERRUPT_WORDS: Record<NoiseFilter, number> = { OFF: 1, STANDARD: 2, STRO
 const ECHO_TAIL_MS = 1500;
 /** How far back the agent's own words are remembered for echo checks. */
 const ECHO_MEMORY_MS = 20_000;
+/**
+ * Sarvam hears the line as the carrier delivers it, and its recogniser spells
+ * Hindi too differently from the agent's text for the word-overlap echo check
+ * to catch every echo. So while the agent speaks, and this long after, the
+ * recogniser is sent silence instead of the line: the agent can't hear itself.
+ */
+const SARVAM_GATE_TAIL_MS = 400;
 /** Share of a heard phrase that must be the agent's own recent words to count as echo. */
 const ECHO_OVERLAP = 0.6;
 /** No reply text this long after the caller finished: say a short filler so the line isn't dead. */
@@ -32,13 +39,13 @@ const NUDGE_AFTER_MS = 8000;
 const MAX_NUDGES = 2;
 
 const FILLERS: Record<'hi' | 'en', string[]> = {
-  hi: ['Hmm, ek second.', 'Achha, ek pal.', 'Ji, dekhti hoon.'],
+  hi: ['Hmm, ek second.', 'Achha, ek pal.', 'Ji, ek minute.'],
   en: ['Hmm, one moment.', 'Okay, let me check.', 'Sure, one second.'],
 };
 // Never "can you hear me?": asked on a working line it tells the caller the
 // line is bad, and the model takes it up from the history and says so again.
 const NUDGES: Record<'hi' | 'en', string[]> = {
-  hi: ['Hello ji?', 'Ji, aap boliye, main sun rahi hoon.'],
+  hi: ['Hello ji?', 'Ji, aap boliye, main yahin hoon.'],
   en: ['Hello?', "Take your time, I'm listening."],
 };
 
@@ -57,6 +64,11 @@ const BACKCHANNEL = new Set(
     'बोलिए बोलिये बोलो बताइए बताइये बताओ'
   ).split(' '),
 );
+
+/** μ-law silence as long as the given frame, so the recogniser's clock keeps running. */
+export function silenceLike(payloadB64: string): string {
+  return Buffer.alloc(Buffer.from(payloadB64, 'base64').length, 0xff).toString('base64');
+}
 
 export function words(text: string): string[] {
   return text
@@ -202,7 +214,15 @@ export class CascadedEngine implements VoiceEngine {
   }
 
   pushAudio(payloadB64: string) {
-    this.stt.push(payloadB64);
+    this.stt.push(this.deafToLine() ? silenceLike(payloadB64) : payloadB64);
+  }
+
+  /** Whether the recogniser should be kept from hearing the line right now (Sarvam only). */
+  private deafToLine() {
+    return (
+      this.config.speech === 'SARVAM' &&
+      (this.isSpeaking() || Date.now() < this.playbackEndsAt + SARVAM_GATE_TAIL_MS)
+    );
   }
 
   close() {
