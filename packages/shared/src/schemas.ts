@@ -1007,3 +1007,40 @@ export const seoSuggestSchema = z.object({
   title: z.string().trim().min(2).max(200),
   body: z.string().max(200000),
 });
+
+// ── Platform email (SMTP) ──────────────────────────────────────────────────
+
+/**
+ * The mail server that sends the platform's own email: password resets,
+ * notifications and support alerts. Set by a super admin; a blank password on
+ * update keeps the saved one.
+ */
+export const emailSettingsSchema = z.object({
+  host: z.string().trim().min(1, 'Enter the mail server name').max(255),
+  port: z.number().int().min(1).max(65535),
+  /** TLS from the first byte (port 465). Otherwise STARTTLS is used when offered. */
+  secure: z.boolean(),
+  username: z.string().trim().max(254).optional().or(z.literal('')),
+  password: z.string().max(500).optional().or(z.literal('')),
+  /** The From line, e.g. `Purple Voice <no-reply@example.com>`. */
+  from: z.string().trim().min(3, 'Enter the From address').max(254),
+  /** Comma-separated addresses told about new support tickets. */
+  supportEmails: z.string().trim().max(1000).optional().or(z.literal('')),
+});
+export type EmailSettingsInput = z.infer<typeof emailSettingsSchema>;
+
+export const emailTestSchema = z.object({ to: z.string().trim().toLowerCase().email().max(254) });
+
+/** What the admin page shows: never the password. */
+export interface EmailSettingsView {
+  /** Where mail is sent from right now. */
+  source: 'database' | 'environment' | 'none';
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  from: string;
+  supportEmails: string;
+  hasPassword: boolean;
+  updatedAt: string | null;
+}

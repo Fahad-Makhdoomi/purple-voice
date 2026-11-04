@@ -4,6 +4,7 @@ import { env } from '../../config/env';
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { sendMail } from '../../lib/mailer';
+import { supportNotifyEmails } from '../../services/email-settings';
 import { notFound } from '../../lib/http-error';
 import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireFeature } from '../../middleware/entitlements';
@@ -13,8 +14,9 @@ import { streamAssistantReply } from '../../services/ai/assistant';
 export const supportRouter = Router();
 
 function notifyStaff(subject: string, text: string) {
-  if (!env.SUPPORT_NOTIFY_EMAILS) return;
-  void sendMail({ to: env.SUPPORT_NOTIFY_EMAILS.split(',').map((s) => s.trim()), subject, text });
+  void supportNotifyEmails().then((to) => {
+    if (to.length) void sendMail({ to, subject, text });
+  });
 }
 
 supportRouter.get('/tickets', async (req, res) => {

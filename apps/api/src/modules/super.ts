@@ -3,6 +3,8 @@ import {
   aiCredentialSchema,
   aiSettingsSchema,
   credentialProviderParamSchema,
+  emailSettingsSchema,
+  emailTestSchema,
   CREDENTIAL_PROVIDERS,
   PLAN_CODES,
   paginationSchema,
@@ -26,6 +28,12 @@ import { getSetting, setSetting } from '../services/settings';
 import { revalidate } from '../services/revalidate';
 import { verifyApiKey } from '../services/ai-keys';
 import { paymentGatewayViews, saveGateway } from '../services/payment-gateways';
+import {
+  clearEmailSettings,
+  emailSettingsView,
+  saveEmailSettings,
+} from '../services/email-settings';
+import { sendMailStrict } from '../lib/mailer';
 import { ensureInternalWorkspace } from '../services/internal-workspace';
 
 /**
@@ -418,6 +426,45 @@ superRouter.delete('/payments/gateways/:gateway', async (req, res) => {
     entityId: gateway,
   });
   res.json({ gateways: await paymentGatewayViews() });
+});
+
+// ── Email (SMTP) ────────────────────────────────────────────────────────────
+// The mail server for password resets and notifications. Verified by signing
+// in before it is saved; the password is encrypted and never returned.
+
+superRouter.get('/email', async (_req, res) => {
+  res.json({ settings: await emailSettingsView() });
+});
+
+superRouter.put('/email', async (req, res) => {
+  const input = emailSettingsSchema.parse(req.body);
+  await saveEmailSettings(input);
+  await audit(req, 'settings.email_saved', {
+    meta: { host: input.host, port: input.port, secure: input.secure },
+  });
+  res.json({ settings: await emailSettingsView() });
+});
+
+superRouter.delete('/email', async (req, res) => {
+  await clearEmailSettings();
+  await audit(req, 'settings.email_cleared');
+  res.json({ settings: await emailSettingsView() });
+});
+
+superRouter.post('/email/test', async (req, res) => {
+  const { to } = emailTestSchema.parse(req.body);
+  try {
+    const { sent } = await sendMailStrict({
+      to,
+      subject: 'Purple Voice test email',
+      text: 'This is a test email from Purple Voice. If you can read it, your mail server is set up correctly.',
+    });
+    if (!sent) throw badRequest('No mail server is set up yet. Save your SMTP settings first.');
+  } catch (err) {
+    if (err instanceof Error && 'status' in err) throw err;
+    throw badRequest(`The email could not be sent: ${(err as Error).message}`);
+  }
+  res.json({ ok: true });
 });
 
 // ── Audit log ───────────────────────────────────────────────────────────────
