@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { RESOURCE_CATEGORIES, readingTime, tableOfContents } from '@pv/shared';
+import { postBasePath, readingTime, tableOfContents } from '@pv/shared';
 import { notFoundOrMoved } from '@/lib/moved';
 import { Markdown } from '@/components/site/Markdown';
 import { JsonLd } from '@/components/site/JsonLd';
@@ -11,14 +11,16 @@ import { getPost, getSettings } from '@/lib/server-api';
 import { formatDate } from '@/lib/format';
 import { siteUrl } from '@/lib/config';
 
-type Base = '/blog' | '/resources';
+type Base = '/blog' | '/resources' | '/solutions';
 
-const isResource = (category: string | null) =>
-  !!category && (RESOURCE_CATEGORIES as readonly string[]).includes(category);
+const SECTION_NAMES: Record<Base, { crumb: string; back: string }> = {
+  '/blog': { crumb: 'Blog', back: 'All posts' },
+  '/resources': { crumb: 'Resources', back: 'All resources' },
+  '/solutions': { crumb: 'Solutions', back: 'All solutions' },
+};
 
-/** A post belongs to exactly one section; the other section's URL is a 404. */
-const inSection = (base: Base, category: string | null) =>
-  base === '/resources' ? isResource(category) : !isResource(category);
+/** A post belongs to exactly one section; the other sections' URLs are a 404. */
+const inSection = (base: Base, category: string | null) => postBasePath(category) === base;
 
 export async function postMetadata(base: Base, slug: string): Promise<Metadata> {
   const data = await getPost(slug);
@@ -67,7 +69,8 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
   // Show an updated date when the post changed meaningfully after it went out.
   const updated =
     new Date(post.updatedAt).getTime() - new Date(post.publishedAt).getTime() > 2 * 864e5;
-  const label = base === '/blog' ? 'All posts' : 'All resources';
+  const label = SECTION_NAMES[base].back;
+  const landing = base === '/solutions';
   const url = `${siteUrl}${base}/${post.slug}`;
   const faq = post.faq ?? [];
   const steps = post.howToSteps ?? [];
@@ -134,7 +137,7 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
             {
               '@type': 'ListItem',
               position: 2,
-              name: base === '/blog' ? 'Blog' : 'Resources',
+              name: SECTION_NAMES[base].crumb,
               item: `${siteUrl}${base}`,
             },
             { '@type': 'ListItem', position: 3, name: post.title, item: url },
@@ -166,6 +169,16 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
           </p>
           <h1 className="mt-3 text-h1">{post.title}</h1>
           {post.excerpt && <p className="mt-5 text-lead text-ink-soft">{post.excerpt}</p>}
+          {landing && (
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href="/signup" className="btn btn-primary btn-lg">
+                Start free, no card
+              </Link>
+              <Link href="/pricing" className="btn btn-secondary btn-lg">
+                See pricing
+              </Link>
+            </div>
+          )}
         </div>
         {post.coverImageUrl && (
           <div className="container mt-10 max-w-4xl">
@@ -180,6 +193,24 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
               />
             </div>
           </div>
+        )}
+        {landing && steps.length > 0 && (
+          <section className="container mt-12 max-w-4xl" aria-labelledby="how-it-works">
+            <h2 id="how-it-works" className="text-h3">
+              How it works
+            </h2>
+            <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {steps.map((s, i) => (
+                <li key={s.name} className="card card-pad">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-brand text-sm font-bold text-white">
+                    {i + 1}
+                  </span>
+                  <p className="mt-4 font-semibold leading-snug">{s.name}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-soft">{s.text}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
         )}
         <div className="container mt-12 max-w-narrow">
           {toc.length >= 3 && (
@@ -257,7 +288,7 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
               {related.map((r) => (
                 <li key={r.slug}>
                   <Link
-                    href={`${isResource(r.category) ? '/resources' : '/blog'}/${r.slug}`}
+                    href={`${postBasePath(r.category)}/${r.slug}`}
                     className="card card-pad block h-full transition hover:shadow-lg"
                   >
                     <p className="font-semibold leading-snug">{r.title}</p>

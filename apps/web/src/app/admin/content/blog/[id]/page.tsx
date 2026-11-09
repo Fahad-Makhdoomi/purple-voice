@@ -12,7 +12,7 @@ import {
   type SeoFields,
 } from '@/components/admin/ContentEditor';
 import { MediaPickerModal } from '@/components/admin/MediaLibrary';
-import { RESOURCE_CATEGORIES } from '@pv/shared';
+import { postBasePath } from '@pv/shared';
 import {
   AdvancedSeo,
   EMPTY_ADVANCED_SEO,
@@ -86,10 +86,7 @@ export default function PostEditor() {
   if (!draft) return <Loading />;
   const set = (patch: Partial<PostDraft>) => setDraft({ ...draft, ...patch });
   const folder = `blog/${draft.slug || 'drafts'}`;
-  const base =
-    draft.category && (RESOURCE_CATEGORIES as readonly string[]).includes(draft.category)
-      ? '/resources'
-      : '/blog';
+  const base = postBasePath(draft.category);
   const scheduled = !!draft.publishedAt && new Date(draft.publishedAt).getTime() > Date.now();
 
   async function save(status?: 'DRAFT' | 'PUBLISHED') {

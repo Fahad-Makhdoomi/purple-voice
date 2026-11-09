@@ -3,7 +3,7 @@ import multer from 'multer';
 import {
   faqSchema,
   mediaUpdateSchema,
-  RESOURCE_CATEGORIES,
+  postBasePath,
   pageSchema,
   paginationSchema,
   postSchema,
@@ -30,7 +30,7 @@ export const cmsRouter = Router();
 
 /** Where a post lives: resource categories are listed under /resources. */
 const postPath = (p: { slug: string; category: string | null }) =>
-  `${p.category && (RESOURCE_CATEGORIES as readonly string[]).includes(p.category) ? '/resources' : '/blog'}/${p.slug}`;
+  `${postBasePath(p.category)}/${p.slug}`;
 
 /**
  * Keeps an old address working after a slug (or a post's section) changes:
