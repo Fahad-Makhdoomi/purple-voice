@@ -17,8 +17,8 @@ export async function PostIndex({
   lead,
   empty,
 }: {
-  base: '/blog' | '/resources';
-  section: 'blog' | 'resources';
+  base: '/blog' | '/resources' | '/solutions';
+  section: 'blog' | 'resources' | 'solutions';
   page: number;
   eyebrow: string;
   title: string;
