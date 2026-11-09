@@ -204,6 +204,8 @@ export const agentSchema = z.object({
   /** One of the voices of the workspace's engine (staff choose the engine). */
   voice: z.string().trim().min(2).max(100),
   language: z.string().trim().min(2).max(16).default('en-US'),
+  /** The AI model, from the list the workspace is offered; null follows the workspace default. */
+  aiModel: z.string().trim().max(100).nullable().optional(),
   /** Who the agent is and how it should talk. */
   systemPrompt: z.string().trim().min(20).max(20000),
   /** First sentence spoken when the call connects. */
@@ -376,7 +378,74 @@ export const callFiltersSchema = z.object({
 export const updateAppointmentSchema = z.object({
   status: z.enum(['SCHEDULED', 'CANCELED', 'COMPLETED', 'NO_SHOW']).optional(),
   notes: z.string().max(2000).optional(),
+  title: z.string().trim().max(160).optional(),
+  location: z.string().trim().max(300).optional(),
+  /** New start, wall-clock in the calendar's time zone: YYYY-MM-DDTHH:mm. */
+  start: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    .optional(),
+  durationMin: z.number().int().min(5).max(480).optional(),
 });
+
+// ── Calendar ───────────────────────────────────────────────────────────────
+
+const localStart = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+/** Opening windows per weekday ("0" = Sunday … "6" = Saturday); a missing or empty day is closed. */
+export const workingHoursSchema = z.record(
+  z.enum(['0', '1', '2', '3', '4', '5', '6']),
+  z
+    .array(z.object({ start: hhmm, end: hhmm }))
+    .max(4)
+    .refine((w) => w.every((x) => x.start < x.end), 'Each window must end after it starts'),
+);
+export type WorkingHours = z.infer<typeof workingHoursSchema>;
+
+export const DEFAULT_WORKING_HOURS: WorkingHours = {
+  '1': [{ start: '09:00', end: '17:00' }],
+  '2': [{ start: '09:00', end: '17:00' }],
+  '3': [{ start: '09:00', end: '17:00' }],
+  '4': [{ start: '09:00', end: '17:00' }],
+  '5': [{ start: '09:00', end: '17:00' }],
+};
+
+export const calendarSettingsSchema = z.object({
+  timezone: z.string().min(1).max(64),
+  workingHours: workingHoursSchema,
+  defaultDurationMin: z.number().int().min(5).max(480),
+  slotStepMin: z.number().int().min(5).max(240),
+  bufferMin: z.number().int().min(0).max(240),
+  minNoticeMin: z
+    .number()
+    .int()
+    .min(0)
+    .max(60 * 24 * 14),
+  maxDaysAhead: z.number().int().min(1).max(365),
+  googleSyncEnabled: z.boolean(),
+});
+
+export const createAppointmentSchema = z.object({
+  contactName: z.string().trim().min(1).max(160),
+  contactPhone: z.string().trim().max(40).default(''),
+  contactEmail: z.string().trim().email().max(254).optional().or(z.literal('')),
+  /** Wall-clock start in the calendar's time zone: YYYY-MM-DDTHH:mm. */
+  start: localStart,
+  durationMin: z.number().int().min(5).max(480).optional(),
+  title: z.string().trim().max(160).optional(),
+  location: z.string().trim().max(300).optional(),
+  notes: z.string().trim().max(2000).optional(),
+  /** Book outside working hours (people on the team can; agents cannot). */
+  override: z.boolean().optional(),
+});
+
+export const calendarBlockSchema = z
+  .object({
+    title: z.string().trim().min(1).max(160).default('Busy'),
+    start: localStart,
+    end: localStart,
+  })
+  .refine((b) => b.start < b.end, 'The block must end after it starts');
 
 // ── Integrations, webhooks, API keys, automations ──────────────────────────
 

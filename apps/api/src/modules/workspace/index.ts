@@ -6,6 +6,7 @@ import { telephonyRouter } from './telephony';
 import { agentsRouter } from './agents';
 import { campaignsRouter } from './campaigns';
 import { callsRouter } from './calls';
+import { calendarRouter } from './calendar';
 import { integrationsRouter } from './integrations';
 import { developersRouter } from './developers';
 import { supportRouter } from './support';
@@ -23,6 +24,7 @@ export const workspaceRouter = Router();
 workspaceRouter.use(authenticate, resolveWorkspace);
 
 workspaceRouter.use('/', callsRouter); // /overview, /calls, /appointments, /insights
+workspaceRouter.use('/', calendarRouter); // /calendar/*, PATCH /appointments/:id
 workspaceRouter.use('/ai', aiRouter); // voices and readiness only; staff own the AI layer
 workspaceRouter.use('/telephony', telephonyRouter);
 workspaceRouter.use('/agents', agentsRouter);

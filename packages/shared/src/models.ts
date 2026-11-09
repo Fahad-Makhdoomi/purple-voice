@@ -490,3 +490,38 @@ export function requiredProviders(
   if (engine === 'SARVAM') return llmProvider === 'SARVAM' ? ['SARVAM'] : [llmProvider, 'SARVAM'];
   return [llmProvider, 'DEEPGRAM'];
 }
+
+/**
+ * The AI models a subscriber can pick for one agent. The platform's own keys
+ * pay for every one of them; nothing about keys or vendors' accounts is shown.
+ * Speech-to-speech engines offer that engine's models; the other engines offer
+ * the LLMs of every vendor the platform has a key for (id is `VENDOR:model`).
+ */
+export function agentModelChoices(
+  engine: VoiceEngine,
+  availableProviders: readonly AiProvider[],
+): ModelOption[] {
+  if (engine === 'REALTIME') return REALTIME_MODELS;
+  if (engine === 'GEMINI_LIVE') return GEMINI_LIVE_MODELS;
+  return availableProviders.flatMap((p) =>
+    LLM_MODELS[p].map((m) => ({ ...m, id: `${p}:${m.id}` })),
+  );
+}
+
+/**
+ * The model an agent actually uses: its own pick when that is still on offer,
+ * else the workspace's (so a changed engine never breaks an agent).
+ */
+export function resolveAgentModel(
+  engine: VoiceEngine,
+  workspace: { llmProvider: AiProvider; model: string },
+  aiModel: string | null | undefined,
+  availableProviders: readonly AiProvider[],
+): { llmProvider: AiProvider; model: string } {
+  if (!aiModel || !agentModelChoices(engine, availableProviders).some((m) => m.id === aiModel))
+    return workspace;
+  if (engine === 'REALTIME' || engine === 'GEMINI_LIVE')
+    return { llmProvider: workspace.llmProvider, model: aiModel };
+  const [provider, ...rest] = aiModel.split(':');
+  return { llmProvider: provider as AiProvider, model: rest.join(':') };
+}

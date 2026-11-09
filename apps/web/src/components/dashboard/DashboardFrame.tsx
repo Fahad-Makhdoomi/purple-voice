@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Bot,
   CalendarCheck,
+  CalendarDays,
   Code2,
   CreditCard,
   LayoutDashboard,
@@ -70,6 +71,7 @@ export function DashboardFrame({ children }: { children: React.ReactNode }) {
           icon: SquareKanban,
           badge: pro.crm ? undefined : 'Pro',
         },
+        { href: '/dashboard/calendar', label: 'Calendar', icon: CalendarDays },
         { href: '/dashboard/appointments', label: 'Appointments', icon: CalendarCheck },
       ],
     },

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { callFiltersSchema, updateAppointmentSchema } from '@pv/shared';
+import { callFiltersSchema } from '@pv/shared';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
@@ -230,16 +230,6 @@ callsRouter.get('/appointments', async (req, res) => {
     take: 500,
   });
   res.json({ appointments });
-});
-
-callsRouter.patch('/appointments/:id', async (req, res) => {
-  const input = updateAppointmentSchema.parse(req.body);
-  const result = await prisma.appointment.updateMany({
-    where: { id: req.params.id, workspaceId: wsId(req) },
-    data: input,
-  });
-  if (!result.count) throw notFound('Appointment');
-  res.json({ ok: true });
 });
 
 // ── Detailed insights (Pro) ─────────────────────────────────────────────────

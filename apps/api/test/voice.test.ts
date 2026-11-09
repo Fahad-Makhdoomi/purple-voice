@@ -64,7 +64,15 @@ describe('agent prompt and tools', () => {
         transferEnabled: true,
         transferNumber: '+14155550100',
       }).map((t) => t.name),
-    ).toEqual(['check_availability', 'book_appointment', 'transfer_call', 'end_call']);
+    ).toEqual([
+      'check_availability',
+      'book_appointment',
+      'find_my_appointments',
+      'reschedule_appointment',
+      'cancel_appointment',
+      'transfer_call',
+      'end_call',
+    ]);
   });
 
   it('validates tool input regardless of vendor', () => {

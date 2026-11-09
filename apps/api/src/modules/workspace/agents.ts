@@ -16,7 +16,7 @@ import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireActiveSubscription } from '../../middleware/entitlements';
 import { assertWithinLimit } from '../../services/entitlements';
 import { agentReadiness } from '../../services/agent-readiness';
-import { getAiSettings } from '../../services/ai-settings';
+import { agentModelOptions, getAiSettings } from '../../services/ai-settings';
 import { startOutboundCall } from '../../services/calls';
 
 export const agentsRouter = Router();
@@ -57,6 +57,14 @@ async function assertVoice(workspaceId: string, voice: string | undefined) {
   }
 }
 
+/** A model the subscriber picks must be one the workspace is offered (so only our keys are ever used). */
+async function assertAiModel(workspaceId: string, aiModel: string | null | undefined) {
+  if (!aiModel) return;
+  const { models } = await agentModelOptions(workspaceId);
+  if (!models.some((m) => m.id === aiModel))
+    throw badRequest('Choose one of the available AI models');
+}
+
 agentsRouter.get('/', async (req, res) => {
   const agents = await prisma.agent.findMany({
     where: { workspaceId: wsId(req) },
@@ -75,6 +83,7 @@ agentsRouter.post('/', requireActiveSubscription, async (req, res) => {
   const ent = await entitlementsFor(req);
   await assertWithinLimit(workspaceId, ent, 'agents');
   await assertVoice(workspaceId, input.voice);
+  await assertAiModel(workspaceId, input.aiModel);
   await assertAgentConfig(workspaceId, ent, input);
 
   const agent = await prisma.agent.create({ data: { ...input, workspaceId } });
@@ -112,6 +121,8 @@ agentsRouter.patch('/:id', async (req, res) => {
   if (!existing) throw notFound('Agent');
   const ent = await entitlementsFor(req);
   await assertVoice(workspaceId, input.voice);
+  // Only a changed pick is checked, so an older one that left the list never blocks other edits.
+  if (input.aiModel !== existing.aiModel) await assertAiModel(workspaceId, input.aiModel);
   // Validate against the merged result, so a partial update can't leave the agent inconsistent.
   await assertAgentConfig(workspaceId, ent, { ...existing, ...input } as Partial<AgentInput>);
 

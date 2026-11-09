@@ -15,9 +15,15 @@ import { logger } from '../lib/logger';
 import { signedCallbackUrl } from '../lib/signed-url';
 import { emitEvent } from '../events';
 import { findApiKey } from '../services/ai-keys';
-import { getAiSettings } from '../services/ai-settings';
+import { aiSettingsForAgent } from '../services/ai-settings';
 import { applyCallStatus, isTerminal, saveTranscript } from '../services/calls';
-import { busySlots, createEvent } from '../services/google-calendar';
+import {
+  availableSlots,
+  bookAppointment,
+  cancelAppointment,
+  rescheduleAppointment,
+  upcomingForPhone,
+} from '../services/calendar';
 import { messagingChannels, sendAgentMessage } from '../services/messaging';
 import { leadAsContact } from '../services/crm';
 import type { TranscriptLine } from '../services/ai/summarize';
@@ -28,7 +34,8 @@ import { CallRecorder } from './recorder';
 import { EchoGuard } from './echo-guard';
 import { recordsCalls, saveRecording } from '../services/recordings';
 import { TOOL_SCHEMAS, toolsForAgent, type ToolName } from './tools';
-import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from './time';
+import { describe, isValidTimeZone, utcToZoned } from './time';
+import { HttpError } from '../lib/http-error';
 import { mulawDurationMs, type MediaTransport } from './transports';
 import {
   TRANSFER_RING_SECONDS,
@@ -50,7 +57,6 @@ type LoadedCall = Call & {
   phoneNumber: (PhoneNumber & { telephonyAccount: TelephonyAccount }) | null;
 };
 
-const BUSINESS_HOURS = { start: '09:00', end: '17:00' };
 /** Emails and WhatsApp messages an agent may send on one call (abuse guard). */
 const MAX_MESSAGES_PER_CHANNEL = 3;
 const TRANSCRIPT_FLUSH_MS = 15_000;
@@ -234,7 +240,7 @@ export class CallSession {
 
     // The AI layer is the workspace's, chosen by staff; the agent only picks
     // its voice, and falls back to the engine's default if that engine lacks it.
-    const settings = await getAiSettings(this.call.workspaceId);
+    const settings = await aiSettingsForAgent(this.call.workspaceId, agent.aiModel);
     const engineConfig = {
       model: settings.model,
       voice: voiceForEngine(settings.voiceEngine, agent.voice, settings.speechModel),
@@ -309,13 +315,12 @@ export class CallSession {
       return `Error: invalid input — ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`;
     }
     const agent = this.call.agent!;
-    const tz = isValidTimeZone(agent.timezone) ? agent.timezone : 'UTC';
 
     try {
       switch (name as ToolName) {
         case 'check_availability': {
-          const { date } = parsed.data as { date: string };
-          return await this.availability(agent, date, tz);
+          const { date, days } = parsed.data as { date: string; days?: number };
+          return await this.availability(agent, date, days ?? 1);
         }
         case 'book_appointment': {
           const input = parsed.data as {
@@ -324,8 +329,16 @@ export class CallSession {
             email?: string;
             notes?: string;
           };
-          return await this.book(agent, input, tz);
+          return await this.book(agent, input);
         }
+        case 'find_my_appointments':
+          return await this.myAppointments();
+        case 'reschedule_appointment': {
+          const input = parsed.data as { appointment_id: string; start: string };
+          return await this.reschedule(input.appointment_id, input.start);
+        }
+        case 'cancel_appointment':
+          return await this.cancel((parsed.data as { appointment_id: string }).appointment_id);
         case 'transfer_call':
           return await this.transfer(agent, (parsed.data as { reason: string }).reason);
         case 'send_email': {
@@ -470,132 +483,113 @@ export class CallSession {
       : `Error: the ${what} could not be sent (${result.detail}). Apologise and offer to have the team send it.`;
   }
 
-  private async calendar(agent: Agent): Promise<Integration | null> {
-    if (!agent.calendarIntegrationId) return null;
-    return prisma.integration.findFirst({
-      where: {
-        id: agent.calendarIntegrationId,
-        workspaceId: this.call.workspaceId,
-        type: 'GOOGLE_CALENDAR',
-      },
-    });
+  /** The number on the other end of this call. */
+  private callerPhone(): string {
+    return this.call.direction === 'OUTBOUND' ? this.call.toNumber : this.call.fromNumber;
   }
 
-  private async availability(agent: Agent, date: string, tz: string): Promise<string> {
-    const dayStart = zonedToUtc(date, BUSINESS_HOURS.start, tz);
-    const dayEnd = zonedToUtc(date, BUSINESS_HOURS.end, tz);
-    const now = new Date(Date.now() + 60 * 60 * 1000);
-    if (dayEnd <= now) return `No availability on ${date}; that day has passed or is nearly over.`;
-    if (utcToZoned(dayStart, tz).weekday % 6 === 0)
-      return `${date} is a weekend day; no appointments then.`;
-
-    const integration = await this.calendar(agent);
-    const busy = [
-      ...(integration ? await busySlots(integration, dayStart, dayEnd) : []),
-      ...(
-        await prisma.appointment.findMany({
-          where: {
-            workspaceId: this.call.workspaceId,
-            status: 'SCHEDULED',
-            startsAt: { lt: dayEnd },
-            endsAt: { gt: dayStart },
-          },
-          select: { startsAt: true, endsAt: true },
-        })
-      ).map((a) => ({ start: a.startsAt.toISOString(), end: a.endsAt.toISOString() })),
-    ].map((b) => ({ start: new Date(b.start).getTime(), end: new Date(b.end).getTime() }));
-
-    const slotMs = agent.appointmentDurationMin * 60_000;
-    const slots: string[] = [];
-    for (
-      let t = dayStart.getTime();
-      t + slotMs <= dayEnd.getTime() && slots.length < 8;
-      t += 30 * 60_000
-    ) {
-      if (t < now.getTime()) continue;
-      if (busy.some((b) => t < b.end && t + slotMs > b.start)) continue;
-      const z = utcToZoned(new Date(t), tz);
-      slots.push(`${z.date}T${z.time} (${describe(new Date(t), tz)})`);
-    }
-    return slots.length
-      ? `Open ${agent.appointmentDurationMin}-minute slots (${tz}): ${slots.join('; ')}. Use the YYYY-MM-DDTHH:mm value when booking.`
-      : `No open slots on ${date}. Offer another day.`;
+  private async availability(agent: Agent, date: string, days: number): Promise<string> {
+    const { timezone, durationMin, slots } = await availableSlots(this.call.workspaceId, {
+      date,
+      days,
+      durationMin: agent.appointmentDurationMin,
+      limit: 8,
+      legacyIntegrationId: agent.calendarIntegrationId,
+    });
+    if (!slots.length)
+      return days > 1
+        ? `No open slots in the ${days} days from ${date}. Offer to look further ahead or take their details.`
+        : `No open slots on ${date}. Offer another day.`;
+    const list = slots.map((t) => {
+      const z = utcToZoned(t, timezone);
+      return `${z.date}T${z.time} (${describe(t, timezone)})`;
+    });
+    return `Open ${durationMin}-minute slots (${timezone}): ${list.join('; ')}. Use the YYYY-MM-DDTHH:mm value when booking.`;
   }
 
   private async book(
     agent: Agent,
     input: { start: string; name: string; email?: string; notes?: string },
-    tz: string,
   ) {
-    const [date, time] = input.start.split('T');
-    const startsAt = zonedToUtc(date, time, tz);
-    const endsAt = new Date(startsAt.getTime() + agent.appointmentDurationMin * 60_000);
-    if (startsAt.getTime() < Date.now()) return 'Error: that time is in the past.';
-
-    const clash = await prisma.appointment.count({
-      where: {
-        workspaceId: this.call.workspaceId,
-        status: 'SCHEDULED',
-        startsAt: { lt: endsAt },
-        endsAt: { gt: startsAt },
-      },
-    });
-    if (clash) return 'Error: that slot was just taken. Check availability again.';
-
-    const phone = this.call.direction === 'OUTBOUND' ? this.call.toNumber : this.call.fromNumber;
-    const integration = await this.calendar(agent);
-    let externalEventId: string | undefined;
-    let externalEventUrl: string | undefined;
-    if (integration) {
-      const event = await createEvent(integration, {
-        summary: `${this.call.workspace.name} × ${input.name}`,
-        description: [
-          `Booked by ${agent.name} (Purple Voice) during a call with ${phone}.`,
-          input.notes,
-        ]
-          .filter(Boolean)
-          .join('\n\n'),
-        start: startsAt,
-        end: endsAt,
-        timeZone: tz,
-        attendeeEmail: input.email || undefined,
-      });
-      externalEventId = event.id;
-      externalEventUrl = event.htmlLink;
-    }
-
-    const appointment = await prisma.appointment.create({
-      data: {
-        workspaceId: this.call.workspaceId,
-        callId: this.callId,
-        integrationId: integration?.id,
+    const phone = this.callerPhone();
+    let appointment;
+    try {
+      appointment = await bookAppointment(this.call.workspaceId, {
         contactName: input.name,
         contactPhone: phone,
-        contactEmail: input.email || null,
-        startsAt,
-        endsAt,
-        timezone: tz,
-        notes: input.notes,
-        externalEventId,
-        externalEventUrl,
-      },
-    });
+        contactEmail: input.email,
+        start: input.start,
+        durationMin: agent.appointmentDurationMin,
+        title: `${this.call.workspace.name} × ${input.name}`,
+        notes: [`Booked by ${agent.name} during a call with ${phone}.`, input.notes]
+          .filter(Boolean)
+          .join('\n\n'),
+        source: 'AI',
+        callId: this.callId,
+        legacyIntegrationId: agent.calendarIntegrationId,
+      });
+    } catch (err) {
+      // Booking refusals (taken, outside hours, past) are for the model to relay, not tool failures.
+      if (err instanceof HttpError && err.status === 400)
+        return `Error: ${err.message} Check availability again and offer another slot.`;
+      throw err;
+    }
+    const tz = appointment.timezone;
     await prisma.call.update({
       where: { id: this.callId },
       data: { outcome: 'APPOINTMENT_BOOKED' },
     });
-    this.note(`Appointment booked for ${describe(startsAt, tz)}`);
+    this.note(`Appointment booked for ${describe(appointment.startsAt, tz)}`);
     await emitEvent(this.call.workspaceId, 'appointment.booked', {
       appointmentId: appointment.id,
       callId: this.callId,
       contactName: input.name,
       contactPhone: phone,
       contactEmail: input.email || null,
-      startsAt: startsAt.toISOString(),
-      endsAt: endsAt.toISOString(),
+      startsAt: appointment.startsAt.toISOString(),
+      endsAt: appointment.endsAt.toISOString(),
       timezone: tz,
     });
-    return `Booked for ${describe(startsAt, tz)}${input.email ? '; a calendar invite is on its way' : ''}. Confirm this back to them.`;
+    return `Booked for ${describe(appointment.startsAt, tz)}${input.email ? '; a calendar invite is on its way' : ''}. Confirm this back to them.`;
+  }
+
+  private async myAppointments(): Promise<string> {
+    const list = await upcomingForPhone(this.call.workspaceId, this.callerPhone());
+    if (!list.length) return 'No upcoming appointments under this phone number.';
+    return list
+      .map(
+        (a) =>
+          `id ${a.id}: ${describe(a.startsAt, a.timezone)} (${a.timezone}) with ${a.contactName}`,
+      )
+      .join('\n');
+  }
+
+  /** Only appointments made under the caller's own number can be changed from a call. */
+  private async ownAppointment(id: string) {
+    const list = await upcomingForPhone(this.call.workspaceId, this.callerPhone());
+    return list.find((a) => a.id === id) ?? null;
+  }
+
+  private async reschedule(id: string, start: string): Promise<string> {
+    if (!(await this.ownAppointment(id)))
+      return 'Error: no such appointment for this caller. Use find_my_appointments.';
+    try {
+      const moved = await rescheduleAppointment(this.call.workspaceId, id, { start });
+      this.note(`Appointment moved to ${describe(moved.startsAt, moved.timezone)}`);
+      return `Moved to ${describe(moved.startsAt, moved.timezone)}. Confirm this back to them.`;
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 400)
+        return `Error: ${err.message} Check availability again and offer another slot.`;
+      throw err;
+    }
+  }
+
+  private async cancel(id: string): Promise<string> {
+    if (!(await this.ownAppointment(id)))
+      return 'Error: no such appointment for this caller. Use find_my_appointments.';
+    await cancelAppointment(this.call.workspaceId, id);
+    this.note('Appointment cancelled by the caller');
+    return 'The appointment is cancelled. Confirm this back to them and offer to rebook.';
   }
 
   private async hangup() {

@@ -337,6 +337,8 @@ model Workspace {
   contacts           CampaignContact[]
   calls              Call[]
   appointments       Appointment[]
+  calendarSettings   CalendarSettings?
+  calendarBlocks     CalendarBlock[]
   integrations       Integration[]
   webhookEndpoints   WebhookEndpoint[]
   apiKeys            ApiKey[]
@@ -584,6 +586,8 @@ model Agent {
   /// One of the voices of the workspace's engine; the engine default is used if it no longer fits.
   voice                     String
   language                  String      @default("en-US")
+  /// The AI model picked for this agent (an id from agentModelChoices); null follows the workspace.
+  aiModel                   String?
   systemPrompt              String
   greeting                  String      @default("")
   goal                      String      @default("")
@@ -780,6 +784,11 @@ model Appointment {
   endsAt           DateTime
   timezone         String            @default("UTC")
   notes            String?
+  /// Shown on the calendar; falls back to the contact's name.
+  title            String?
+  location         String?
+  /// Who made it: "AI" (an agent on a call), "MANUAL" (the dashboard), "API" (developer API).
+  source           String            @default("AI")
   status           AppointmentStatus @default(SCHEDULED)
   externalEventId  String?
   externalEventUrl String?
@@ -791,6 +800,44 @@ model Appointment {
 
 /// Numbers a workspace must never call again: people who asked on a call,
 /// numbers added by hand or imported. Every campaign checks it before dialling.
+/// The workspace's own calendar: when it takes bookings and how Google sync behaves.
+/// No row means the defaults (Mon-Fri 09:00-17:00 in the workspace's time zone).
+model CalendarSettings {
+  workspaceId         String    @id
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timezone            String    @default("UTC")
+  /// { "0".."6": [{ "start": "09:00", "end": "17:00" }] }, 0 = Sunday. A missing day is closed.
+  workingHours        Json
+  defaultDurationMin  Int       @default(30)
+  slotStepMin         Int       @default(30)
+  bufferMin           Int       @default(0)
+  minNoticeMin        Int       @default(60)
+  maxDaysAhead        Int       @default(60)
+  /// Two-way sync with Google Calendar: bookings are pushed, busy events are pulled in as blocks.
+  googleSyncEnabled   Boolean   @default(false)
+  googleIntegrationId String?
+  lastSyncAt          DateTime?
+  lastSyncError       String?
+  updatedAt           DateTime  @updatedAt
+}
+
+/// Time nobody can book: time off and meetings entered by hand, or busy events pulled from Google.
+model CalendarBlock {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title           String    @default("Busy")
+  startsAt        DateTime
+  endsAt          DateTime
+  /// "MANUAL" or "GOOGLE" (read-only copy of an event in the connected Google calendar).
+  source          String    @default("MANUAL")
+  externalEventId String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([workspaceId, source, externalEventId])
+  @@index([workspaceId, startsAt])
+}
+
 model DoNotCallNumber {
   id          String    @id @default(cuid())
   workspaceId String

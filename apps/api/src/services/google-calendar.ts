@@ -139,15 +139,23 @@ async function accessToken(integration: Integration): Promise<string> {
   return next.accessToken;
 }
 
-async function calendarFetch<T>(integration: Integration, path: string, body: unknown): Promise<T> {
+async function calendarFetch<T>(
+  integration: Integration,
+  path: string,
+  body?: unknown,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = body === undefined ? 'GET' : 'POST',
+): Promise<T> {
   const token = await accessToken(integration);
   const res = await fetch(`${CAL}${path}`, {
-    method: 'POST',
+    method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(10_000),
   });
-  const json = (await res.json()) as T & { error?: { message?: string } };
+  // DELETE answers 204 with no body.
+  const json = (res.status === 204 ? {} : await res.json().catch(() => ({}))) as T & {
+    error?: { message?: string };
+  };
   if (!res.ok) {
     const message = json.error?.message ?? `Google Calendar error ${res.status}`;
     await prisma.integration.update({
@@ -178,6 +186,7 @@ export async function createEvent(
     start: Date;
     end: Date;
     timeZone: string;
+    location?: string;
     attendeeEmail?: string;
   },
 ) {
@@ -185,11 +194,111 @@ export async function createEvent(
     integration,
     '/calendars/primary/events?sendUpdates=all',
     {
-      summary: event.summary,
-      description: event.description,
-      start: { dateTime: event.start.toISOString(), timeZone: event.timeZone },
-      end: { dateTime: event.end.toISOString(), timeZone: event.timeZone },
+      ...eventBody(event),
       attendees: event.attendeeEmail ? [{ email: event.attendeeEmail }] : undefined,
     },
   );
+}
+
+function eventBody(event: {
+  summary: string;
+  description: string;
+  location?: string;
+  start: Date;
+  end: Date;
+  timeZone: string;
+}) {
+  return {
+    summary: event.summary,
+    description: event.description,
+    location: event.location,
+    start: { dateTime: event.start.toISOString(), timeZone: event.timeZone },
+    end: { dateTime: event.end.toISOString(), timeZone: event.timeZone },
+  };
+}
+
+/** Moves or edits an event we created earlier. */
+export async function updateEvent(
+  integration: Integration,
+  eventId: string,
+  event: Parameters<typeof eventBody>[0],
+) {
+  return calendarFetch<{ id: string; htmlLink: string }>(
+    integration,
+    `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+    eventBody(event),
+    'PATCH',
+  );
+}
+
+/** Removes an event we created earlier (an already-deleted event is fine). */
+export async function deleteEvent(integration: Integration, eventId: string) {
+  try {
+    await calendarFetch(
+      integration,
+      `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+      undefined,
+      'DELETE',
+    );
+  } catch (err) {
+    if (err instanceof HttpError && /not found|deleted|gone/i.test(err.message)) return;
+    throw err;
+  }
+}
+
+export interface GoogleBusyEvent {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Events on the primary calendar that make the owner busy, for pulling into
+ * the standalone calendar: skips cancelled, "free" (transparent) and declined ones.
+ */
+export async function listBusyEvents(
+  integration: Integration,
+  from: Date,
+  to: Date,
+): Promise<GoogleBusyEvent[]> {
+  const out: GoogleBusyEvent[] = [];
+  let pageToken: string | undefined;
+  do {
+    const q = new URLSearchParams({
+      timeMin: from.toISOString(),
+      timeMax: to.toISOString(),
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '250',
+    });
+    if (pageToken) q.set('pageToken', pageToken);
+    const json = await calendarFetch<{
+      nextPageToken?: string;
+      items?: Array<{
+        id: string;
+        status?: string;
+        summary?: string;
+        transparency?: string;
+        start?: { dateTime?: string; date?: string };
+        end?: { dateTime?: string; date?: string };
+        attendees?: Array<{ self?: boolean; responseStatus?: string }>;
+      }>;
+    }>(integration, `/calendars/primary/events?${q}`);
+    for (const e of json.items ?? []) {
+      if (e.status === 'cancelled' || e.transparency === 'transparent') continue;
+      if (e.attendees?.some((a) => a.self && a.responseStatus === 'declined')) continue;
+      const start = e.start?.dateTime ?? e.start?.date;
+      const end = e.end?.dateTime ?? e.end?.date;
+      if (!start || !end) continue;
+      out.push({
+        id: e.id,
+        title: e.summary ?? 'Busy',
+        start: new Date(start),
+        end: new Date(end),
+      });
+    }
+    pageToken = json.nextPageToken;
+  } while (pageToken && out.length < 1000);
+  return out;
 }

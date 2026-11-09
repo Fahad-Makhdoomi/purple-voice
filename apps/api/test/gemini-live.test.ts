@@ -158,6 +158,9 @@ describe('Gemini Live engine', () => {
     expect(declarations.map((d) => d.name)).toEqual([
       'check_availability',
       'book_appointment',
+      'find_my_appointments',
+      'reschedule_appointment',
+      'cancel_appointment',
       'transfer_call',
       'end_call',
     ]);

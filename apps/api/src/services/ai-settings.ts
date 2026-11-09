@@ -1,5 +1,14 @@
 import type { AiProvider, CredentialProvider, VoiceEngine } from '@prisma/client';
-import { requiredProviders, speechModelFor } from '@pv/shared';
+import {
+  AI_PROVIDERS,
+  agentModelChoices,
+  defaultModelForEngine,
+  modelsForEngine,
+  requiredProviders,
+  resolveAgentModel,
+  speechModelFor,
+  type ModelOption,
+} from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { getSetting } from './settings';
 import { keySource, type KeySource } from './ai-keys';
@@ -61,4 +70,43 @@ export async function getAiStatus(workspaceId: string): Promise<AiStatus> {
     })),
   );
   return { settings, keys, ready: keys.every((k) => k.source !== null) };
+}
+
+/** Vendors whose key the workspace's calls can use right now. */
+async function usableProviders(workspaceId: string) {
+  const checks = await Promise.all(
+    AI_PROVIDERS.map(async (p) => ((await keySource(workspaceId, p)) ? p : null)),
+  );
+  return checks.filter((p): p is (typeof AI_PROVIDERS)[number] => p !== null);
+}
+
+/** The models an agent in this workspace may pick, and what it uses when it picks none. */
+export async function agentModelOptions(
+  workspaceId: string,
+): Promise<{ models: ModelOption[]; defaultLabel: string; providers: AiProvider[] }> {
+  const [settings, providers] = await Promise.all([
+    getAiSettings(workspaceId),
+    usableProviders(workspaceId),
+  ]);
+  const models = agentModelChoices(settings.voiceEngine, providers);
+  const speechToSpeech =
+    settings.voiceEngine === 'REALTIME' || settings.voiceEngine === 'GEMINI_LIVE';
+  const current = speechToSpeech ? settings.model : `${settings.llmProvider}:${settings.model}`;
+  const known =
+    models.find((m) => m.id === current)?.label ??
+    modelsForEngine(settings.voiceEngine, settings.llmProvider).find((m) => m.id === settings.model)
+      ?.label ??
+    defaultModelForEngine(settings.voiceEngine, settings.llmProvider);
+  return { models, defaultLabel: known, providers };
+}
+
+/** The AI settings one agent runs with: the workspace's, with the agent's own model pick applied. */
+export async function aiSettingsForAgent(
+  workspaceId: string,
+  aiModel: string | null | undefined,
+): Promise<AiSettings> {
+  const settings = await getAiSettings(workspaceId);
+  if (!aiModel) return settings;
+  const providers = await usableProviders(workspaceId);
+  return { ...settings, ...resolveAgentModel(settings.voiceEngine, settings, aiModel, providers) };
 }

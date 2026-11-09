@@ -357,9 +357,25 @@ Recordings are private: local disk under `RECORDINGS_LOCAL_PATH` (not served by 
 people in the call's workspace. `Call.recordingUrl` holds the storage key. Deleting an
 account deletes its recordings. Agents say the call is recorded when asked.
 
+### Standalone calendar (`services/calendar.ts`, `modules/workspace/calendar.ts`, `/dashboard/calendar`)
+Every workspace has its own calendar in our database; Google is optional. `Appointment`
+(bookings, with `source` AI / MANUAL / API), `CalendarBlock` (time off, or read-only copies
+of busy Google events) and `CalendarSettings` (time zone, opening windows per weekday, slot
+length and spacing, gap between meetings, minimum notice, booking horizon, Google sync).
+No settings row means Mon-Fri 09:00-17:00 in the workspace's time zone. Slot maths is pure
+(`slotsForDay`, `fitsRules`) and shared by agents, the dashboard and `GET /api/app/calendar/slots`.
+Booking re-checks the rules and clashes under a per-workspace Postgres advisory lock, so two
+callers cannot take the same slot. With sync on, new, moved and cancelled bookings are pushed to
+the Google event, and the worker (`calendar-sync`, every 5 min) pulls busy events in as blocks
+and pushes bookings that never reached Google; availability also asks Google free/busy live and
+falls back to the synced blocks if Google is down. Agents set up before this
+(`Agent.calendarIntegrationId`) keep working: that integration is used when the calendar itself
+has no sync target.
+
 ### Agent tools (`voice/tools.ts`, executed in `voice/session.ts`)
-`check_availability` and `book_appointment` (Google Calendar free/busy + events, plus
-clash checks against existing appointments), `transfer_call`, `end_call`. Inputs are
+`check_availability`, `book_appointment`, `find_my_appointments`, `reschedule_appointment` and
+`cancel_appointment` (all against the workspace's own calendar, see below; a caller can only
+see and change appointments made under their own number), `transfer_call`, `end_call`. Inputs are
 validated with zod whatever the vendor sent. Hangups and transfers wait for the last
 sentence to finish playing.
 

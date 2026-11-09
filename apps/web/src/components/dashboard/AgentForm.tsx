@@ -22,6 +22,7 @@ export const EMPTY_AGENT: AgentDraft = {
   name: '',
   status: 'DRAFT',
   voice: '',
+  aiModel: null,
   language: 'en-US',
   systemPrompt: '',
   greeting: '',
@@ -227,6 +228,35 @@ export function AgentForm({
             </Field>
           )}
         </div>
+        {ai.data && ai.data.models.length > 0 && (
+          <div className="max-w-md">
+            <Field
+              id="ai-model"
+              label="AI model"
+              help="The AI that thinks and replies on the call. It runs on our platform, so there is nothing to set up or pay for separately."
+            >
+              <select
+                id="ai-model"
+                className="select"
+                value={value.aiModel ?? ''}
+                onChange={(e) => set('aiModel', e.target.value || null)}
+              >
+                <option value="">Recommended ({ai.data.defaultModelLabel})</option>
+                {value.aiModel && !ai.data.models.some((m) => m.id === value.aiModel) && (
+                  <option value={value.aiModel}>
+                    Previously selected model (no longer offered)
+                  </option>
+                )}
+                {ai.data.models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                    {m.hint ? ` — ${m.hint}` : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        )}
         <div className="max-w-md">
           <Field
             id="noiseFilter"

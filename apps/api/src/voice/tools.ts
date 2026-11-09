@@ -22,13 +22,19 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const localDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
 
 export const TOOL_SCHEMAS = {
-  check_availability: z.object({ date }),
+  check_availability: z.object({ date, days: z.number().int().min(1).max(14).optional() }),
   book_appointment: z.object({
     start: localDateTime,
     name: z.string().min(1).max(160),
     email: z.string().email().max(254).optional().or(z.literal('')),
     notes: z.string().max(1000).optional(),
   }),
+  find_my_appointments: z.object({}),
+  reschedule_appointment: z.object({
+    appointment_id: z.string().min(1).max(60),
+    start: localDateTime,
+  }),
+  cancel_appointment: z.object({ appointment_id: z.string().min(1).max(60) }),
   transfer_call: z.object({ reason: z.string().max(300) }),
   end_call: z.object({ reason: z.string().max(300) }),
   send_email: z.object({
@@ -65,10 +71,16 @@ export function toolsForAgent(
       {
         name: 'check_availability',
         description:
-          'List open appointment slots on a given day in the business time zone. Call this before proposing times.',
+          "List open appointment slots from the business's own calendar, in its time zone. Call this before proposing times. Pass days > 1 to look across several days when the person has no particular day in mind.",
         parameters: {
           type: 'object',
-          properties: { date: { type: 'string', description: 'Day to check, YYYY-MM-DD.' } },
+          properties: {
+            date: { type: 'string', description: 'First day to check, YYYY-MM-DD.' },
+            days: {
+              type: 'integer',
+              description: 'How many consecutive days to scan from that date (1-14, default 1).',
+            },
+          },
           required: ['date'],
           additionalProperties: false,
         },
@@ -100,6 +112,46 @@ export function toolsForAgent(
           additionalProperties: false,
         },
         schema: TOOL_SCHEMAS.book_appointment,
+      },
+      {
+        name: 'find_my_appointments',
+        description:
+          "List the caller's upcoming appointments (matched by the phone number on this call). Use before rescheduling or cancelling, or when they ask when their appointment is.",
+        parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+        schema: TOOL_SCHEMAS.find_my_appointments,
+      },
+      {
+        name: 'reschedule_appointment',
+        description:
+          "Move one of the caller's appointments to a new open slot. Get the appointment_id from find_my_appointments and the new start from check_availability, and have them agree to the new time first.",
+        parameters: {
+          type: 'object',
+          properties: {
+            appointment_id: { type: 'string', description: 'Id from find_my_appointments.' },
+            start: {
+              type: 'string',
+              description:
+                'New slot start, YYYY-MM-DDTHH:mm, exactly as returned by check_availability.',
+            },
+          },
+          required: ['appointment_id', 'start'],
+          additionalProperties: false,
+        },
+        schema: TOOL_SCHEMAS.reschedule_appointment,
+      },
+      {
+        name: 'cancel_appointment',
+        description:
+          "Cancel one of the caller's appointments after they clearly ask to. Get the appointment_id from find_my_appointments.",
+        parameters: {
+          type: 'object',
+          properties: {
+            appointment_id: { type: 'string', description: 'Id from find_my_appointments.' },
+          },
+          required: ['appointment_id'],
+          additionalProperties: false,
+        },
+        schema: TOOL_SCHEMAS.cancel_appointment,
       },
     );
   }

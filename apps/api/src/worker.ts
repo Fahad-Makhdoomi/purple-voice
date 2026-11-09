@@ -5,6 +5,7 @@ import { dialerTick } from './jobs/dialer';
 import { deliverWebhooks } from './jobs/webhooks';
 import { maintenanceTick } from './jobs/maintenance';
 import { crmTick } from './jobs/crm';
+import { syncAllGoogleCalendars } from './services/calendar';
 
 /**
  * Background worker: campaign dialer, new-lead calls, webhook deliveries, maintenance.
@@ -33,6 +34,7 @@ const timers = [
   loop('crm', 5_000, crmTick),
   loop('webhooks', 5_000, deliverWebhooks),
   loop('maintenance', 60_000, maintenanceTick),
+  loop('calendar-sync', 5 * 60_000, syncAllGoogleCalendars),
 ];
 logger.info('Purple Voice worker started');
 

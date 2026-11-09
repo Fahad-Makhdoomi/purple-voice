@@ -20,8 +20,15 @@ import {
 import type { AiStatus } from '../src/services/ai-settings';
 
 // No database here: the AI status and the phone-number count are stubbed.
-const mocks = vi.hoisted(() => ({ getAiStatus: vi.fn(), phoneNumbers: vi.fn() }));
-vi.mock('../src/services/ai-settings', () => ({ getAiStatus: mocks.getAiStatus }));
+const mocks = vi.hoisted(() => ({
+  getAiStatus: vi.fn(),
+  phoneNumbers: vi.fn(),
+  agentModelOptions: vi.fn(),
+}));
+vi.mock('../src/services/ai-settings', () => ({
+  getAiStatus: mocks.getAiStatus,
+  agentModelOptions: mocks.agentModelOptions,
+}));
 // No ElevenLabs key in these tests: the premade voices are listed.
 vi.mock('../src/services/ai-keys', async (orig) => ({
   ...(await orig<typeof import('../src/services/ai-keys')>()),
@@ -179,20 +186,30 @@ describe('GET /api/app/ai', () => {
     'shows a %s workspace its voices and readiness, nothing about vendors or keys',
     async (engine) => {
       mocks.getAiStatus.mockResolvedValue(status(engine, engine !== 'CASCADED'));
+      mocks.agentModelOptions.mockResolvedValue({
+        models: [{ id: 'm1', label: 'Model one' }],
+        defaultLabel: 'Model one',
+        providers: ['ANTHROPIC'],
+      });
       const res = await request(app).get('/ai').expect(200);
       expect(Object.keys(res.body).sort()).toEqual([
         'customVoice',
+        'defaultModelLabel',
         'defaultVoice',
         'languages',
+        'models',
         'ready',
         'voices',
       ]);
+      // Subscribers may pick a model by name, but never see which vendor key pays for it.
+      expect(res.body.models).toEqual([{ id: 'm1', label: 'Model one' }]);
       expect(res.body.customVoice).toBe(engine === 'ELEVENLABS');
       expect(res.body.languages).toEqual([...languagesForEngine(engine)]);
       expect(res.body.voices).toEqual(voicesForEngine(engine, speechModelFor(engine)));
       expect(res.body.defaultVoice).toBe(defaultVoiceFor(engine, speechModelFor(engine)));
       expect(res.body.ready).toBe(engine !== 'CASCADED');
-      const text = JSON.stringify(res.body).toLowerCase();
+      const { models: _m, defaultModelLabel: _d, ...rest } = res.body;
+      const text = JSON.stringify(rest).toLowerCase();
       for (const word of VENDOR_WORDS) expect(text).not.toContain(word);
       expect(mocks.getAiStatus).toHaveBeenCalledWith('ws_1');
     },

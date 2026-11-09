@@ -29,6 +29,10 @@ export interface WorkspaceAiView {
   customVoice: boolean;
   /** Every key the engine needs is available, so agents can take calls. */
   ready: boolean;
+  /** AI models an agent can use (ours, on our keys); empty when there is no choice. */
+  models: ModelOption[];
+  /** Label of the model agents use when they pick none. */
+  defaultModelLabel: string;
 }
 
 /** /api/admin/subscribers/:id/ai — staff manage one subscriber's AI layer. */
