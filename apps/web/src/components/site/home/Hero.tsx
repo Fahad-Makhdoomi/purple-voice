@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import Image from '@/components/ui/Image';
 import Link from 'next/link';
 import { ArrowUpRight, Check } from 'lucide-react';
 import { contentSettingsSchema, type ContentSettings, type SiteTheme } from '@pv/shared';

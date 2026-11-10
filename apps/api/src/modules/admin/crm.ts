@@ -30,15 +30,18 @@ crmRouter.get('/overview', async (_req, res) => {
     liveCalls,
     recentSignups,
   ] = await Promise.all([
-    prisma.workspace.count(),
-    prisma.subscription.count({ where: { status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] } } }),
-    prisma.workspace.count({ where: { createdAt: { gte: weekAgo } } }),
+    prisma.workspace.count({ where: { internal: false } }),
+    prisma.subscription.count({
+      where: { status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] }, workspace: { internal: false } },
+    }),
+    prisma.workspace.count({ where: { createdAt: { gte: weekAgo }, internal: false } }),
     prisma.ticket.count({ where: { status: { in: ['OPEN', 'PENDING'] } } }),
     prisma.ticket.count({ where: { status: 'OPEN', priority: { in: ['HIGH', 'URGENT'] } } }),
     prisma.lead.count({ where: { status: 'NEW' } }),
     prisma.call.count({ where: { createdAt: { gte: dayAgo } } }),
     prisma.call.count({ where: { status: { in: ['RINGING', 'IN_PROGRESS'] } } }),
     prisma.workspace.findMany({
+      where: { internal: false },
       orderBy: { createdAt: 'desc' },
       take: 6,
       include: {

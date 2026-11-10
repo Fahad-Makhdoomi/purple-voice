@@ -197,7 +197,7 @@ export function rerunTargetOf(contact: {
 }
 
 export const rerunSchema = z.object({
-  targets: z.array(z.enum(RERUN_TARGETS)).min(1, 'Choose who to call again'),
+  targets: z.array(z.enum(RERUN_TARGETS)).min(1, 'Choose who to call again').max(50),
   /** Attempts each re-queued contact gets in this batch. */
   maxAttempts: z
     .number()

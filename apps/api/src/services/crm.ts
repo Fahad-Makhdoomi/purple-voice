@@ -18,7 +18,8 @@ import {
 } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
-import { randomToken } from '../lib/crypto';
+import { hmacSha256Hex, randomToken } from '../lib/crypto';
+import { env } from '../config/env';
 import { emitEvent } from '../events';
 import { describe, isValidTimeZone, utcToZoned, zonedToUtc } from '../voice/time';
 import { getEntitlements } from './entitlements';
@@ -429,4 +430,13 @@ export function leadAsContact(lead: CrmLead): CampaignContact {
     createdAt: lead.createdAt,
     updatedAt: lead.updatedAt,
   };
+}
+
+/**
+ * The verify token Meta asks for when the WhatsApp webhook is set up. It is
+ * derived per workspace and is not the secret in the webhook URL, so someone
+ * who only sees the URL can't complete Meta's verification.
+ */
+export function metaVerifyToken(workspaceId: string): string {
+  return hmacSha256Hex(env.URL_SIGNING_SECRET, `meta-verify:${workspaceId}`).slice(0, 32);
 }

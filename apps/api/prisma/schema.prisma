@@ -253,11 +253,17 @@ model User {
   termsVersion    String?
   /// Opted in to product news by email (never pre-ticked).
   marketingOptIn  Boolean    @default(false)
+  /// When the user proved they own the address (link in the sign-up email, or Google).
+  emailVerifiedAt DateTime?
+  /// Unsubscribed from onboarding and upgrade emails (account emails still go out).
+  emailUnsubscribedAt DateTime?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   sessions        Session[]
   passwordResets  PasswordReset[]
+  emailVerifications EmailVerification[]
+  lifecycleEmails LifecycleEmail[]
   ticketMessages  TicketMessage[]
   assignedTickets Ticket[]        @relation("TicketAssignee")
   auditLogs       AuditLog[]
@@ -1291,4 +1297,70 @@ model CrmSettings {
   /// Meta app secret (encrypted), to check WhatsApp webhook signatures.
   metaAppSecretEnc   String?
   updatedAt          DateTime      @updatedAt
+}
+
+/// One page view on the public website, recorded by our own cookie-free
+/// tracker (services/web-analytics.ts). No raw IP, no cookies, nothing stored
+/// on the visitor's device: `visitorHash` is a keyed hash of IP + user agent
+/// that rotates every day, so a visitor can't be followed across days.
+model PageView {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  path         String
+  /// Daily-rotating keyed hash of IP + user agent.
+  visitorHash  String
+  /// Groups views 30 minutes apart or closer from the same visitor.
+  sessionId    String
+  isEntry      Boolean  @default(false)
+  /// Time the page was open and visible, reported when the visitor leaves.
+  durationMs   Int?
+  referrerHost String?
+  /// Organic Search, Paid Search, Social, Email, Referral, Direct, AI assistants.
+  channel      String
+  /// Named source: "Google", "LinkedIn", a referring host, or a utm_source.
+  source       String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  utmTerm      String?
+  device       String
+  browser      String?
+  os           String?
+  country      String?
+  timeZone     String?
+  language     String?
+
+  @@index([createdAt])
+  @@index([visitorHash, createdAt])
+  @@index([sessionId])
+  @@index([path, createdAt])
+}
+
+/// One-time link in the "confirm your email" message sent at sign-up.
+model EmailVerification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  /// Where to go after confirming (a same-site path, e.g. the plan checkout).
+  next      String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// Onboarding and upgrade emails already sent to a user (services/lifecycle-emails.ts).
+model LifecycleEmail {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  step   String
+  /// Not sent because it no longer applied (e.g. an upgrade email to someone already on Pro).
+  skipped Boolean @default(false)
+  sentAt DateTime @default(now())
+
+  @@unique([userId, step])
+  @@index([step, sentAt])
 }

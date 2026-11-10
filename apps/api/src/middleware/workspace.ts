@@ -22,9 +22,10 @@ export async function resolveWorkspace(req: Request, _res: Response, next: NextF
     if (!requested) throw badRequest('Choose a customer workspace first');
     const ws = await prisma.workspace.findUnique({
       where: { id: requested },
-      select: { id: true },
+      select: { id: true, internal: true },
     });
-    if (!ws) throw notFound('Workspace');
+    // The platform's own workspace (its numbers, keys and calls) is super-admin only.
+    if (!ws || (ws.internal && user.role !== 'SUPER_ADMIN')) throw notFound('Workspace');
     req.workspaceId = ws.id;
     req.actingAsStaff = true;
     return next();

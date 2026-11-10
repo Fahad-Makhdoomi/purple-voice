@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { decrypt, hmacSha256Hex } from '../lib/crypto';
-import { assertPublicUrl } from '../lib/ssrf';
+import { postToPublicUrl } from '../lib/ssrf';
 
 const MAX_ATTEMPTS = 8;
 const BATCH = 25;
@@ -50,9 +50,7 @@ export async function deliverWebhooks(): Promise<void> {
         error = 'Endpoint disabled';
       } else {
         try {
-          const url = await assertPublicUrl(delivery.endpoint.url);
-          const res = await fetch(url, {
-            method: 'POST',
+          const res = await postToPublicUrl(delivery.endpoint.url, {
             headers: {
               'Content-Type': 'application/json',
               'User-Agent': 'PurpleVoice-Webhooks/1.0',
@@ -64,8 +62,6 @@ export async function deliverWebhooks(): Promise<void> {
               ),
             },
             body,
-            redirect: 'manual',
-            signal: AbortSignal.timeout(10_000),
           });
           status = res.status;
           if (!res.ok) error = `HTTP ${res.status}`;

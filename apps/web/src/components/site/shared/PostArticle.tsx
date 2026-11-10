@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
+import Image from '@/components/ui/Image';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { RESOURCE_CATEGORIES, readingTime, tableOfContents } from '@pv/shared';
@@ -10,6 +10,7 @@ import { CtaBand } from '@/components/site/shared/CtaBand';
 import { getPost, getSettings } from '@/lib/server-api';
 import { formatDate } from '@/lib/format';
 import { siteUrl } from '@/lib/config';
+import { fitTitle } from '@/lib/seo-title';
 
 type Base = '/blog' | '/resources';
 
@@ -32,7 +33,7 @@ export async function postMetadata(base: Base, slug: string): Promise<Metadata> 
     (k): k is string => !!k,
   );
   return {
-    title: post.seoTitle || post.title,
+    title: await fitTitle(post.seoTitle || post.title),
     description,
     ...(keywords.length ? { keywords } : {}),
     authors: [{ name: post.authorName || post.author?.name || 'Purple Voice' }],

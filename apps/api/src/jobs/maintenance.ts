@@ -3,6 +3,7 @@ import { logger } from '../lib/logger';
 import { applyCallStatus, finalizeCall } from '../services/calls';
 import { applySubscriptionChange } from '../services/subscriptions';
 import { revalidate } from '../services/revalidate';
+import { pruneOldPageViews } from '../services/web-analytics';
 
 const MIN = 60_000;
 
@@ -75,11 +76,36 @@ export async function maintenanceTick(): Promise<void> {
     );
   }
 
+  // Website analytics older than the retention window (about 13 months).
+  if (new Date(now).getUTCMinutes() === 7) await pruneOldPageViews();
+
   const cutoff = new Date(now - 30 * 24 * 60 * MIN);
   await prisma.session.deleteMany({
     where: { OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { lt: cutoff } }] },
   });
   await prisma.passwordReset.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+  await prisma.emailVerification.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+
+  // Sign-ups never confirmed within two weeks: remove them (and their empty
+  // workspace), so the address can sign up again and no unverified data piles up.
+  if (new Date(now).getUTCMinutes() === 17) {
+    const stale = await prisma.user.findMany({
+      where: {
+        role: 'SUBSCRIBER',
+        emailVerifiedAt: null,
+        googleId: null,
+        createdAt: { lt: new Date(now - 14 * 24 * 60 * MIN) },
+        workspace: { subscription: null, users: { every: { emailVerifiedAt: null } } },
+      },
+      select: { workspaceId: true },
+      take: 200,
+    });
+    const ids = stale.map((u) => u.workspaceId).filter((id): id is string => !!id);
+    if (ids.length) {
+      await prisma.workspace.deleteMany({ where: { id: { in: ids } } });
+      logger.info({ count: ids.length }, 'Removed unconfirmed sign-ups');
+    }
+  }
   await prisma.webhookDelivery.deleteMany({
     where: { createdAt: { lt: new Date(now - 90 * 24 * 60 * MIN) } },
   });

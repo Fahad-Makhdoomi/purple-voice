@@ -37,6 +37,7 @@ import {
   addActivity,
   ensureStages,
   getCrmSettings,
+  metaVerifyToken,
   moveLead,
   upsertLead,
 } from '../../services/crm';
@@ -576,7 +577,7 @@ async function settingsView(workspaceId: string): Promise<CrmSettingsView> {
     metaAppSecretSet: !!s.metaAppSecretEnc,
     leadWebhookUrl: `${env.publicApiUrl}/api/hooks/leads/${s.hookToken}`,
     whatsappWebhookUrl: `${env.publicApiUrl}/api/hooks/whatsapp/${s.hookToken}`,
-    verifyToken: s.hookToken,
+    verifyToken: metaVerifyToken(s.workspaceId),
     timezone: workspace.timezone,
   };
 }

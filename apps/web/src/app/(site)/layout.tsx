@@ -1,6 +1,7 @@
 import { Header } from '@/components/site/Header';
 import { Footer } from '@/components/site/Footer';
 import { Analytics } from '@/components/site/Analytics';
+import { PageTracker } from '@/components/site/PageTracker';
 import { CookieConsent } from '@/components/site/CookieConsent';
 import { AnnouncementBar } from '@/components/site/AnnouncementBar';
 import { ThemeMusic } from '@/components/site/ThemeMusic';
@@ -31,6 +32,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <Footer />
       {music && <ThemeMusic src={music} />}
       <Analytics settings={settings.analytics} />
+      <PageTracker />
       <CookieConsent />
     </div>
   );

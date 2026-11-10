@@ -22,7 +22,7 @@ const schema = z.object({
   API_HOST: z.string().default('127.0.0.1'),
   DATABASE_URL: z.string().min(1),
 
-  /** Public origin of the website, e.g. https://purplevoice.ai */
+  /** Public origin of the website, e.g. https://voice.purplerocket.co */
   APP_URL: z.string().url().default('http://localhost:3000'),
   /**
    * Public origin telephony providers call back to. In production nginx
@@ -58,11 +58,21 @@ const schema = z.object({
   SMTP_SECURE: bool,
   SMTP_USER: optionalString,
   SMTP_PASSWORD: optionalString,
-  MAIL_FROM: z.string().default('Purple Voice <no-reply@purplevoice.ai>'),
+  MAIL_FROM: z.string().default('Purple Voice <hello@purplerocket.co>'),
+  /** Where replies to the platform's emails go. */
+  MAIL_REPLY_TO: z.string().email().default('hello@purplerocket.co'),
   SUPPORT_NOTIFY_EMAILS: optionalString,
 
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
+  /** Optional Google API key for PageSpeed Insights (higher quota than keyless). */
+  PAGESPEED_API_KEY: optionalString,
+  /**
+   * Twilio request signatures (X-Twilio-Signature) on top of our own signed
+   * callback URLs. "log" reports mismatches without rejecting; switch to
+   * "enforce" once the logs show none.
+   */
+  TELEPHONY_SIGNATURE_MODE: z.enum(['off', 'log', 'enforce']).default('log'),
 
   /** Graph API version for WhatsApp (Meta Cloud API) integrations. */
   WHATSAPP_GRAPH_VERSION: z
@@ -85,7 +95,7 @@ const schema = z.object({
   STORAGE_LOCAL_PATH: z.string().default('../../storage/uploads'),
   /** Call recordings on local disk: private, never under the public uploads directory. */
   RECORDINGS_LOCAL_PATH: z.string().default('../../storage/recordings'),
-  /** Public URL prefix for stored files, e.g. https://purplevoice.ai/uploads */
+  /** Public URL prefix for stored files, e.g. https://voice.purplerocket.co/uploads */
   STORAGE_PUBLIC_URL: optionalString,
   S3_BUCKET: optionalString,
   S3_REGION: z.string().default('auto'),
@@ -116,6 +126,20 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data;
+
+// A public https site running without NODE_ENV=production would drop Secure
+// cookies, SSRF private-network blocking and (with "test") rate limits and
+// captcha. Refuse to start rather than run that way by accident.
+{
+  const host = new URL(raw.APP_URL).hostname;
+  const local = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost') || host.endsWith('.test');
+  if (!local && raw.NODE_ENV !== 'production' && process.env.ALLOW_NON_PRODUCTION_ON_PUBLIC_HOST !== '1') {
+    console.error(
+      `APP_URL is ${raw.APP_URL} but NODE_ENV is "${raw.NODE_ENV}". Set NODE_ENV=production (or ALLOW_NON_PRODUCTION_ON_PUBLIC_HOST=1 for a staging box you understand).`,
+    );
+    process.exit(1);
+  }
+}
 
 export const env = {
   ...raw,

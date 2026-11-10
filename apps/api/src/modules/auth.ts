@@ -10,8 +10,10 @@ import {
   isStaff,
   loginSchema,
   registerSchema,
+  resendVerificationSchema,
   resetPasswordSchema,
   updateProfileSchema,
+  verifyEmailSchema,
 } from '@pv/shared';
 import type { User } from '@prisma/client';
 import { env } from '../config/env';
@@ -21,7 +23,7 @@ import { hashPassword, hasUsablePassword, verifyPassword } from '../lib/password
 import { randomToken, sha256 } from '../lib/crypto';
 import { signAccessToken } from '../lib/jwt';
 import { refreshVerdict } from '../lib/refresh-token';
-import { badRequest, conflict, forbidden, unauthorized } from '../lib/http-error';
+import { HttpError, badRequest, forbidden, unauthorized } from '../lib/http-error';
 import { sendMail } from '../lib/mailer';
 import { audit } from '../lib/audit';
 import { logger } from '../lib/logger';
@@ -29,6 +31,14 @@ import { ACCESS_COOKIE, REFRESH_COOKIE, authenticate } from '../middleware/auth'
 import { authLimiter } from '../middleware/rate-limit';
 import { getEntitlements, getUsage } from '../services/entitlements';
 import { assertCaptcha } from '../services/captcha';
+import { assertSignupEmail } from '../services/email-guard';
+import { renderEmail } from '../services/email-templates';
+import {
+  existingAccountEmail,
+  lifecycleSettings,
+  sendWelcome,
+  verificationEmail,
+} from '../services/lifecycle-emails';
 import {
   GOOGLE_STATE_TTL_SEC,
   googleIdentityFromCode,
@@ -72,7 +82,12 @@ async function issueSession(req: Request, res: Response, user: User, familyId?: 
     },
   });
 
-  const access = signAccessToken({ sub: user.id, role: user.role, wid: user.workspaceId });
+  const access = signAccessToken({
+    sub: user.id,
+    role: user.role,
+    wid: user.workspaceId,
+    sid: session.id,
+  });
   res.cookie(ACCESS_COOKIE, access, {
     ...baseCookie(),
     path: '/',
@@ -111,13 +126,84 @@ function publicUser(
   };
 }
 
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+/** Don't send another confirmation email if one went out this recently. */
+const VERIFY_RESEND_MS = 2 * 60 * 1000;
+
+/** Emails a fresh "confirm your email" link (older unused links keep working until they expire). */
+async function sendVerification(
+  user: Pick<User, 'id' | 'name' | 'email'>,
+  next: string | null,
+  { force = false } = {},
+) {
+  if (!force) {
+    const recent = await prisma.emailVerification.findFirst({
+      where: { userId: user.id, createdAt: { gt: new Date(Date.now() - VERIFY_RESEND_MS) } },
+      select: { id: true },
+    });
+    if (recent) return;
+  }
+  const token = randomToken(32);
+  await prisma.emailVerification.create({
+    data: {
+      userId: user.id,
+      tokenHash: sha256(token),
+      next,
+      expiresAt: new Date(Date.now() + VERIFY_TTL_MS),
+    },
+  });
+  const url = `${env.appUrl}/verify-email?token=${encodeURIComponent(token)}`;
+  const mail = renderEmail(verificationEmail(user.name, url));
+  await sendMail({
+    to: user.email,
+    subject: 'Confirm your email for Purple Voice',
+    text: mail.text,
+    html: mail.html,
+  });
+}
+
+/**
+ * Creates the account and emails a confirmation link; nothing is signed in
+ * until the link is opened. The response is the same whether or not the email
+ * already has an account (that owner gets a "you already have an account"
+ * email instead), so sign-up can't be used to find out who is a customer.
+ */
+/** "You already have an account" at most every 15 minutes per account, so it can't be used to flood an inbox. */
+const existingNotices = new Map<string, number>();
+function noticeDue(userId: string): boolean {
+  const now = Date.now();
+  for (const [k, at] of existingNotices) if (now - at > 15 * 60_000) existingNotices.delete(k);
+  if (existingNotices.has(userId)) return false;
+  existingNotices.set(userId, now);
+  return true;
+}
+
 authRouter.post('/register', authLimiter, async (req, res) => {
   const input = registerSchema.parse(req.body);
   await assertCaptcha(req, 'signup', input.captchaToken);
-  const existing = await prisma.user.findUnique({ where: { email: input.email } });
-  if (existing) throw conflict('An account with this email already exists. Try signing in.');
-
+  const { blockedDomains } = await lifecycleSettings();
+  await assertSignupEmail(input.email, blockedDomains);
+  const next = safeNextPath(input.next);
+  // Hashed either way, so an existing email doesn't answer faster.
   const passwordHash = await hashPassword(input.password);
+  const done = () => res.status(202).json({ verify: true, email: input.email });
+
+  const existing = await prisma.user.findUnique({ where: { email: input.email } });
+  if (existing) {
+    if (existing.suspended) return done();
+    if (!existing.emailVerifiedAt) void sendVerification(existing, next).catch(() => undefined);
+    else if (noticeDue(existing.id)) {
+      const mail = renderEmail(existingAccountEmail(existing.name));
+      void sendMail({
+        to: existing.email,
+        subject: 'You already have a Purple Voice account',
+        text: mail.text,
+        html: mail.html,
+      });
+    }
+    return done();
+  }
+
   const user = await prisma.$transaction(async (tx) => {
     const workspace = await tx.workspace.create({
       data: { name: input.company?.trim() || `${input.name.split(' ')[0]}'s workspace` },
@@ -136,9 +222,66 @@ authRouter.post('/register', authLimiter, async (req, res) => {
     });
   });
 
-  await issueSession(req, res, user);
   await audit(req, 'auth.register', { actorId: user.id, workspaceId: user.workspaceId });
-  res.status(201).json({ user: publicUser(user) });
+  void sendVerification(user, next, { force: true }).catch((err) =>
+    logger.error({ err }, 'Could not send the confirmation email'),
+  );
+  done();
+});
+
+/** Opens the confirmation link: marks the email verified, signs in, sends the welcome. */
+authRouter.post('/verify-email', authLimiter, async (req, res) => {
+  const { token } = verifyEmailSchema.parse(req.body);
+  const row = await prisma.emailVerification.findUnique({
+    where: { tokenHash: sha256(token) },
+    include: { user: true },
+  });
+  if (!row) throw new HttpError(400, 'This confirmation link is not valid.', 'invalid_token');
+  if (row.usedAt || row.user.emailVerifiedAt) {
+    throw new HttpError(400, 'Your email is already confirmed. Please sign in.', 'already_verified');
+  }
+  if (row.expiresAt < new Date()) {
+    throw new HttpError(
+      400,
+      'This confirmation link has expired. Sign in to get a new one.',
+      'expired_token',
+    );
+  }
+  if (row.user.suspended) throw forbidden('This account is suspended. Please contact support.');
+
+  const now = new Date();
+  const user = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.emailVerification.updateMany({
+      where: { id: row.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    if (claimed.count !== 1)
+      throw new HttpError(400, 'Your email is already confirmed. Please sign in.', 'already_verified');
+    return tx.user.update({
+      where: { id: row.userId },
+      data: { emailVerifiedAt: now, lastLoginAt: now },
+    });
+  });
+  await issueSession(req, res, user);
+  await audit(req, 'auth.email_verified', { actorId: user.id, workspaceId: user.workspaceId });
+  void sendWelcome(user).catch((err) => logger.error({ err }, 'Welcome email failed'));
+  res.json({ user: publicUser(user), next: row.next ?? homePathForRole(user.role) });
+});
+
+/** "Didn't get it? Send again." Same answer whether or not the account exists. */
+authRouter.post('/resend-verification', authLimiter, async (req, res) => {
+  const { email, captchaToken } = resendVerificationSchema.parse(req.body);
+  await assertCaptcha(req, 'signup', captchaToken);
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user && !user.emailVerifiedAt && !user.suspended) {
+    const last = await prisma.emailVerification.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { next: true },
+    });
+    void sendVerification(user, last?.next ?? null).catch(() => undefined);
+  }
+  res.json({ ok: true });
 });
 
 authRouter.post('/login', authLimiter, async (req, res) => {
@@ -154,6 +297,20 @@ authRouter.post('/login', authLimiter, async (req, res) => {
       : await verifyPassword(input.password, DUMMY_HASH).then(() => false);
   if (!user || !ok) throw unauthorized('Email or password is incorrect');
   if (user.suspended) throw forbidden('This account is suspended. Please contact support.');
+  if (!user.emailVerifiedAt) {
+    // Right password, unconfirmed email: send a fresh link (at most every two minutes).
+    const last = await prisma.emailVerification.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { next: true },
+    });
+    void sendVerification(user, last?.next ?? null).catch(() => undefined);
+    throw new HttpError(
+      403,
+      'Please confirm your email first. We’ve sent a new link to your inbox.',
+      'email_unverified',
+    );
+  }
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await issueSession(req, res, user);
@@ -171,7 +328,13 @@ authRouter.post('/refresh', async (req, res) => {
     where: { tokenHash: sha256(token) },
     include: { user: true },
   });
-  const verdict = refreshVerdict(session);
+  let verdict = refreshVerdict(session);
+  // A parallel refresh comes from the same browser; a copy replayed from elsewhere is theft.
+  if (
+    verdict === 'concurrent' &&
+    (session?.userAgent ?? null) !== (req.header('user-agent')?.slice(0, 300) ?? null)
+  )
+    verdict = 'reused';
   if (!session || verdict === 'expired') {
     clearSession(res);
     throw unauthorized();
@@ -323,7 +486,9 @@ authRouter.get('/me/export', authenticate, async (req, res) => {
     tickets,
     sessions,
   ] = await Promise.all([
-    wid ? prisma.workspace.findUnique({ where: { id: wid } }) : null,
+    wid
+      ? prisma.workspace.findUnique({ where: { id: wid }, omit: { notes: true, internal: true } })
+      : null,
     wid
       ? prisma.subscription.findUnique({
           where: { workspaceId: wid },
@@ -514,6 +679,8 @@ authRouter.get('/google/callback', googleCallbackLimiter, async (req, res) => {
         workspaceId: user.workspaceId,
         meta: { via: 'google' },
       });
+      // Google has confirmed the address, so the welcome goes out straight away.
+      void sendWelcome(user).catch((err) => logger.error({ err }, 'Welcome email failed'));
     } else {
       await audit(req, 'auth.google_login', {
         actorId: user.id,
@@ -542,7 +709,8 @@ authRouter.post('/forgot-password', authLimiter, async (req, res) => {
       },
     });
     const link = `${env.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
-    await sendMail({
+    // Not awaited: the response takes the same time whether or not the account exists.
+    void sendMail({
       to: user.email,
       subject: 'Reset your Purple Voice password',
       text: `Hi ${user.name},\n\nUse this link within the next hour to choose a new password:\n${link}\n\nIf you didn't ask for this, you can ignore this email.`,
@@ -560,17 +728,20 @@ authRouter.post('/reset-password', authLimiter, async (req, res) => {
   if (!reset || reset.usedAt || reset.expiresAt < new Date()) {
     throw badRequest('This reset link has expired. Request a new one.');
   }
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: reset.userId },
-      data: { passwordHash: await hashPassword(input.password) },
-    }),
-    prisma.passwordReset.update({ where: { id: reset.id }, data: { usedAt: new Date() } }),
-    prisma.session.updateMany({
+  const passwordHash = await hashPassword(input.password);
+  await prisma.$transaction(async (tx) => {
+    // Claim the token atomically, so two simultaneous requests can't both use it.
+    const claimed = await tx.passwordReset.updateMany({
+      where: { id: reset.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw badRequest('This reset link has expired. Request a new one.');
+    await tx.user.update({ where: { id: reset.userId }, data: { passwordHash } });
+    await tx.session.updateMany({
       where: { userId: reset.userId, revokedAt: null },
       data: { revokedAt: new Date() },
-    }),
-  ]);
+    });
+  });
   res.json({ ok: true });
 });
 

@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: pv_dev_password
       POSTGRES_DB: purple_voice
     ports:
-      - '5434:5432'
+      # Bound to this machine only: the dev password must not be reachable from the LAN.
+      - '127.0.0.1:5434:5432'
     volumes:
       - pv_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -24,8 +25,8 @@ services:
     container_name: pv-mailpit
     restart: unless-stopped
     ports:
-      - '1025:1025'
-      - '8025:8025'
+      - '127.0.0.1:1025:1025'
+      - '127.0.0.1:8025:8025'
 
 volumes:
   pv_pgdata:

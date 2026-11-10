@@ -6,6 +6,8 @@ export interface AccessClaims {
   sub: string;
   role: Role;
   wid: string | null;
+  /** The refresh session this token was issued with; logging out ends it. */
+  sid?: string;
 }
 
 export function signAccessToken(claims: AccessClaims): string {
@@ -22,7 +24,7 @@ export function verifyAccessToken(token: string): AccessClaims | null {
       issuer: 'purple-voice',
       audience: 'purple-voice-web',
     }) as jwt.JwtPayload & AccessClaims;
-    return { sub: payload.sub, role: payload.role, wid: payload.wid ?? null };
+    return { sub: payload.sub, role: payload.role, wid: payload.wid ?? null, sid: payload.sid };
   } catch {
     return null;
   }

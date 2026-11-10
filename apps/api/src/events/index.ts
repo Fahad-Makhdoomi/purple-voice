@@ -3,7 +3,7 @@ import type { WebhookEvent } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { decryptJson, randomToken } from '../lib/crypto';
-import { assertPublicUrl } from '../lib/ssrf';
+import { postToPublicUrl } from '../lib/ssrf';
 import { getEntitlements } from '../services/entitlements';
 import { runAutomations } from './automations';
 
@@ -52,16 +52,10 @@ export async function emitEvent(
     });
     if (zapier?.secretsEnc) {
       const { secret } = decryptJson<{ secret: string }>(zapier.secretsEnc);
-      void assertPublicUrl(secret)
-        .then((url) =>
-          fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'User-Agent': 'PurpleVoice-Zapier/1.0' },
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(10_000),
-          }),
-        )
-        .catch((err) => logger.warn({ err, workspaceId }, 'Zapier forward failed'));
+      void postToPublicUrl(secret, {
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'PurpleVoice-Zapier/1.0' },
+        body: JSON.stringify(payload),
+      }).catch((err) => logger.warn({ err, workspaceId }, 'Zapier forward failed'));
     }
 
     if (ent.features.advancedAutomations) await runAutomations(workspaceId, type, data);

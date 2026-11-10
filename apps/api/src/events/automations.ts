@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { decryptJson } from '../lib/crypto';
 import { sendMail } from '../lib/mailer';
-import { assertPublicUrl } from '../lib/ssrf';
+import { postToPublicUrl } from '../lib/ssrf';
 
 type Condition = z.infer<typeof automationConditionSchema>;
 type Action = z.infer<typeof automationActionSchema>;
@@ -25,6 +25,20 @@ function matches(condition: Condition, data: Record<string, unknown>): boolean {
   }
 }
 
+const FREE_MAIL =
+  /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|gmx|mail|yandex|zoho|rediffmail)\./i;
+
+async function isTeamAddress(workspaceId: string, to: string): Promise<boolean> {
+  const users = await prisma.user.findMany({ where: { workspaceId }, select: { email: true } });
+  const target = to.trim().toLowerCase();
+  const domain = target.split('@')[1] ?? '';
+  return users.some((u) => {
+    const email = u.email.toLowerCase();
+    const own = email.split('@')[1] ?? '';
+    return email === target || (own === domain && !FREE_MAIL.test(own));
+  });
+}
+
 async function runAction(
   workspaceId: string,
   action: Action,
@@ -33,20 +47,21 @@ async function runAction(
 ) {
   switch (action.type) {
     case 'webhook': {
-      const url = await assertPublicUrl(action.url);
-      const res = await fetch(url, {
-        method: 'POST',
+      const res = await postToPublicUrl(action.url, {
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': 'PurpleVoice-Automations/1.0',
         },
         body: JSON.stringify({ event, data }),
-        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) throw new Error(`Webhook responded ${res.status}`);
       return;
     }
     case 'email': {
+      // Sent from the platform's own address, so only to the business's own
+      // team: a team member's address, or one on a team member's company domain.
+      if (!(await isTeamAddress(workspaceId, action.to)))
+        throw new Error(`${action.to} is not on your team's email domain`);
       await sendMail({
         to: action.to,
         subject: action.subject,
@@ -64,13 +79,11 @@ async function runAction(
       if (!integration?.secretsEnc) throw new Error('Slack is not connected');
       const { secret } = decryptJson<{ secret: string }>(integration.secretsEnc);
       const summary = typeof data.summary === 'string' ? data.summary : '';
-      await fetch(await assertPublicUrl(secret), {
-        method: 'POST',
+      await postToPublicUrl(secret, {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: `*${event}* ${data.toNumber ?? data.contactPhone ?? ''}\n${summary}`.trim(),
         }),
-        signal: AbortSignal.timeout(10_000),
       });
       return;
     }

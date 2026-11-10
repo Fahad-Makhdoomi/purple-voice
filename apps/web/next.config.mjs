@@ -62,8 +62,16 @@ const nextConfig = {
   htmlLimitedBots: /.*/,
   images: {
     formats: ['image/avif', 'image/webp'],
+    // Only our own host and listed media hosts go through the optimizer, so
+    // /_next/image can't fetch and resize images from anywhere. Images on other
+    // hosts are rendered unoptimised by components/ui/Image.tsx.
     remotePatterns: [
-      { protocol: 'https', hostname: '**' },
+      { protocol: 'https', hostname: site.hostname },
+      ...(process.env.NEXT_PUBLIC_IMAGE_HOSTS ?? '')
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean)
+        .map((hostname) => ({ protocol: 'https', hostname })),
       { protocol: 'http', hostname: 'localhost' },
     ],
     minimumCacheTTL: 60 * 60 * 24 * 30,

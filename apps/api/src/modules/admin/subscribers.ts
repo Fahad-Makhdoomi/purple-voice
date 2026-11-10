@@ -28,6 +28,14 @@ import { getSetting } from '../../services/settings';
 /** Staff view of customer workspaces and their subscriptions. */
 export const subscribersRouter = Router();
 
+/** The platform's own workspace is managed from Super admin → Our workspace, not here. */
+subscribersRouter.param('id', async (req, _res, next, id: string) => {
+  if (req.user?.role === 'SUPER_ADMIN') return next();
+  const ws = await prisma.workspace.findUnique({ where: { id }, select: { internal: true } });
+  if (ws?.internal) throw notFound('Workspace');
+  next();
+});
+
 subscribersRouter.get('/', async (req, res) => {
   const { page, pageSize, q } = paginationSchema.parse(req.query);
   const filters = z

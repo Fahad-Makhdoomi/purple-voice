@@ -22,11 +22,25 @@ async function loadUser(req: Request): Promise<boolean> {
   if (!claims) return false;
   // Re-read the user so suspensions and role changes apply immediately rather
   // than when the 15-minute access token expires.
-  const user = await prisma.user.findUnique({
-    where: { id: claims.sub },
-    select: { id: true, email: true, name: true, role: true, workspaceId: true, suspended: true },
-  });
+  const [user, session] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: claims.sub },
+      select: { id: true, email: true, name: true, role: true, workspaceId: true, suspended: true },
+    }),
+    claims.sid
+      ? prisma.session.findUnique({
+          where: { id: claims.sid },
+          select: { userId: true, revokedAt: true, replacedBy: true },
+        })
+      : null,
+  ]);
   if (!user || user.suspended) return false;
+  // Logout, a password change or reset, suspension and stolen-token detection
+  // revoke the session; its access tokens stop working at once, not 15 minutes
+  // later. (A session retired by normal rotation has `replacedBy` and its
+  // short-lived token stays valid until it expires.)
+  if (claims.sid && (!session || session.userId !== user.id || (session.revokedAt && !session.replacedBy)))
+    return false;
   req.user = {
     id: user.id,
     email: user.email,

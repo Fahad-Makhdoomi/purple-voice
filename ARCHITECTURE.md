@@ -211,6 +211,16 @@ and refresh tokens are stored as SHA-256 hashes.
 - `pv_role` (readable by JS) only drives Next.js redirects.
 - Password reset: single-use, hashed, one-hour tokens; resetting signs out everywhere.
 - Login timing is equalised for unknown emails; responses never reveal which emails exist.
+- Email verification: sign-up creates the account and emails a 24-hour, single-use,
+  hashed confirmation link (`EmailVerification`); nothing is signed in until it is
+  opened (`POST /api/auth/verify-email`, which signs in and sends the welcome). Signing
+  in unconfirmed returns `email_unverified` and resends the link. Sign-up answers the
+  same for an existing email (whose owner is emailed instead), so it can't be used to
+  find customers. Unconfirmed sign-ups are removed after 14 days. Google accounts and
+  staff created by a super admin count as verified.
+- Throwaway addresses are refused at sign-up (`services/email-guard.ts`): the community
+  disposable-domain list (vendored in `src/data/disposable-domains.json`, parent domains
+  included), extra domains from Admin → Email automations, and domains with no MX/A record.
 - "Continue with Google" (`services/google-auth.ts`): OpenID Connect with the Calendar
   OAuth client, scopes `openid email profile`. The signed state carries the intent, a
   same-site `next` path and a nonce that is also kept in a 10-minute HTTP-only cookie,
@@ -512,11 +522,44 @@ verification in **Admin → SEO & analytics**. Dashboards and admin send
   MRR movement (new / expansion / contraction / churn), sign-ups per day, usage leaders.
   Pro subscribers get call insights: connect rate, answer rate by hour, booking rate,
   sentiment, per-agent and per-campaign conversion.
-- **Website analytics** — optional Plausible (cookie-free) and/or GA4, configured in the
-  admin and loaded with `lazyOnload` after the page is interactive.
+- **Website traffic** (the admin Dashboard, `/admin`) — our own cookie-free
+  tracker (`components/site/PageTracker.tsx` → `POST /api/public/collect`,
+  `services/web-analytics.ts`, table `PageView`). No cookies, nothing on the device,
+  no raw IP: a visitor is an HMAC of IP + user agent + the day, so it rotates daily.
+  Honours DNT/GPC, skips bots. Visits split after 30 minutes idle or on any arrival
+  from outside (referrer or UTM). Reports: visitors, visits, views, bounce rate, visit
+  duration (visible time, sent on leave), pages, landing/exit pages, channels (Organic
+  and Paid Search, Social, Email, Referral, AI Assistants, Direct), sources, UTM
+  campaigns, organic-search landing pages, devices, browsers, OS, locations (CDN
+  country header, else time zone) and live visitors. Kept 400 days.
+- **SEO performance** (Admin → Analytics → SEO performance) — Google Search Console
+  through a service account (`services/search-console.ts`; key AES-GCM encrypted in
+  SiteSetting `searchConsole`; read-only scope): clicks, impressions, CTR and position
+  over time, ranking pages and queries with position change, rank buckets,
+  striking-distance and low-CTR queries, countries, devices, sitemaps and URL
+  inspection. Plus an on-site audit (`services/seo-audit.ts`) that crawls sitemap.xml
+  and checks titles, descriptions, canonicals, noindex, H1s, alt text, JSON-LD, word
+  count, duplicates and response time, and PageSpeed Insights per page.
+- **Third-party analytics** — optional Plausible and/or GA4 (after consent), configured
+  in Admin → SEO & analytics and loaded with `lazyOnload`.
 
 Charts follow BRAND.md § Data visualisation: one series per chart, hover tooltips, and
 a data table under every chart.
+
+### Lifecycle email (Admin → Email automations)
+
+`services/lifecycle-emails.ts`, sent by the worker every 10 minutes, from `MAIL_FROM`
+with replies to `MAIL_REPLY_TO` (hello@purplerocket.co), in the branded HTML layout of
+`services/email-templates.ts` with a plain-text part. Timed from email confirmation:
+welcome (at once), getting started (day 1), what Pro unlocks (day 3), upgrade offer
+(day 7), free month ends soon (day 21) and last call (day 28). Upgrade emails skip
+workspaces on Pro or Enterprise; an optional Stripe promotion code is shown in the
+offer emails. Each step is claimed in `LifecycleEmail` before sending (at most once per
+person) and a step more than 3 days late is dropped. Only people who got the welcome
+enter the sequence, so accounts from before it are not emailed. Every email but the
+confirmation carries an unsubscribe link and RFC 8058 one-click `List-Unsubscribe`
+headers (`/api/public/unsubscribe`, HMAC-signed per user, sets `emailUnsubscribedAt`).
+Super admins switch steps on or off, preview them and send themselves tests.
 
 ---
 
@@ -579,6 +622,14 @@ fallback and the right effort setting, and every Claude response checks `stop_re
 | Uploads | Image-only, size-capped, decoded and re-encoded by sharp (no original bytes are served), stored under server-generated keys. |
 | Transport & headers | HSTS, TLS 1.2+, `X-Content-Type-Options`, `X-Frame-Options`, strict referrer and permissions policies. |
 | Accountability | `AuditLog` for auth, billing, staff actions inside workspaces, CMS and settings changes. |
+| Customer-supplied URLs (hardening) | `lib/ssrf.ts` blocks private and reserved ranges with `net.BlockList`, including IPv4-mapped, NAT64 and 6to4 IPv6 forms. `postToPublicUrl` pins the connection to the checked address (no DNS rebinding) and never follows redirects (webhooks, automations, Slack, Zapier). |
+| Session revocation | Access tokens carry their session id (`sid`): logout, password reset or change, suspension and theft detection end them at once. Refresh reuse grace is 10 s and same user agent only. Linking Google to an existing email account ends that account's password and sessions (blocks pre-registration takeover). |
+| Carrier callbacks | The provider in the URL must match the call or number; Twilio's `X-Twilio-Signature` and Plivo's V3/V2 signatures are checked (`TELEPHONY_SIGNATURE_MODE`). |
+| AI messaging abuse | Agent WhatsApp goes only to the caller's own number; email to one address per call; 300 a day per workspace and 6 a day per caller; links only to hosts listed in the agent's "What the agent may send". Automation emails go only to the team's own addresses or company domain. |
+| Image optimizer | `/_next/image` accepts only this site and `NEXT_PUBLIC_IMAGE_HOSTS`; other images render unoptimised (`components/ui/Image.tsx`). |
+| Internal workspace | Only super admins can open or manage the platform's own workspace. |
+| Sign-up | Email verification required; disposable and mail-less domains refused; no account enumeration through sign-up. |
+| Meta WhatsApp webhook | The verify token Meta asks for is derived per workspace, not the secret in the webhook URL. |
 
 ---
 

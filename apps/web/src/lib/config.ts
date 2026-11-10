@@ -8,5 +8,5 @@ export const captchaSiteKey = process.env.NEXT_PUBLIC_CAPTCHA_SITE_KEY ?? '';
 export const brand = {
   name: 'Purple Voice',
   tagline: 'AI voice agents for sales calls',
-  supportEmail: 'hello@purplevoice.ai',
+  supportEmail: 'hello@purplerocket.co',
 };

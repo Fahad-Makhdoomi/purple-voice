@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import Image from '@/components/ui/Image';
 import Link from 'next/link';
 import { getAppearance } from '@/lib/server-api';
 import { SunScene } from '@/components/site/SunScene';

@@ -179,7 +179,7 @@ export const crmFromCampaignSchema = z
   .object({
     campaignId: z.string().min(1),
     contactIds: z.array(z.string().min(1)).min(1).max(5000).optional(),
-    outcomes: z.array(z.enum(CALL_OUTCOMES)).min(1).optional(),
+    outcomes: z.array(z.enum(CALL_OUTCOMES)).min(1).max(50).optional(),
     stageId: z.string().min(1).optional(),
   })
   .refine((v) => !!v.contactIds || !!v.outcomes, {

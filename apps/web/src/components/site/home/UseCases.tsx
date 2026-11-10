@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import Image from '@/components/ui/Image';
 import { Building2, GraduationCap, Home, Megaphone, Stethoscope, Sun } from 'lucide-react';
 import { Reveal, Spotlight } from '@/components/site/motion';
 

@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type Metadata, type WebpOptions } from 'sharp';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { sha256 } from '../lib/crypto';
@@ -63,7 +63,7 @@ export async function uploadImage(input: UploadInput) {
   const existingBySource = await prisma.mediaAsset.findUnique({ where: { sourceHash } });
   if (existingBySource) return { asset: existingBySource, duplicate: true };
 
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(input.buffer, { limitInputPixels: MAX_PIXELS }).metadata();
   } catch {
@@ -73,7 +73,7 @@ export async function uploadImage(input: UploadInput) {
     throw badRequest('Upload a JPEG, PNG, WebP, GIF, AVIF, TIFF or HEIC image');
   }
 
-  const encode = (options: sharp.WebpOptions) =>
+  const encode = (options: WebpOptions) =>
     sharp(input.buffer, { limitInputPixels: MAX_PIXELS, animated: meta.format === 'gif' })
       .rotate()
       .webp({ effort: 5, ...options })

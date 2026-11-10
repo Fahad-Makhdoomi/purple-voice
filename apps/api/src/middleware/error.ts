@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
+// Side effect: keeps zod 3's plainer built-in validation messages (see file).
+import '../lib/zod-messages';
 import { Prisma } from '@prisma/client';
 import { HttpError } from '../lib/http-error';
 import { logger } from '../lib/logger';

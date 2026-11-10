@@ -74,8 +74,16 @@ export const registerSchema = z.object({
     .refine((v) => v, 'Please agree to the Terms of Service and Privacy Policy'),
   /** Product news by email. Never pre-ticked. */
   marketingOptIn: z.boolean().default(false),
+  /** Same-site path to open after the email is confirmed (e.g. the plan checkout). */
+  next: z.string().max(512).optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
+
+/** The link in the "confirm your email" message. */
+export const verifyEmailSchema = z.object({ token: z.string().min(16).max(200) });
+
+/** "Send the confirmation email again". */
+export const resendVerificationSchema = z.object({ captchaToken, email });
 
 export const loginSchema = z.object({
   captchaToken,
@@ -107,7 +115,7 @@ export const acceptTermsSchema = z.object({ version: z.literal(LEGAL_VERSION) })
  */
 export const deleteAccountSchema = z.object({
   password: z.string().min(1).max(200).optional(),
-  confirm: z.literal('DELETE', { errorMap: () => ({ message: 'Type DELETE to confirm' }) }),
+  confirm: z.literal('DELETE', { error: 'Type DELETE to confirm' }),
 });
 
 export const changePasswordSchema = z.object({
@@ -393,7 +401,7 @@ export const updateAppointmentSchema = z.object({
 const localStart = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
 
 /** Opening windows per weekday ("0" = Sunday … "6" = Saturday); a missing or empty day is closed. */
-export const workingHoursSchema = z.record(
+export const workingHoursSchema = z.partialRecord(
   z.enum(['0', '1', '2', '3', '4', '5', '6']),
   z
     .array(z.object({ start: hhmm, end: hhmm }))
@@ -532,7 +540,7 @@ export const integrationTestSchema = z.object({ to: z.string().trim().min(3).max
 export const webhookEndpointSchema = z.object({
   url: z.string().trim().url().max(2000),
   description: z.string().trim().max(200).optional(),
-  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).max(50),
   active: z.boolean().default(true),
 });
 export const updateWebhookEndpointSchema = webhookEndpointSchema.partial();
@@ -544,7 +552,7 @@ export const apiKeySchema = z.object({
 export const automationConditionSchema = z.object({
   field: z.enum(['outcome', 'sentiment', 'durationSec', 'direction', 'agentId', 'campaignId']),
   op: z.enum(['eq', 'neq', 'gt', 'lt', 'in']),
-  value: z.union([z.string(), z.number(), z.array(z.string())]),
+  value: z.union([z.string().max(500), z.number(), z.array(z.string().max(500)).max(200)]),
 });
 
 export const automationActionSchema = z.discriminatedUnion('type', [
@@ -934,7 +942,7 @@ export const contentSettingsSchema = z.object({
       linkLabel: z.string().trim().max(40).default(''),
       href: linkHref.or(z.literal('')).default(''),
     })
-    .default({}),
+    .prefault({}),
   hero: z
     .object({
       badge: z.string().trim().max(80).default('Now with natural, human-sounding voices'),
@@ -951,7 +959,7 @@ export const contentSettingsSchema = z.object({
       secondaryLabel: z.string().trim().max(40).default('Hear a sample call'),
       secondaryHref: linkHref.default('/#demo'),
     })
-    .default({}),
+    .prefault({}),
   footerTagline: z
     .string()
     .trim()
@@ -965,7 +973,7 @@ export const contentSettingsSchema = z.object({
       instagram: optionalUrl,
       facebook: optionalUrl,
     })
-    .default({}),
+    .prefault({}),
 });
 export type ContentSettings = z.infer<typeof contentSettingsSchema>;
 

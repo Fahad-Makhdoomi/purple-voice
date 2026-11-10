@@ -3,6 +3,8 @@ import { authenticate, requireStaff, requireSuperAdmin } from '../../middleware/
 import { subscribersRouter } from './subscribers';
 import { cmsRouter } from './cms';
 import { crmRouter } from './crm';
+import { analyticsRouter } from './analytics';
+import { emailAutomationsRouter } from './email-automations';
 import { superRouter } from '../super';
 
 /**
@@ -15,4 +17,6 @@ adminRouter.use(authenticate, requireStaff);
 adminRouter.use('/', crmRouter); // /overview, /staff, /leads, /tickets
 adminRouter.use('/subscribers', subscribersRouter);
 adminRouter.use('/cms', cmsRouter);
+adminRouter.use('/analytics', analyticsRouter);
+adminRouter.use('/email-automations', emailAutomationsRouter);
 adminRouter.use('/super', requireSuperAdmin, superRouter);

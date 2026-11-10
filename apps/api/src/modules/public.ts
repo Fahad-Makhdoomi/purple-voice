@@ -14,9 +14,16 @@ import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { notFound } from '../lib/http-error';
 import { sendMail } from '../lib/mailer';
-import { formLimiter } from '../middleware/rate-limit';
+import { collectLimiter, formLimiter } from '../middleware/rate-limit';
+import {
+  collectSchema,
+  leaveSchema,
+  recordLeave,
+  recordPageView,
+} from '../services/web-analytics';
 import { assertCaptcha } from '../services/captcha';
 import { getSetting } from '../services/settings';
+import { verifyUnsubscribe } from '../services/lifecycle-emails';
 
 /**
  * Read-only content for the public website, plus the contact form. The web
@@ -210,6 +217,33 @@ publicRouter.get('/sitemap', async (_req, res) => {
 });
 
 /**
+ * Website analytics beacons from the site's cookie-free tracker. Bad input is
+ * ignored rather than reported, and nothing about the visitor is echoed back.
+ */
+const collectContext = (req: import('express').Request) => ({
+  ip: req.ip ?? '',
+  userAgent: req.header('user-agent') ?? '',
+  country: req.header('cf-ipcountry')?.toUpperCase() ?? null,
+});
+
+publicRouter.post('/collect', collectLimiter, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const input = collectSchema.safeParse(req.body);
+  // Respect Do Not Track / Global Privacy Control.
+  if (!input.success || req.header('dnt') === '1' || req.header('sec-gpc') === '1')
+    return void res.status(202).json({ id: null });
+  const id = await recordPageView(input.data, collectContext(req));
+  res.status(202).json({ id });
+});
+
+publicRouter.post('/collect/leave', collectLimiter, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const input = leaveSchema.safeParse(req.body);
+  if (input.success) await recordLeave(input.data, collectContext(req));
+  res.status(204).end();
+});
+
+/**
  * Records a visitor's cookie choices, so consent can be shown to have been
  * given (GDPR art. 7(1), UK GDPR, PECR). No account and no raw IP: a random
  * id from the browser and a keyed hash of the address.
@@ -258,7 +292,9 @@ publicRouter.post('/privacy-request', formLimiter, async (req, res) => {
   void sendMail({
     to: input.email,
     subject: 'We received your privacy request',
-    text: `Hi ${input.name},\n\nWe received your request: ${PRIVACY_REQUEST_LABELS[input.type]}. We may email you to confirm it is you, and we will reply by ${due.toISOString().slice(0, 10)} at the latest.\n\nIf you did not send this, you can ignore this email.`,
+    // No visitor-typed text goes into this email, so the form can't be used to
+    // send someone a message of the visitor's choosing from our address.
+    text: `Hello,\n\nWe received your request: ${PRIVACY_REQUEST_LABELS[input.type]}. We may email you to confirm it is you, and we will reply by ${due.toISOString().slice(0, 10)} at the latest.\n\nIf you did not send this, you can ignore this email.`,
   });
   res.status(201).json({ ok: true });
 });
@@ -287,4 +323,40 @@ publicRouter.post('/contact', formLimiter, async (req, res) => {
     });
   }
   res.status(201).json({ ok: true });
+});
+
+// ── Unsubscribe from onboarding and upgrade emails ──────────────────────────
+
+function unsubscribePage(ok: boolean): string {
+  const title = ok ? 'You’re unsubscribed' : 'This link isn’t valid';
+  const body = ok
+    ? 'You won’t get any more tips or offers from Purple Voice. Emails about your account, billing and security still come through.'
+    : 'Please use the unsubscribe link from a recent email, or reply to that email and we’ll take care of it.';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head><body style="margin:0;background:#F5F3FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><main style="max-width:480px;margin:80px auto;padding:40px 32px;background:#fff;border:1px solid #E9E6F2;border-radius:20px;text-align:center;"><h1 style="margin:0 0 12px;font-size:24px;color:#15131F;">${title}</h1><p style="margin:0 0 24px;color:#5B5770;line-height:1.6;">${body}</p><a href="${env.appUrl}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:#6236F0;color:#fff;text-decoration:none;font-weight:600;">Go to Purple Voice</a></main></body></html>`;
+}
+
+async function unsubscribe(u: unknown, s: unknown): Promise<boolean> {
+  if (!verifyUnsubscribe(u, s)) return false;
+  await prisma.user.updateMany({
+    where: { id: u, emailUnsubscribedAt: null },
+    data: { emailUnsubscribedAt: new Date() },
+  });
+  return true;
+}
+
+/** The link in the email footer. */
+publicRouter.get('/unsubscribe', formLimiter, async (req, res) => {
+  const ok = await unsubscribe(req.query.u, req.query.s);
+  res
+    .status(ok ? 200 : 400)
+    .setHeader('Cache-Control', 'no-store')
+    .type('html')
+    .send(unsubscribePage(ok));
+});
+
+/** RFC 8058 one-click unsubscribe (Gmail and Yahoo's "Unsubscribe" button). */
+publicRouter.post('/unsubscribe', formLimiter, async (req, res) => {
+  const ok = await unsubscribe(req.query.u, req.query.s);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(ok ? 200 : 400).json({ ok });
 });

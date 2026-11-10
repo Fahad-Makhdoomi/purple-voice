@@ -6,9 +6,11 @@ import { deliverWebhooks } from './jobs/webhooks';
 import { maintenanceTick } from './jobs/maintenance';
 import { crmTick } from './jobs/crm';
 import { syncAllGoogleCalendars } from './services/calendar';
+import { lifecycleTick } from './services/lifecycle-emails';
 
 /**
- * Background worker: campaign dialer, new-lead calls, webhook deliveries, maintenance.
+ * Background worker: campaign dialer, new-lead calls, webhook deliveries, maintenance,
+ * and the onboarding and upgrade emails.
  * Run exactly one instance. Each loop skips a tick if the previous one is
  * still running, so a slow pass never stacks up.
  */
@@ -35,6 +37,7 @@ const timers = [
   loop('webhooks', 5_000, deliverWebhooks),
   loop('maintenance', 60_000, maintenanceTick),
   loop('calendar-sync', 5 * 60_000, syncAllGoogleCalendars),
+  loop('lifecycle-emails', 10 * 60_000, () => lifecycleTick()),
 ];
 logger.info('Purple Voice worker started');
 

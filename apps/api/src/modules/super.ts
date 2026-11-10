@@ -257,6 +257,8 @@ superRouter.post('/staff', async (req, res) => {
       email: input.email,
       role: input.role,
       passwordHash: await hashPassword(input.password),
+      // Created by a super admin, who vouches for the address.
+      emailVerifiedAt: new Date(),
     },
     select: { id: true, name: true, email: true, role: true },
   });

@@ -1,3 +1,4 @@
+import { isOnDoNotCall } from './do-not-call';
 import type {
   Call,
   CallOutcome,
@@ -57,6 +58,11 @@ export interface OutboundCallInput {
  */
 export async function startOutboundCall(input: OutboundCallInput): Promise<Call> {
   if (!input.agentId && !input.placedById) throw badRequest('Choose who makes the call');
+  // AI calls (API, test calls, agent dialer) honour the do-not-call list;
+  // campaign and CRM jobs already filter it. A person dialling by hand
+  // (placedById) decides for themselves.
+  if (!input.placedById && (await isOnDoNotCall(input.workspaceId, input.to)))
+    throw badRequest(`${input.to} is on your do-not-call list`);
   const gate = await canStartCall(input.workspaceId);
   if (!gate.ok) throw planLimit(gate.reason);
 

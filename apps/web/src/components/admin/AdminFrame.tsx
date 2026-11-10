@@ -3,7 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import {
+  MailPlus,
   BrainCircuit,
+  SearchCheck,
   CreditCard,
   FileText,
   Globe,
@@ -57,10 +59,17 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
   const groups: NavGroup[] = [
     {
       items: [
-        { href: '/admin', label: 'Overview', icon: LayoutDashboard, exact: true },
+        { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
         { href: '/admin/subscribers', label: 'Subscribers', icon: Users },
         { href: '/admin/leads', label: 'Leads', icon: Inbox },
         { href: '/admin/support', label: 'Support', icon: LifeBuoy },
+      ],
+    },
+    {
+      label: 'Analytics',
+      items: [
+        { href: '/admin/seo', label: 'SEO performance', icon: SearchCheck },
+        { href: '/admin/email-automations', label: 'Email automations', icon: MailPlus },
       ],
     },
     {

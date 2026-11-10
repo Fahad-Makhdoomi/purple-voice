@@ -81,7 +81,8 @@ const href = z
   .trim()
   .max(500)
   .refine(
-    (v) => v === '' || /^(\/(?!\/)|#|https:\/\/|mailto:|tel:)/i.test(v),
+    // A backslash makes browsers treat "/\evil.com" as "//evil.com" (off-site).
+    (v) => v === '' || (/^(\/(?!\/)|#|https:\/\/|mailto:|tel:)/i.test(v) && !v.includes('\\')),
     'Use a site path like /pricing, or a full https:// link',
   )
   .default('');
@@ -94,7 +95,7 @@ const imageUrl = z
     'Use an uploaded image or an https:// URL',
   )
   .default('');
-const button = z.object({ label: text(60), href }).default({});
+const button = z.object({ label: text(60), href }).prefault({});
 
 const style = z
   .object({
@@ -111,7 +112,7 @@ const style = z
       .default(''),
     width: z.enum(['narrow', 'normal', 'wide']).default('normal'),
   })
-  .default({});
+  .prefault({});
 
 const base = {
   id: z.string().min(1).max(40),

@@ -5,7 +5,7 @@ import type { Session } from '@prisma/client';
  * (or a retried request) refreshing at the same moment, not a stolen copy:
  * it gets a new session in the same family instead of ending them all.
  */
-export const REFRESH_REUSE_GRACE_MS = 60_000;
+export const REFRESH_REUSE_GRACE_MS = 10_000;
 
 /**
  * What /auth/refresh does with the token it was sent:

@@ -24,6 +24,7 @@ const db = vi.hoisted(() => {
   const users: FakeUser[] = [];
   const workspaces: Array<{ id: string; name: string }> = [];
   const audits: Data[] = [];
+  const sessions: Array<Data & { id: string }> = [];
   let seq = 0;
   const find = (where: Data) =>
     users.find((u) => Object.entries(where).every(([k, v]) => u[k as keyof FakeUser] === v));
@@ -59,13 +60,19 @@ const db = vi.hoisted(() => {
       },
     },
     session: {
-      create: async ({ data }: { data: Data }) => ({ id: `s${++seq}`, ...data }),
+      create: async ({ data }: { data: Data }) => {
+        const session = { id: `s${++seq}`, revokedAt: null, replacedBy: null, ...data };
+        sessions.push(session);
+        return session;
+      },
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        sessions.find((x) => x.id === where.id) ?? null,
       updateMany: async () => ({ count: 0 }),
     },
     auditLog: { create: async ({ data }: { data: Data }) => audits.push(data) },
     $transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(prisma),
   };
-  return { users, workspaces, audits, prisma };
+  return { users, workspaces, audits, sessions, prisma };
 });
 vi.mock('../src/lib/prisma', () => ({ prisma: db.prisma }));
 

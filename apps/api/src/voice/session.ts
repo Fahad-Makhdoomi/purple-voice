@@ -59,6 +59,34 @@ type LoadedCall = Call & {
 
 /** Emails and WhatsApp messages an agent may send on one call (abuse guard). */
 const MAX_MESSAGES_PER_CHANNEL = 3;
+/** Agent-sent emails + WhatsApp messages per business per 24 hours. */
+const MAX_MESSAGES_PER_WORKSPACE_DAY = 300;
+/** Per caller phone number per 24 hours, across calls. */
+const MAX_MESSAGES_PER_CALLER_DAY = 6;
+
+const LINK = /\b(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
+const hostOf = (raw: string) => {
+  try {
+    return new URL(/^https?:/i.test(raw) ? raw : `https://${raw}`).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Links in an agent message must point at a site the business listed in the
+ * agent's "What the agent may send"; any other link is removed, so a caller
+ * can't have the business's own email account send phishing links.
+ */
+export function keepAllowedLinks(message: string, shareInfo: string): string {
+  const allowed = new Set(
+    (shareInfo.match(LINK) ?? []).map(hostOf).filter((h): h is string => !!h),
+  );
+  return message.replace(LINK, (url) => {
+    const host = hostOf(url.replace(/[.,;:!?]+$/, ''));
+    return host && allowed.has(host) ? url : '[link removed]';
+  });
+}
 const TRANSCRIPT_FLUSH_MS = 15_000;
 /** Longest call once transferred to a person; nginx holds /ws/ connections for a little over an hour. */
 const TRANSFERRED_CALL_MAX_MS = 60 * 60_000;
@@ -87,6 +115,8 @@ export class CallSession {
   private flushTimer?: NodeJS.Timeout;
   private providerCallId?: string;
   private sent = { EMAIL: 0, WHATSAPP: 0 };
+  /** The one address this call may email. */
+  private emailTo: string | null = null;
   /** Set when the workspace's plan records calls. */
   private recorder?: CallRecorder;
   /** Mutes the agent's own voice when the caller's line sends it back. */
@@ -459,6 +489,36 @@ export class CallSession {
     const what = channel === 'EMAIL' ? 'email' : 'WhatsApp message';
     if (this.sent[channel] >= MAX_MESSAGES_PER_CHANNEL)
       return `Error: you have already sent ${MAX_MESSAGES_PER_CHANNEL} on this call; offer to have the team follow up instead.`;
+
+    // Callers can talk the model into almost anything, so the limits are
+    // enforced here, not in the prompt: WhatsApp only to the number on the
+    // call, email to one address per call, daily caps per business and per
+    // caller, and only links the business listed in "What the agent may send".
+    const caller = this.callerPhone();
+    if (channel === 'WHATSAPP' && to !== caller)
+      return 'Error: WhatsApp messages can only go to the number on this call. Offer to send it there instead.';
+    if (channel === 'EMAIL') {
+      const address = to.toLowerCase();
+      if (this.emailTo && this.emailTo !== address)
+        return `Error: on one call you can only email one address (${this.emailTo}). Offer to send it there, or have the team follow up.`;
+      this.emailTo = address;
+    }
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [forBusiness, forCaller] = await Promise.all([
+      prisma.callMessage.count({
+        where: { workspaceId: this.call.workspaceId, createdAt: { gte: since } },
+      }),
+      prisma.callMessage.count({
+        where: {
+          workspaceId: this.call.workspaceId,
+          createdAt: { gte: since },
+          call: { OR: [{ fromNumber: caller }, { toNumber: caller }] },
+        },
+      }),
+    ]);
+    if (forBusiness >= MAX_MESSAGES_PER_WORKSPACE_DAY || forCaller >= MAX_MESSAGES_PER_CALLER_DAY)
+      return 'Error: the daily limit for messages has been reached. Apologise and offer to have the team follow up.';
+    message = keepAllowedLinks(message, agent.shareInfo);
     this.sent[channel]++;
     const tz = isValidTimeZone(agent.timezone) ? agent.timezone : 'UTC';
     // Says who sent it and that it is an AI assistant, as the call itself does.

@@ -7,6 +7,7 @@ import { getFaqs, getPage, getPlans, getSettings } from '@/lib/server-api';
 import { fillLegal } from '@/lib/legal';
 import { notFoundOrMoved } from '@/lib/moved';
 import { formatDate } from '@/lib/format';
+import { fitTitle } from '@/lib/seo-title';
 
 /**
  * Pages managed in Admin → Content → Pages: written in Markdown (privacy,
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const page = await getPage(slug);
   if (!page) return {};
   return {
-    title: page.seoTitle || page.title,
+    title: await fitTitle(page.seoTitle || page.title),
     description: page.seoDescription ?? undefined,
     alternates: { canonical: page.canonicalUrl || `/${page.slug}` },
     robots: page.noindex ? { index: false } : undefined,

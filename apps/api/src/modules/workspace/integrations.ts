@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { IntegrationType, Prisma } from '@prisma/client';
 import { env } from '../../config/env';
 import { prisma } from '../../lib/prisma';
-import { decryptJson, encryptJson } from '../../lib/crypto';
+import { decryptJson, encryptJson, randomToken, safeEqual } from '../../lib/crypto';
 import { audit } from '../../lib/audit';
 import { badRequest, notFound } from '../../lib/http-error';
 import { signState, verifyState } from '../../lib/signed-url';
@@ -54,6 +54,16 @@ integrationsRouter.get('/', async (req, res) => {
   });
 });
 
+const CALENDAR_NONCE_COOKIE = 'pv_gcal_nonce';
+const calendarNonceCookie = () => ({
+  httpOnly: true,
+  secure: env.isProd,
+  sameSite: 'lax' as const,
+  domain: env.COOKIE_DOMAIN,
+  path: '/api/integrations',
+  maxAge: 10 * 60 * 1000,
+});
+
 integrationsRouter.get('/google/connect', requireActiveSubscription, async (req, res) => {
   const workspaceId = wsId(req);
   const ent = await entitlementsFor(req);
@@ -63,7 +73,12 @@ integrationsRouter.get('/google/connect', requireActiveSubscription, async (req,
     where: { workspaceId_type: { workspaceId, type: 'GOOGLE_CALENDAR' } },
   });
   if (!existing) await assertWithinLimit(workspaceId, ent, 'integrations');
-  res.json({ url: googleAuthUrl(signState({ workspaceId, userId: req.user!.id })) });
+  // The consent link only completes in the browser that asked for it: a nonce
+  // in the signed state must match this HTTP-only cookie at the callback, so a
+  // link sent to someone else can't attach their Google Calendar to this workspace.
+  const nonce = randomToken(16);
+  res.cookie(CALENDAR_NONCE_COOKIE, nonce, calendarNonceCookie());
+  res.json({ url: googleAuthUrl(signState({ workspaceId, userId: req.user!.id, nonce })) });
 });
 
 integrationsRouter.post('/', requireActiveSubscription, async (req, res) => {
@@ -223,8 +238,20 @@ integrationsRouter.delete('/:id', async (req, res) => {
 
 integrationCallbacksRouter.get('/google/callback', async (req, res) => {
   const back = (q: string) => res.redirect(`${env.appUrl}/dashboard/integrations?${q}`);
-  const state = verifyState<{ workspaceId: string; userId: string }>(req.query.state);
+  const state = verifyState<{ workspaceId: string; userId: string; nonce?: string }>(
+    req.query.state,
+  );
+  const nonce = req.cookies?.[CALENDAR_NONCE_COOKIE];
+  const { maxAge: _maxAge, ...clearOpts } = calendarNonceCookie();
+  res.clearCookie(CALENDAR_NONCE_COOKIE, clearOpts);
   if (!state) return back('error=expired');
+  if (
+    typeof state.nonce !== 'string' ||
+    typeof nonce !== 'string' ||
+    !nonce ||
+    !safeEqual(state.nonce, nonce)
+  )
+    return back('error=expired');
   if (typeof req.query.code !== 'string') return back('error=denied');
 
   try {

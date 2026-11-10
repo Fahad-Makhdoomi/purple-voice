@@ -193,9 +193,24 @@ export async function resolveGoogleAccount(identity: GoogleIdentity): Promise<Go
   if (byEmail) {
     if (byEmail.suspended) return { kind: 'suspended' };
     if (byEmail.googleId) return { kind: 'conflict' };
-    const user = await prisma.user.update({
-      where: { id: byEmail.id },
-      data: { googleId: identity.sub, lastLoginAt: now },
+    // Google has verified this person owns the address; whoever registered it
+    // before may not have. Linking ends that password and every session, so a
+    // squatter who pre-registered the email can't keep access. The owner can
+    // set a password again from their profile or "Forgot password".
+    const user = await prisma.$transaction(async (tx) => {
+      await tx.session.updateMany({
+        where: { userId: byEmail.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return tx.user.update({
+        where: { id: byEmail.id },
+        data: {
+          googleId: identity.sub,
+          lastLoginAt: now,
+          passwordHash: unusablePasswordHash(),
+          emailVerifiedAt: byEmail.emailVerifiedAt ?? now,
+        },
+      });
     });
     return { kind: 'signed_in', user, linked: true };
   }
@@ -210,6 +225,7 @@ export async function resolveGoogleAccount(identity: GoogleIdentity): Promise<Go
         name: identity.name,
         passwordHash: unusablePasswordHash(),
         googleId: identity.sub,
+        emailVerifiedAt: now,
         role: 'SUBSCRIBER',
         workspaceId: workspace.id,
         lastLoginAt: now,

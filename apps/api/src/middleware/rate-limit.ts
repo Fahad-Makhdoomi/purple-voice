@@ -37,3 +37,6 @@ export const assistantLimiter = rateLimit({
   limit: 60,
   keyGenerator: (req) => req.workspaceId ?? req.ip ?? 'anon',
 });
+
+/** Website analytics beacons: a busy reader still fits; a flood doesn't fill the table. */
+export const collectLimiter = rateLimit({ ...common, windowMs: 60 * 1000, limit: 60 });

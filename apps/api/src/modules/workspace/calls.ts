@@ -49,6 +49,7 @@ callsRouter.get('/overview', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 6,
       include: { agent: { select: { name: true } } },
+      omit: { recordingUrl: true },
     }),
     prisma.appointment.findMany({
       where: { workspaceId, startsAt: { gte: new Date() }, status: 'SCHEDULED' },

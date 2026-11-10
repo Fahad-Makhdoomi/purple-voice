@@ -49,7 +49,9 @@ async function assertNumberFree(
  */
 async function assertNotConnectedElsewhere(workspaceId: string, e164: string) {
   const elsewhere = await prisma.phoneNumber.findFirst({
-    where: { e164, NOT: { workspaceId } },
+    // Only a working connection counts: a number someone added but couldn't
+    // route (not on their carrier account) mustn't lock out its real owner.
+    where: { e164, NOT: { workspaceId }, routingConfigured: true },
     select: { id: true },
   });
   if (elsewhere) {
@@ -211,6 +213,11 @@ telephonyRouter.post('/numbers', requireActiveSubscription, async (req, res) => 
     where: { id: input.telephonyAccountId, workspaceId },
   });
   if (!account) throw notFound('Telephony account');
+  // The number must belong to this carrier account. Otherwise anyone could
+  // "connect" someone else's number and block its real owner from adding it.
+  const owned = await adapterForAccount(account).listNumbers().catch(asHttp);
+  if (owned.length && !owned.some((n) => n.e164 === input.e164))
+    throw badRequest(`${input.e164} isn't a number on this ${account.provider.toLowerCase()} account`);
   await assertNotConnectedElsewhere(workspaceId, input.e164);
   if (await prisma.phoneNumber.findFirst({ where: { workspaceId, e164: input.e164 } }))
     throw conflict(`${input.e164} is already connected in this workspace`);

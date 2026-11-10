@@ -78,7 +78,7 @@ export interface PostSummary {
 export async function getPosts(
   page = 1,
   tag?: string,
-  section?: 'blog' | 'resources',
+  section?: 'blog' | 'resources' | 'solutions',
   pageSize = 12,
 ) {
   const q = new URLSearchParams({
@@ -203,7 +203,7 @@ export const DEFAULT_SEO: SeoSettings = {
     'Create, manage and run AI voice agents that call your leads, qualify them, book appointments and hand hot prospects to your team.',
   ogImageUrl: null,
   twitterHandle: null,
-  contactEmail: 'hello@purplevoice.ai',
+  contactEmail: 'hello@purplerocket.co',
   googleSiteVerification: null,
 };
 export const DEFAULT_APPEARANCE: AppearanceSettings = { theme: 'default', music: true };

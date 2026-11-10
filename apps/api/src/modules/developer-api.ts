@@ -3,7 +3,8 @@ import { addContactsSchema, callFiltersSchema, contactSchema } from '@pv/shared'
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { sha256 } from '../lib/crypto';
-import { notFound, planLimit, unauthorized } from '../lib/http-error';
+import { badRequest, notFound, planLimit, unauthorized } from '../lib/http-error';
+import { applyDoNotCall } from '../services/do-not-call';
 import { apiLimiter } from '../middleware/rate-limit';
 import { getEntitlements, assertWithinLimit } from '../services/entitlements';
 import { startOutboundCall } from '../services/calls';
@@ -91,6 +92,8 @@ developerApiRouter.get('/calls/:id', async (req, res) => {
   const call = await prisma.call.findFirst({
     where: { id: req.params.id, workspaceId: req.workspaceId },
     include: { appointments: true },
+    // The storage key of the recording is internal; recordings are fetched through the API.
+    omit: { recordingUrl: true },
   });
   if (!call) throw notFound('Call');
   res.json({ data: call });
@@ -136,6 +139,8 @@ developerApiRouter.post('/campaigns/:id/contacts', async (req, res) => {
   const workspaceId = req.workspaceId!;
   const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, workspaceId } });
   if (!campaign) throw notFound('Campaign');
+  if (campaign.status === 'COMPLETED' || campaign.status === 'CANCELED')
+    throw badRequest('This campaign has finished. Create a new one to call more contacts.');
   const valid = (contacts ?? [])
     .map((c) => contactSchema.safeParse({ ...c, phone: toE164(String(c.phone ?? '')) ?? '' }))
     .filter((r) => r.success)
@@ -157,7 +162,13 @@ developerApiRouter.post('/campaigns/:id/contacts', async (req, res) => {
     })),
     skipDuplicates: true,
   });
-  res
-    .status(201)
-    .json({ data: { added: result.count, rejected: (contacts?.length ?? 0) - valid.length } });
+  // Numbers on the workspace's do-not-call list are never dialled.
+  const blocked = await applyDoNotCall(campaign.id, workspaceId);
+  res.status(201).json({
+    data: {
+      added: result.count,
+      rejected: (contacts?.length ?? 0) - valid.length,
+      doNotCall: blocked,
+    },
+  });
 });

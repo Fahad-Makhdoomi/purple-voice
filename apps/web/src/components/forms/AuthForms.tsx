@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
-import { CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { homePathForRole, type Role } from '@pv/shared';
 import { api, ApiError, setActingWorkspace } from '@/lib/api';
 import { GoogleMark } from '@/components/brand/GoogleMark';
@@ -102,6 +102,7 @@ export function LoginForm({ captcha, google }: { captcha: CaptchaProps; google: 
   const next = safeNext(params.get('next'));
   const [notice, setNotice] = useState(() => signInNotice(params.get('error')));
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cap = useCaptcha({ ...captcha, action: 'login' });
 
@@ -124,10 +125,17 @@ export function LoginForm({ captcha, google }: { captcha: CaptchaProps; google: 
       router.refresh();
     } catch (err) {
       cap.reset();
-      setError(err instanceof ApiError ? err.message : 'Could not sign in');
+      if (err instanceof ApiError && err.code === 'email_unverified') {
+        setUnverified(String(form.get('email') ?? ''));
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not sign in');
+      }
       setBusy(false);
     }
   }
+
+  if (unverified)
+    return <CheckInbox email={unverified} captcha={captcha} heading="Confirm your email first" />;
 
   return (
     <>
@@ -175,12 +183,12 @@ export function LoginForm({ captcha, google }: { captcha: CaptchaProps; google: 
 }
 
 export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google: boolean }) {
-  const router = useRouter();
   const params = useSearchParams();
   const plan = params.get('plan');
   const planNext = plan === 'BASIC' || plan === 'PRO' ? `/dashboard/billing?plan=${plan}` : null;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const cap = useCaptcha({ ...captcha, action: 'signup' });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -189,7 +197,7 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
     setError(null);
     setBusy(true);
     try {
-      await api('/auth/register', {
+      const res = await api<{ email: string }>('/auth/register', {
         body: {
           name: form.get('name'),
           company: form.get('company') || undefined,
@@ -197,17 +205,20 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
           password: form.get('password'),
           acceptTerms: form.get('acceptTerms') === 'on',
           marketingOptIn: form.get('marketingOptIn') === 'on',
+          next: planNext ?? undefined,
           captchaToken: await cap.getToken(),
         },
       });
-      router.replace(planNext ?? '/dashboard');
-      router.refresh();
+      setSentTo(res.email);
     } catch (err) {
       cap.reset();
       setError(err instanceof ApiError ? err.message : 'Could not create your account');
+    } finally {
       setBusy(false);
     }
   }
+
+  if (sentTo) return <CheckInbox email={sentTo} captcha={captcha} />;
 
   return (
     <>
@@ -286,6 +297,120 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
         </Link>
       </p>
     </>
+  );
+}
+
+/** After sign-up (or an unconfirmed sign-in): "we sent you a link", with a resend button. */
+function CheckInbox({
+  email,
+  captcha,
+  heading = 'Check your inbox',
+}: {
+  email: string;
+  captcha: CaptchaProps;
+  heading?: string;
+}) {
+  const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const cap = useCaptcha({ ...captcha, action: 'signup' });
+
+  async function resend() {
+    setState('busy');
+    setError(null);
+    try {
+      await api('/auth/resend-verification', {
+        body: { email, captchaToken: await cap.getToken() },
+      });
+      setState('sent');
+    } catch (err) {
+      cap.reset();
+      setError(err instanceof ApiError ? err.message : 'Could not send the email');
+      setState('idle');
+    }
+  }
+
+  return (
+    <div role="status">
+      <MailCheck size={36} className="text-brand-600" aria-hidden="true" />
+      <h1 className="mt-4 text-h2">{heading}</h1>
+      <p className="mt-2 text-muted">
+        We sent a confirmation link to <strong className="text-ink">{email}</strong>. Open it to
+        confirm your email and finish setting up your account. The link works for 24 hours.
+      </p>
+      <p className="mt-4 text-sm text-muted">
+        Nothing there? Check your spam or promotions folder, or send it again.
+      </p>
+      {cap.element}
+      <FormError message={error} className="mt-4" />
+      <div className="mt-8 flex flex-wrap gap-3">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={resend}
+          disabled={state !== 'idle'}
+        >
+          {state === 'busy' ? 'Sending…' : state === 'sent' ? 'Sent again' : 'Resend the email'}
+        </button>
+        <Link href="/login" className="btn btn-ghost">
+          Back to sign in
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/** Opens the link from the confirmation email, signs in and moves on. */
+export function VerifyEmail() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const token = params.get('token') ?? '';
+  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    if (!token) {
+      setError({ code: 'invalid_token', message: 'This link is missing its token.' });
+      return;
+    }
+    api<{ next: string }>('/auth/verify-email', { body: { token } })
+      .then(({ next }) => {
+        setActingWorkspace(null);
+        router.replace(safeNext(next) ?? '/dashboard');
+        router.refresh();
+      })
+      .catch((err) =>
+        setError(
+          err instanceof ApiError
+            ? { code: err.code, message: err.message }
+            : { code: 'error', message: 'Something went wrong. Please try again.' },
+        ),
+      );
+  }, [token, router]);
+
+  if (!error) {
+    return (
+      <div role="status">
+        <MailCheck size={36} className="text-brand-600" aria-hidden="true" />
+        <h1 className="mt-4 text-h2">Confirming your email…</h1>
+        <p className="mt-2 text-muted">One moment while we set up your account.</p>
+      </div>
+    );
+  }
+  return (
+    <div role="alert">
+      <h1 className="text-h2">
+        {error.code === 'already_verified' ? 'Already confirmed' : 'Link not valid'}
+      </h1>
+      <p className="mt-2 text-muted">{error.message}</p>
+      <p className="mt-2 text-sm text-muted">
+        Signing in with an unconfirmed email sends you a fresh link.
+      </p>
+      <Link href="/login" className="btn btn-primary mt-8">
+        Sign in
+      </Link>
+    </div>
   );
 }
 

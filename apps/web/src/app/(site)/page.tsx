@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { Hero } from '@/components/site/home/Hero';
@@ -20,6 +21,9 @@ import { getFaqs, getPlans, getSettings } from '@/lib/server-api';
 import { siteUrl } from '@/lib/config';
 
 export const revalidate = 3600;
+
+/** Title and description come from the root layout's site defaults; this pins the canonical address. */
+export const metadata: Metadata = { alternates: { canonical: '/' } };
 
 const CAPABILITIES = [
   'Inbound & outbound',

@@ -9,7 +9,7 @@ import { decrypt, decryptJson, safeEqual } from '../lib/crypto';
 import { badRequest, forbidden, notFound } from '../lib/http-error';
 import { toE164 } from '../lib/csv';
 import { hookLimiter } from '../middleware/rate-limit';
-import { addActivity, intakeLead } from '../services/crm';
+import { addActivity, intakeLead, metaVerifyToken } from '../services/crm';
 import { sendAgentMessage, type WhatsappConfig } from '../services/messaging';
 import type { TwilioCredentials } from '../telephony/types';
 
@@ -107,7 +107,8 @@ hooksRouter.get('/whatsapp/:token', async (req, res) => {
   const settings = await settingsFor(String(req.params.token));
   if (
     req.query['hub.mode'] === 'subscribe' &&
-    req.query['hub.verify_token'] === settings.hookToken
+    typeof req.query['hub.verify_token'] === 'string' &&
+    safeEqual(req.query['hub.verify_token'], metaVerifyToken(settings.workspaceId))
   ) {
     res.type('text/plain').send(String(req.query['hub.challenge'] ?? ''));
     return;

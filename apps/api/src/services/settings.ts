@@ -31,7 +31,7 @@ const DEFAULTS = {
       'Create, manage and run AI voice agents that call your leads, qualify them, book appointments and hand hot prospects to your team.',
     ogImageUrl: null,
     twitterHandle: null,
-    contactEmail: 'hello@purplevoice.ai',
+    contactEmail: 'hello@purplerocket.co',
     googleSiteVerification: null,
   } satisfies SeoSettings,
   security: {

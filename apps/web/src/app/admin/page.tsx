@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { Inbox, LifeBuoy, PhoneCall, Radio, UserPlus, Users } from 'lucide-react';
 import { useApi } from '@/lib/use-api';
-import { Loading, PageHeader, Section, StatTile, StatusBadge } from '@/components/ui';
+import { Section, StatTile, StatusBadge } from '@/components/ui';
+import { TrafficDashboard } from '@/components/admin/TrafficDashboard';
 import { formatNumber, formatRelative } from '@/lib/format';
 
 interface Overview {
@@ -26,17 +27,23 @@ interface Overview {
   }>;
 }
 
+/** The admin home: website traffic and SEO first, with the business snapshot around it. */
 export default function AdminHome() {
   const { data } = useApi<Overview>('/admin/overview');
-  if (!data) return <Loading />;
+  return (
+    <TrafficDashboard
+      title="Dashboard"
+      before={data && <Snapshot data={data} />}
+      after={data && <LatestSignups data={data} />}
+    />
+  );
+}
+
+function Snapshot({ data }: { data: Overview }) {
   const c = data.counts;
   return (
     <>
-      <PageHeader
-        title="Admin overview"
-        description="Customers, support and the website at a glance."
-      />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Workspaces"
           value={formatNumber(c.workspaces)}
@@ -69,6 +76,13 @@ export default function AdminHome() {
           tone="plain"
         />
       </div>
+    </>
+  );
+}
+
+function LatestSignups({ data }: { data: Overview }) {
+  return (
+    <>
       <Section
         className="mt-6"
         title="Latest sign-ups"
