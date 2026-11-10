@@ -77,7 +77,7 @@ export function renderEmail(c: EmailContent): RenderedEmail {
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(c.preheader)}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BG};"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
-<tr><td style="padding:0 4px 20px;"><a href="${site}" style="text-decoration:none;"><img src="${site}/images/brand/email-mark.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;"><span style="vertical-align:middle;margin-left:10px;font-size:18px;font-weight:700;letter-spacing:-.01em;color:${INK};">Purple Voice</span></a></td></tr>
+<tr><td style="padding:0 4px 20px;"><a href="${site}" style="text-decoration:none;"><img src="${site}/email/mark.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;"><span style="vertical-align:middle;margin-left:10px;font-size:18px;font-weight:700;letter-spacing:-.01em;color:${INK};">Purple Voice</span></a></td></tr>
 <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
 <div style="height:6px;background:${BRAND};background-image:linear-gradient(90deg,#9C80FA,${BRAND},${BRAND_DARK});"></div>
 <div style="padding:36px 36px 16px;">
