@@ -42,6 +42,19 @@ echo "==> Backing up the database"
 as_site "bash ~/purple-voice/deploy/backup.sh" | tail -1
 echo "==> Unpacking $SHA"
 tar -xzf /tmp/pv-deploy.tar.gz -C "$H/purple-voice"
+# Unpacking never removes files that were deleted from the repo, and a stale
+# page or image breaks the build. In the source and public folders (which hold
+# only committed files), delete anything the commit doesn't contain.
+tar -tzf /tmp/pv-deploy.tar.gz | grep -v '/$' | sort > /tmp/pv-deploy.list
+(
+  cd "$H/purple-voice"
+  for d in apps/web/src apps/web/public apps/api/src apps/api/prisma packages/shared/src; do
+    [ -d "$d" ] && find "$d" -type f
+  done | sort | comm -23 - /tmp/pv-deploy.list | while IFS= read -r f; do
+    echo "    removing stale $f"; rm -f -- "$f"
+  done
+)
+rm -f /tmp/pv-deploy.list
 chown -R "$SITE_USER:$SITE_USER" "$H/purple-voice"
 rm -f /tmp/pv-deploy.tar.gz
 echo "$SHA" > "$H/purple-voice/.deployed-commit"
