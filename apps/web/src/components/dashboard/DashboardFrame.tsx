@@ -28,6 +28,7 @@ import { WorkspaceContext, type WorkspaceContextValue } from '@/lib/workspace';
 import { AppShell, type NavGroup } from './AppShell';
 import { Loading } from '@/components/ui';
 import { formatNumber } from '@/lib/format';
+import { FREE_TRIAL_DAYS } from '@pv/shared';
 
 export function DashboardFrame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -105,6 +106,14 @@ export function DashboardFrame({ children }: { children: React.ReactNode }) {
   ];
 
   const { entitlements, usage } = ctx;
+  // The Free plan is a FREE_TRIAL_DAYS trial (entitlements.free); after it ends
+  // the workspace has no plan until it subscribes.
+  const trialEnd = entitlements.trialEndsAt ? new Date(entitlements.trialEndsAt).getTime() : null;
+  const trialDaysLeft =
+    entitlements.active && entitlements.free && trialEnd
+      ? Math.max(0, Math.ceil((trialEnd - Date.now()) / 86_400_000))
+      : null;
+  const trialEnded = !entitlements.active && !!trialEnd && trialEnd <= Date.now();
   const topbar = (
     <>
       {entitlements.active ? (
@@ -162,7 +171,21 @@ export function DashboardFrame({ children }: { children: React.ReactNode }) {
     ) : !entitlements.active && pathname !== '/dashboard/billing' ? (
       <div className="flex flex-wrap items-center justify-between gap-3 bg-brand-100 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
         <span className="font-medium text-brand-900">
-          Choose a plan to connect a phone number and create your first agent.
+          {trialEnded
+            ? `Your ${FREE_TRIAL_DAYS}-day free trial has ended. Choose a plan to keep your agents taking calls.`
+            : 'Choose a plan to connect a phone number and create your first agent.'}
+        </span>
+        <Link href="/dashboard/billing" className="btn btn-primary btn-sm">
+          See plans
+        </Link>
+      </div>
+    ) : trialDaysLeft !== null && pathname !== '/dashboard/billing' ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-brand-100 px-4 py-2.5 text-sm sm:px-8 lg:rounded-t-xl">
+        <span className="font-medium text-brand-900">
+          {trialDaysLeft <= 1
+            ? 'Your free trial ends today.'
+            : `${trialDaysLeft} days left in your free trial.`}{' '}
+          Choose a plan so your agents keep taking calls after it ends.
         </span>
         <Link href="/dashboard/billing" className="btn btn-primary btn-sm">
           See plans

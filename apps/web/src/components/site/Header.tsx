@@ -17,9 +17,9 @@ const NAV = [
 ];
 
 const HOME_NAV = [
-  { href: '/#features', label: 'Product' },
+  { href: '/#demo', label: 'How it works' },
+  { href: '/#features', label: 'Features' },
   { href: '/#use-cases', label: 'Use cases' },
-  { href: '/#get-started', label: 'How to start' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/#faq', label: 'FAQ' },
 ];

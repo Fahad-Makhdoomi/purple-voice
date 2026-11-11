@@ -40,3 +40,11 @@ export const assistantLimiter = rateLimit({
 
 /** Website analytics beacons: a busy reader still fits; a flood doesn't fill the table. */
 export const collectLimiter = rateLimit({ ...common, windowMs: 60 * 1000, limit: 60 });
+
+/** Voice samples in the agent builder: cached after the first play, so this only stops floods. */
+export const voicePreviewLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: 300,
+  keyGenerator: (req) => req.workspaceId ?? req.ip ?? 'anon',
+});

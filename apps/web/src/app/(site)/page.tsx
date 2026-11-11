@@ -3,11 +3,8 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { Hero } from '@/components/site/home/Hero';
 import { Explainer } from '@/components/site/home/Explainer';
-import { Pillars, FeatureRows } from '@/components/site/home/Showcase';
-import { Trust } from '@/components/site/home/Trust';
+import { Features } from '@/components/site/home/Showcase';
 import { UseCases } from '@/components/site/home/UseCases';
-import { Numbers } from '@/components/site/home/Numbers';
-import { GetStarted } from '@/components/site/home/GetStarted';
 import {
   PricingCards,
   PhoneBillingNote,
@@ -26,13 +23,14 @@ export const revalidate = 3600;
 export const metadata: Metadata = { alternates: { canonical: '/' } };
 
 const CAPABILITIES = [
-  'Inbound & outbound',
+  'Inbound & outbound calls',
   'Appointment booking',
   'Live transfer',
   'Call summaries',
   'Google Calendar',
-  'Webhooks & API',
   'Campaigns',
+  '100+ natural voices',
+  'Webhooks & API',
 ];
 
 export default async function HomePage() {
@@ -71,7 +69,7 @@ export default async function HomePage() {
 
       <section aria-label="What every agent can do" className="py-8 text-white">
         <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
-          Your numbers, every call handled
+          Everything your agent can do
         </p>
         <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
           <ul className="flex w-max animate-marquee gap-14 pr-14 hover:[animation-play-state:paused]">
@@ -88,29 +86,30 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <Pillars />
       <Explainer />
-      <FeatureRows />
-      <Trust />
+      <Features />
       <UseCases portraits={theme === 'minimal'} />
-      <Numbers />
-      <GetStarted />
 
       <section id="pricing" className="scroll-mt-24 py-section" aria-labelledby="pricing-title">
         <div className="container">
-          <Reveal className="mx-auto mb-14 max-w-2xl text-center">
+          <Reveal className="mx-auto mb-12 max-w-2xl text-center">
+            <p className="eyebrow text-brand-300">Pricing</p>
             <h2
               id="pricing-title"
-              className="text-[length:clamp(34px,5vw,64px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+              className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
             >
-              Plans that grow with you.
+              Start free. Pay when it works.
             </h2>
-            <p className="mt-5 text-lead text-white/65">
-              Pick a plan, create your account and pay on the next screen. Upgrade, downgrade or
-              cancel whenever you like.
+            <p className="mt-4 text-lead text-white/65">
+              Try Starter free for 7 days. Change plans or cancel any time.
             </p>
           </Reveal>
-          <PricingCards plans={plans} tone="dark" />
+          <PricingCards plans={plans} tone="dark" maxHighlights={5} />
+          <p className="mt-8 text-center">
+            <Link href="/pricing" className="btn btn-dark">
+              Compare every feature
+            </Link>
+          </p>
           <PaymentTrust tone="dark" />
           <PhoneBillingNote tone="dark" />
         </div>
@@ -127,7 +126,7 @@ export default async function HomePage() {
             </h2>
           </Reveal>
           <div className="mt-10">
-            <FaqList faqs={faqs.slice(0, 6)} tone="dark" />
+            <FaqList faqs={faqs.slice(0, 4)} tone="dark" />
           </div>
           <p className="mt-6 text-center">
             <Link href="/faq" className="btn btn-dark">
@@ -143,15 +142,14 @@ export default async function HomePage() {
       >
         <Reveal>
           <h2 className="mx-auto max-w-4xl text-white text-[length:clamp(44px,8vw,104px)] font-medium leading-[0.98] tracking-[-0.045em]">
-            Launch with Purple Voice.
+            Never miss a lead again.
           </h2>
           <p className="mx-auto mt-6 max-w-xl text-lead text-white/65">
-            Start with a free month, then $5 a month. Upgrade to Basic or Pro when you need more
-            agents, numbers and campaigns.
+            Your first agent can be calling today. Free for 7 days, then from $5 a month.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link href="/signup?plan=FREE" className="btn btn-white btn-lg gap-2">
-              Get started
+              Start free trial
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white">
                 <ArrowUpRight size={14} />
               </span>

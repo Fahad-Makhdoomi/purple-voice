@@ -23,7 +23,7 @@ export const PAID_PLAN_CODES = ['FREE', 'BASIC', 'PRO'] as const;
  */
 export const FREE_PLAN_CODE = 'FREE' satisfies PlanCode;
 /** How long a workspace may use the Free plan before it must subscribe. */
-export const FREE_TRIAL_DAYS = 30;
+export const FREE_TRIAL_DAYS = 7;
 
 export interface PlanLimits {
   /** AI call agents. */
@@ -110,8 +110,8 @@ const ALL_FEATURES: PlanFeatures = Object.fromEntries(
 export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
   FREE: {
     code: 'FREE',
-    name: 'Free',
-    tagline: 'Free for your first month, then $5 a month.',
+    name: 'Starter',
+    tagline: 'Try it free for 7 days, then $5 a month.',
     priceMonthlyCents: 500,
     includedMinutes: 100,
     limits: {
@@ -140,7 +140,7 @@ export const PLAN_CATALOG: Record<PlanCode, PlanDefinition> = {
       '100 AI call minutes a month',
       'Appointment booking and call summaries',
       'One app integration',
-      'Free for your first month, then $5 a month',
+      '7-day free trial, then $5 a month',
     ],
     featured: false,
     selfServe: true,

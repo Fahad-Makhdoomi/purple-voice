@@ -160,11 +160,11 @@ The Service is for businesses and professionals. You must be at least 18 and abl
 
 ## 2. Plans, billing and cancellation
 
-- **Free plan.** The Free plan includes the agents, numbers, campaigns and AI call minutes shown on the [pricing page](/pricing), counted per calendar month. We may change or end the Free plan with 30 days' notice.
+- **Starter plan.** The Starter plan includes the agents, numbers, campaigns and AI call minutes shown on the [pricing page](/pricing), counted per calendar month. We may change or end the Starter plan with 30 days' notice.
 - **Paid plans** are billed monthly in advance through Stripe, Razorpay or PayPal and renew until cancelled. Prices exclude taxes, which are added where required.
 - **Minutes** are counted per call, rounded up to the next minute, and reset each billing period; unused minutes do not roll over.
 - **Phone numbers and carrier charges** (Twilio, Plivo or another carrier) are billed by that carrier to you, on your own account.
-- **Cancelling.** You can cancel any time from Billing; the plan stays active until the end of the period you paid for, then your workspace moves to the Free plan. Except where the law says otherwise, payments are not refundable.
+- **Cancelling.** You can cancel any time from Billing; the plan stays active until the end of the period you paid for, then your workspace moves to the Starter plan. Except where the law says otherwise, payments are not refundable.
 - **Late payment.** If a payment fails we may suspend paid features until it is paid.
 
 ## 3. Your responsibility for calls and messages

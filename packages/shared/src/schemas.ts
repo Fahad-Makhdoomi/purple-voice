@@ -952,9 +952,9 @@ export const contentSettingsSchema = z.object({
         .trim()
         .max(400)
         .default(
-          'Purple Voice builds AI agents that phone your leads, answer their questions and put appointments straight into your calendar — on your own phone numbers, around the clock.',
+          'AI voice agents that call your leads in minutes, answer their questions and book meetings straight into your calendar. On your own phone numbers, around the clock.',
         ),
-      primaryLabel: z.string().trim().max(40).default('Start free'),
+      primaryLabel: z.string().trim().max(40).default('Start free trial'),
       primaryHref: linkHref.default('/signup?plan=FREE'),
       secondaryLabel: z.string().trim().max(40).default('Hear a sample call'),
       secondaryHref: linkHref.default('/#demo'),

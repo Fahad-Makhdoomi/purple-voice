@@ -41,7 +41,8 @@ const cspWith = (frameAncestors) =>
     "font-src 'self' data:",
     `connect-src 'self' ${siteSocket} ${captchaHosts} ${analyticsHosts} ${razorpayConnect}`,
     `frame-src 'self' ${captchaHosts} ${razorpayFrames} ${videoFrames}`,
-    "media-src 'self'",
+    // blob: plays voice samples the agent builder fetches with the session.
+    "media-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' https://api.razorpay.com",
@@ -52,6 +53,9 @@ const csp = cspWith("'none'");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // deploy/deploy.sh builds into a side folder (NEXT_DIST_DIR=.next-build) and
+  // swaps it in only once the build has succeeded; `next start` serves .next.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,

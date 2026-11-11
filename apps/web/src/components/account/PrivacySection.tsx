@@ -181,7 +181,7 @@ export function TermsPrompt() {
           <Link href="/privacy" target="_blank" className="font-semibold text-brand-700">
             Privacy Policy
           </Link>{' '}
-          to keep using Purple Voice. They add the Free plan, campaign retry limits, consent
+          to keep using Purple Voice. They add the Starter plan, campaign retry limits, consent
           confirmation for calling lists, and your privacy rights.
         </p>
         <button

@@ -14,6 +14,34 @@ export interface ModelOption {
   hint?: string;
 }
 
+export type VoiceGender = 'female' | 'male' | 'neutral';
+
+/** A voice an agent can speak with, described so subscribers can filter and compare. */
+export interface VoiceOption extends ModelOption {
+  gender?: VoiceGender;
+  /** Accent or region, e.g. "American", "British", "Indian". */
+  accent?: string;
+  /** The one language the voice is made for; unset when it speaks every language the AI does. */
+  language?: string;
+  /** Tone and best use, lower case: "warm", "professional", "sales"… */
+  styles?: string[];
+  /** Cloned or designed for this account (ElevenLabs). */
+  custom?: boolean;
+}
+
+const F = 'female' as const;
+const M = 'male' as const;
+const N = 'neutral' as const;
+function voice(
+  id: string,
+  label: string,
+  gender: VoiceGender,
+  styles: string[],
+  extra: Partial<VoiceOption> = {},
+): VoiceOption {
+  return { id, label, gender, styles, ...extra };
+}
+
 export const LLM_MODELS: Record<AiProvider, ModelOption[]> = {
   ANTHROPIC: [
     { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', hint: 'Most capable' },
@@ -53,17 +81,17 @@ export const REALTIME_MODELS: ModelOption[] = [
 ];
 
 /** Every OpenAI Realtime voice (marin and cedar sound the most natural). */
-export const REALTIME_VOICES: ModelOption[] = [
-  { id: 'marin', label: 'Marin — natural, warm', hint: 'Recommended' },
-  { id: 'cedar', label: 'Cedar — natural, deep', hint: 'Recommended' },
-  { id: 'alloy', label: 'Alloy — neutral, balanced' },
-  { id: 'ash', label: 'Ash — clear, confident' },
-  { id: 'ballad', label: 'Ballad — soft, expressive' },
-  { id: 'coral', label: 'Coral — warm, friendly' },
-  { id: 'echo', label: 'Echo — calm, steady' },
-  { id: 'sage', label: 'Sage — gentle, thoughtful' },
-  { id: 'shimmer', label: 'Shimmer — bright, energetic' },
-  { id: 'verse', label: 'Verse — versatile, expressive' },
+export const REALTIME_VOICES: VoiceOption[] = [
+  voice('marin', 'Marin', F, ['natural', 'warm'], { hint: 'Recommended' }),
+  voice('cedar', 'Cedar', M, ['natural', 'deep'], { hint: 'Recommended' }),
+  voice('alloy', 'Alloy', N, ['neutral', 'balanced']),
+  voice('ash', 'Ash', M, ['clear', 'confident']),
+  voice('ballad', 'Ballad', M, ['soft', 'expressive']),
+  voice('coral', 'Coral', F, ['warm', 'friendly']),
+  voice('echo', 'Echo', M, ['calm', 'steady']),
+  voice('sage', 'Sage', F, ['gentle', 'thoughtful']),
+  voice('shimmer', 'Shimmer', F, ['bright', 'energetic']),
+  voice('verse', 'Verse', M, ['versatile', 'expressive']),
 ];
 
 /**
@@ -81,57 +109,80 @@ export const GEMINI_LIVE_MODELS: ModelOption[] = [
 ];
 
 /** All 30 prebuilt Gemini voices. Each speaks every language the model supports. */
-export const GEMINI_LIVE_VOICES: ModelOption[] = [
-  { id: 'Zephyr', label: 'Zephyr — bright' },
-  { id: 'Puck', label: 'Puck — upbeat' },
-  { id: 'Charon', label: 'Charon — informative' },
-  { id: 'Kore', label: 'Kore — firm' },
-  { id: 'Fenrir', label: 'Fenrir — excitable' },
-  { id: 'Leda', label: 'Leda — youthful' },
-  { id: 'Orus', label: 'Orus — firm' },
-  { id: 'Aoede', label: 'Aoede — breezy' },
-  { id: 'Callirrhoe', label: 'Callirrhoe — easy-going' },
-  { id: 'Autonoe', label: 'Autonoe — bright' },
-  { id: 'Enceladus', label: 'Enceladus — breathy' },
-  { id: 'Iapetus', label: 'Iapetus — clear' },
-  { id: 'Umbriel', label: 'Umbriel — easy-going' },
-  { id: 'Algieba', label: 'Algieba — smooth' },
-  { id: 'Despina', label: 'Despina — smooth' },
-  { id: 'Erinome', label: 'Erinome — clear' },
-  { id: 'Algenib', label: 'Algenib — gravelly' },
-  { id: 'Rasalgethi', label: 'Rasalgethi — informative' },
-  { id: 'Laomedeia', label: 'Laomedeia — upbeat' },
-  { id: 'Achernar', label: 'Achernar — soft' },
-  { id: 'Alnilam', label: 'Alnilam — firm' },
-  { id: 'Schedar', label: 'Schedar — even' },
-  { id: 'Gacrux', label: 'Gacrux — mature' },
-  { id: 'Pulcherrima', label: 'Pulcherrima — forward' },
-  { id: 'Achird', label: 'Achird — friendly' },
-  { id: 'Zubenelgenubi', label: 'Zubenelgenubi — casual' },
-  { id: 'Vindemiatrix', label: 'Vindemiatrix — gentle' },
-  { id: 'Sadachbia', label: 'Sadachbia — lively' },
-  { id: 'Sadaltager', label: 'Sadaltager — knowledgeable' },
-  { id: 'Sulafat', label: 'Sulafat — warm' },
-];
-
-/** ElevenLabs premade voices for the ELEVENLABS engine (id = ElevenLabs voice id). */
-export const ELEVENLABS_VOICES: ModelOption[] = [
-  { id: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel — calm, clear (US)' },
-  { id: 'EXAVITQu4vr4xnSDxMOL', label: 'Sarah — soft, friendly (US)' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', label: 'Elli — young, warm (US)' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi — strong, confident (US)' },
-  { id: 'pNInz6obpgDQGcFmaJgB', label: 'Adam — deep, steady (US)' },
-  { id: 'ErXwobaYiN019PkySvjV', label: 'Antoni — well-rounded (US)' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', label: 'Josh — young, upbeat (US)' },
-  { id: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam — raspy, direct (US)' },
+export const GEMINI_LIVE_VOICES: VoiceOption[] = [
+  voice('Zephyr', 'Zephyr', F, ['bright']),
+  voice('Puck', 'Puck', M, ['upbeat']),
+  voice('Charon', 'Charon', M, ['informative']),
+  voice('Kore', 'Kore', F, ['firm']),
+  voice('Fenrir', 'Fenrir', M, ['excitable']),
+  voice('Leda', 'Leda', F, ['youthful']),
+  voice('Orus', 'Orus', M, ['firm']),
+  voice('Aoede', 'Aoede', F, ['breezy']),
+  voice('Callirrhoe', 'Callirrhoe', F, ['easy-going']),
+  voice('Autonoe', 'Autonoe', F, ['bright']),
+  voice('Enceladus', 'Enceladus', M, ['breathy']),
+  voice('Iapetus', 'Iapetus', M, ['clear']),
+  voice('Umbriel', 'Umbriel', M, ['easy-going']),
+  voice('Algieba', 'Algieba', M, ['smooth']),
+  voice('Despina', 'Despina', F, ['smooth']),
+  voice('Erinome', 'Erinome', F, ['clear']),
+  voice('Algenib', 'Algenib', M, ['gravelly']),
+  voice('Rasalgethi', 'Rasalgethi', M, ['informative']),
+  voice('Laomedeia', 'Laomedeia', F, ['upbeat']),
+  voice('Achernar', 'Achernar', F, ['soft']),
+  voice('Alnilam', 'Alnilam', M, ['firm']),
+  voice('Schedar', 'Schedar', M, ['even']),
+  voice('Gacrux', 'Gacrux', F, ['mature']),
+  voice('Pulcherrima', 'Pulcherrima', F, ['forward']),
+  voice('Achird', 'Achird', M, ['friendly']),
+  voice('Zubenelgenubi', 'Zubenelgenubi', M, ['casual']),
+  voice('Vindemiatrix', 'Vindemiatrix', F, ['gentle']),
+  voice('Sadachbia', 'Sadachbia', M, ['lively']),
+  voice('Sadaltager', 'Sadaltager', M, ['knowledgeable']),
+  voice('Sulafat', 'Sulafat', F, ['warm']),
 ];
 
 /**
- * Sarvam Bulbul voices for the SARVAM engine. Plain names are bulbul:v3 (any
- * supported language); name_language_style ids are bulbul:v4-flash personas;
- * bulbul:v2 has its own short list (SARVAM_V2_VOICES).
+ * ElevenLabs default voices for the ELEVENLABS engine (id = ElevenLabs voice id),
+ * shown when the account's own voice list can't be fetched.
  */
-export const SARVAM_VOICES: ModelOption[] = [
+export const ELEVENLABS_VOICES: VoiceOption[] = [
+  voice('EXAVITQu4vr4xnSDxMOL', 'Sarah', F, ['soft', 'professional'], { accent: 'American' }),
+  voice('FGY2WhTYpPnrIDTdsKH5', 'Laura', F, ['upbeat', 'quirky'], { accent: 'American' }),
+  voice('9BWtsMINqrJLrRacOk9x', 'Aria', F, ['expressive', 'husky'], { accent: 'American' }),
+  voice('XrExE9yKIg1WjnnlVkGX', 'Matilda', F, ['friendly', 'warm'], { accent: 'American' }),
+  voice('cgSgspJ2msm6clMCkdW9', 'Jessica', F, ['expressive', 'conversational'], {
+    accent: 'American',
+  }),
+  voice('Xb7hH8MSUJpSbSDYk0k2', 'Alice', F, ['confident', 'clear'], { accent: 'British' }),
+  voice('pFZP5JQG7iQjIQuC4Bku', 'Lily', F, ['warm', 'velvety'], { accent: 'British' }),
+  voice('XB0fDUnXU5powFXDhCwa', 'Charlotte', F, ['calm', 'smooth'], { accent: 'Swedish' }),
+  voice('SAz9YHcvj6GT2YYXdXww', 'River', N, ['confident', 'relaxed'], { accent: 'American' }),
+  voice('CwhRBWXzGAHq8TQ4Fs17', 'Roger', M, ['confident', 'casual'], { accent: 'American' }),
+  voice('TX3LPaxmHKxFdv7VOQHJ', 'Liam', M, ['articulate', 'young'], { accent: 'American' }),
+  voice('bIHbv24MWmeRgasZH58o', 'Will', M, ['friendly', 'relaxed'], { accent: 'American' }),
+  voice('cjVigY5qzO86Huf0OWal', 'Eric', M, ['friendly', 'smooth'], { accent: 'American' }),
+  voice('iP95p4xoKVk53GoZ742B', 'Chris', M, ['casual', 'natural'], { accent: 'American' }),
+  voice('nPczCjzI2devNBz1zQrb', 'Brian', M, ['deep', 'warm'], { accent: 'American' }),
+  voice('pqHfZKP75CvOlQylNhV4', 'Bill', M, ['trustworthy', 'mature'], { accent: 'American' }),
+  voice('JBFqnCBsd6RMkjVDRZzb', 'George', M, ['warm', 'storyteller'], { accent: 'British' }),
+  voice('onwK4e9ZLuTAKqWW03F9', 'Daniel', M, ['authoritative', 'professional'], {
+    accent: 'British',
+  }),
+  voice('N2lVS1w4EtoT3dr4eOWO', 'Callum', M, ['intense', 'husky'], { accent: 'Transatlantic' }),
+  voice('IKne3meq5aSn9XLyUdCD', 'Charlie', M, ['natural', 'confident'], { accent: 'Australian' }),
+  // Classic voices, still available to accounts that use them.
+  voice('21m00Tcm4TlvDq8ikWAM', 'Rachel', F, ['calm', 'clear'], { accent: 'American' }),
+  voice('MF3mGyEYCl7XYWbV9V6O', 'Elli', F, ['young', 'warm'], { accent: 'American' }),
+  voice('AZnzlk1XvdvUeBnXmlld', 'Domi', F, ['strong', 'confident'], { accent: 'American' }),
+  voice('pNInz6obpgDQGcFmaJgB', 'Adam', M, ['deep', 'steady'], { accent: 'American' }),
+  voice('ErXwobaYiN019PkySvjV', 'Antoni', M, ['well-rounded', 'friendly'], { accent: 'American' }),
+  voice('TxGEqnHWrfWFTfGW9XjX', 'Josh', M, ['young', 'upbeat'], { accent: 'American' }),
+  voice('yoZ06aMxZJJ28mfd3POQ', 'Sam', M, ['raspy', 'direct'], { accent: 'American' }),
+];
+
+/** Sarvam voices before they are described (see sarvamVoice below). */
+const SARVAM_RAW: ModelOption[] = [
   { id: 'shubh', label: 'Shubh', hint: 'All Indian languages' },
   { id: 'aditya', label: 'Aditya', hint: 'All Indian languages' },
   { id: 'ritu', label: 'Ritu', hint: 'All Indian languages' },
@@ -253,7 +304,7 @@ export const SARVAM_VOICES: ModelOption[] = [
 ];
 
 /** bulbul:v2 speakers (the older model; pitch and loudness controls). */
-export const SARVAM_V2_VOICES: ModelOption[] = [
+const SARVAM_V2_RAW: ModelOption[] = [
   { id: 'anushka', label: 'Anushka', hint: 'female' },
   { id: 'manisha', label: 'Manisha', hint: 'female' },
   { id: 'vidya', label: 'Vidya', hint: 'female' },
@@ -262,6 +313,46 @@ export const SARVAM_V2_VOICES: ModelOption[] = [
   { id: 'karun', label: 'Karun', hint: 'male' },
   { id: 'hitesh', label: 'Hitesh', hint: 'male' },
 ];
+
+/** Sarvam speakers by first name. */
+const SARVAM_FEMALE = new Set(
+  'ritu priya neha pooja simran kavya ishita shreya roopa tanya shruti suhani kavitha rupali shalini sanchita zarina amelia sophia aparna sarika chaitra aarti anushka manisha vidya arya'.split(
+    ' ',
+  ),
+);
+const SARVAM_PERSONA_LANGUAGE: Record<string, string> = {
+  bn: 'Bengali',
+  en: 'English',
+  enhi: 'Hinglish',
+  gu: 'Gujarati',
+  hi: 'Hindi',
+  kn: 'Kannada',
+  mr: 'Marathi',
+  pa: 'Punjabi',
+  te: 'Telugu',
+};
+
+function sarvamVoice(v: ModelOption): VoiceOption {
+  const [name, lang, ...style] = v.id.split('_');
+  const persona = lang !== undefined;
+  return {
+    ...v,
+    gender: SARVAM_FEMALE.has(name!) ? 'female' : 'male',
+    accent: 'Indian',
+    language: persona ? SARVAM_PERSONA_LANGUAGE[lang] : undefined,
+    styles: persona
+      ? style.map((x) => (x === 'conversation' ? 'conversational' : x))
+      : ['conversational'],
+  };
+}
+
+/**
+ * Sarvam Bulbul voices for the SARVAM engine, described for filtering. Plain
+ * names are bulbul:v3 (any supported language); name_language_style ids are
+ * bulbul:v4-flash personas; bulbul:v2 has its own short list.
+ */
+export const SARVAM_VOICES: VoiceOption[] = SARVAM_RAW.map(sarvamVoice);
+export const SARVAM_V2_VOICES: VoiceOption[] = SARVAM_V2_RAW.map(sarvamVoice);
 
 /**
  * The text-to-speech model the speech engines speak with, chosen by staff
@@ -296,14 +387,212 @@ export function speechModelFor(engine: VoiceEngine, speechModel?: string | null)
   return speechModel && options.some((m) => m.id === speechModel) ? speechModel : options[0]!.id;
 }
 
-/** Deepgram Aura voices for the CASCADED engine. */
-export const CASCADED_VOICES: ModelOption[] = [
-  { id: 'aura-2-thalia-en', label: 'Thalia — warm, clear (US)' },
-  { id: 'aura-2-andromeda-en', label: 'Andromeda — calm, friendly (US)' },
-  { id: 'aura-2-apollo-en', label: 'Apollo — confident (US)' },
-  { id: 'aura-2-arcas-en', label: 'Arcas — natural, smooth (US)' },
-  { id: 'aura-2-helena-en', label: 'Helena — caring (US)' },
-  { id: 'aura-2-draco-en', label: 'Draco — warm (UK)' },
+/** Every Deepgram Aura-2 voice (English and Spanish) for the CASCADED engine. */
+export const CASCADED_VOICES: VoiceOption[] = [
+  voice('aura-2-amalthea-en', 'Amalthea', F, ['engaging', 'cheerful'], {
+    accent: 'Filipino',
+    language: 'English',
+  }),
+  voice('aura-2-andromeda-en', 'Andromeda', F, ['casual', 'expressive'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-apollo-en', 'Apollo', M, ['confident', 'casual'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-arcas-en', 'Arcas', M, ['natural', 'smooth'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-aries-en', 'Aries', M, ['warm', 'energetic'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-asteria-en', 'Asteria', F, ['clear', 'confident'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-athena-en', 'Athena', F, ['calm', 'professional'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-atlas-en', 'Atlas', M, ['enthusiastic', 'approachable'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-aurora-en', 'Aurora', F, ['cheerful', 'energetic'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-callista-en', 'Callista', F, ['clear', 'professional'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-cora-en', 'Cora', F, ['smooth', 'caring'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-cordelia-en', 'Cordelia', F, ['approachable', 'warm'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-delia-en', 'Delia', F, ['casual', 'friendly'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-draco-en', 'Draco', M, ['warm', 'trustworthy'], {
+    accent: 'British',
+    language: 'English',
+  }),
+  voice('aura-2-electra-en', 'Electra', F, ['professional', 'engaging'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-harmonia-en', 'Harmonia', F, ['empathetic', 'calm'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-helena-en', 'Helena', F, ['caring', 'natural'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-hera-en', 'Hera', F, ['smooth', 'professional'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-hermes-en', 'Hermes', M, ['expressive', 'professional'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-hyperion-en', 'Hyperion', M, ['caring', 'warm'], {
+    accent: 'Australian',
+    language: 'English',
+  }),
+  voice('aura-2-iris-en', 'Iris', F, ['cheerful', 'approachable'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-janus-en', 'Janus', F, ['southern', 'trustworthy'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-juno-en', 'Juno', F, ['natural', 'engaging'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-jupiter-en', 'Jupiter', M, ['expressive', 'deep'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-luna-en', 'Luna', F, ['friendly', 'natural'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-mars-en', 'Mars', M, ['smooth', 'patient'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-minerva-en', 'Minerva', F, ['positive', 'friendly'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-neptune-en', 'Neptune', M, ['professional', 'patient'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-odysseus-en', 'Odysseus', M, ['calm', 'smooth'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-ophelia-en', 'Ophelia', F, ['expressive', 'cheerful'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-orion-en', 'Orion', M, ['approachable', 'calm'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-orpheus-en', 'Orpheus', M, ['professional', 'confident'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-pandora-en', 'Pandora', F, ['smooth', 'calm'], {
+    accent: 'British',
+    language: 'English',
+  }),
+  voice('aura-2-phoebe-en', 'Phoebe', F, ['energetic', 'warm'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-pluto-en', 'Pluto', M, ['smooth', 'empathetic'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-saturn-en', 'Saturn', M, ['knowledgeable', 'deep'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-selene-en', 'Selene', F, ['expressive', 'energetic'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-thalia-en', 'Thalia', F, ['clear', 'energetic'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-theia-en', 'Theia', F, ['expressive', 'polite'], {
+    accent: 'Australian',
+    language: 'English',
+  }),
+  voice('aura-2-vesta-en', 'Vesta', F, ['natural', 'patient'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-zeus-en', 'Zeus', M, ['deep', 'trustworthy'], {
+    accent: 'American',
+    language: 'English',
+  }),
+  voice('aura-2-sirio-es', 'Sirio', M, ['calm', 'professional'], {
+    accent: 'Mexican',
+    language: 'Spanish',
+  }),
+  voice('aura-2-nestor-es', 'Nestor', M, ['calm', 'professional'], {
+    accent: 'Spanish (Spain)',
+    language: 'Spanish',
+  }),
+  voice('aura-2-carina-es', 'Carina', F, ['professional', 'energetic'], {
+    accent: 'Spanish (Spain)',
+    language: 'Spanish',
+  }),
+  voice('aura-2-celeste-es', 'Celeste', F, ['clear', 'friendly'], {
+    accent: 'Colombian',
+    language: 'Spanish',
+  }),
+  voice('aura-2-alvaro-es', 'Alvaro', M, ['calm', 'professional'], {
+    accent: 'Spanish (Spain)',
+    language: 'Spanish',
+  }),
+  voice('aura-2-diana-es', 'Diana', F, ['confident', 'friendly'], {
+    accent: 'Spanish (Spain)',
+    language: 'Spanish',
+  }),
+  voice('aura-2-aquila-es', 'Aquila', M, ['expressive', 'enthusiastic'], {
+    accent: 'Latin American',
+    language: 'Spanish',
+  }),
+  voice('aura-2-selena-es', 'Selena', F, ['approachable', 'friendly'], {
+    accent: 'Latin American',
+    language: 'Spanish',
+  }),
+  voice('aura-2-estrella-es', 'Estrella', F, ['natural', 'calm'], {
+    accent: 'Mexican',
+    language: 'Spanish',
+  }),
+  voice('aura-2-javier-es', 'Javier', M, ['approachable', 'professional'], {
+    accent: 'Mexican',
+    language: 'Spanish',
+  }),
 ];
 
 export const LANGUAGES = [
@@ -401,7 +690,7 @@ export function isElevenLabsVoiceId(voice: string | null | undefined): voice is 
 // ── Per-engine helpers ──────────────────────────────────────────────────────
 
 /** The voices an agent can use under each engine (Sarvam: for its Bulbul model). */
-export function voicesForEngine(engine: VoiceEngine, speechModel?: string | null): ModelOption[] {
+export function voicesForEngine(engine: VoiceEngine, speechModel?: string | null): VoiceOption[] {
   switch (engine) {
     case 'REALTIME':
       return REALTIME_VOICES;

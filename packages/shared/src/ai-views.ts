@@ -1,5 +1,5 @@
 import type { AiProvider, CredentialProvider, VoiceEngine } from './enums';
-import type { ModelOption } from './models';
+import type { ModelOption, VoiceOption } from './models';
 
 /**
  * JSON the API returns about the AI layer. Staff see providers, models and
@@ -21,7 +21,7 @@ export interface AiSettingsView {
 /** GET /api/app/ai — the subscriber's view. No vendor, model or key information. */
 export interface WorkspaceAiView {
   /** The voices of the engine staff chose for this workspace. */
-  voices: ModelOption[];
+  voices: VoiceOption[];
   defaultVoice: string;
   /** The languages an agent can speak with this AI. */
   languages: { id: string; label: string }[];

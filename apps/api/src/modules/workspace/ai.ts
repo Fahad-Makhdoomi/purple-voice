@@ -9,6 +9,8 @@ import { wsId } from '../../middleware/workspace';
 import { agentModelOptions, getAiStatus } from '../../services/ai-settings';
 import { findApiKey } from '../../services/ai-keys';
 import { tryListElevenLabsVoices } from '../../services/elevenlabs-voices';
+import { voicePreview } from '../../services/voice-previews';
+import { voicePreviewLimiter } from '../../middleware/rate-limit';
 
 /**
  * What the agent builder needs about the AI layer: the voices it may offer
@@ -37,4 +39,17 @@ aiRouter.get('/', async (req, res) => {
     defaultModelLabel: options.defaultLabel,
   };
   res.json(view);
+});
+
+/**
+ * GET /api/app/ai/voices/:voice/preview?lang=hi — a short sample of a voice
+ * the workspace can use, spoken by its own voice engine (cached after the
+ * first play). `lang` is the agent's language, for voices that speak several.
+ */
+aiRouter.get('/voices/:voice/preview', voicePreviewLimiter, async (req, res) => {
+  const lang = typeof req.query.lang === 'string' ? req.query.lang.slice(0, 12) : undefined;
+  const { audio, contentType } = await voicePreview(wsId(req), String(req.params.voice), lang);
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.send(audio);
 });

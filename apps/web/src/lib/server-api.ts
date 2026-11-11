@@ -219,9 +219,14 @@ export async function getSettings(): Promise<PublicSettings> {
     legal: DEFAULT_LEGAL,
     captcha: { provider: 'none', forms: {} },
   });
-  // An older API may send no `appearance`, `content` or `legal`.
+  // An older API may send no `appearance`, `content` or `legal`, and a reply
+  // caught mid-restart may be missing any section: every page's header and
+  // footer read these, so a missing one must never crash the site.
   return {
     ...settings,
+    seo: settings.seo ? { ...DEFAULT_SEO, ...settings.seo } : DEFAULT_SEO,
+    analytics: settings.analytics ?? {},
+    captcha: settings.captcha ?? { provider: 'none', forms: {} },
     appearance: settings.appearance ?? DEFAULT_APPEARANCE,
     content: settings.content ?? DEFAULT_CONTENT,
     legal: settings.legal ?? DEFAULT_LEGAL,

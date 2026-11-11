@@ -12,7 +12,7 @@ const DEFAULT_COPY: HeroText = contentSettingsSchema.parse({}).hero;
 
 const ASSURANCES = [
   'Runs on your own phone numbers',
-  'First month free, then $5 a month',
+  '7-day free trial, then $5 a month',
   'Cancel any time',
 ];
 

@@ -121,7 +121,7 @@ export default function SiteSettingsPage() {
                   className="input"
                   maxLength={160}
                   defaultValue={c.announcement.text}
-                  placeholder="New: your first month is free"
+                  placeholder="New: try it free for 7 days"
                 />
               </Field>
               <Field id="annLabel" label="Link label" optional>

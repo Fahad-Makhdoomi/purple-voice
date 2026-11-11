@@ -96,18 +96,47 @@ pm2c startOrReload deploy/ecosystem.config.cjs --only pv-api,pv-worker --update-
 wait_for "http://127.0.0.1:$API_PORT/api/health"
 
 echo "==> Building the web app (static pages render from the running API)"
-# Next keeps fetched API data between builds; drop it so pages are built from the
-# content and plans the migrations and seed just wrote, not an hour-old copy.
-# A clean build also stops a page's HTML from pointing at chunk files an earlier
-# build wrote (the browser then fails with ChunkLoadError and shows "Application error").
-rm -rf apps/web/.next
-( set -a; . "$PV_ENV_DIR/web.env"; set +a; NEXT_TELEMETRY_DISABLED=1 npm run build -w @pv/web )
+# The live site keeps serving apps/web/.next while this runs, so the new build
+# goes into a clean side folder and replaces it only once it has succeeded.
+# Deleting .next first (as this script used to) meant a failed build left the
+# running site pointing at chunk files that no longer existed: every page
+# failed with ChunkLoadError and showed "Application error".
+# Clean, so pages are built from the content and plans the migrations and seed
+# just wrote, not Next's cached copy of an earlier build's API data.
+WEB=apps/web
+rm -rf "$WEB/.next-build"
+( set -a; . "$PV_ENV_DIR/web.env"; set +a; NEXT_DIST_DIR=.next-build NEXT_TELEMETRY_DISABLED=1 npm run build -w @pv/web ) || {
+  rm -rf "$WEB/.next-build"
+  echo "!! The web build failed. The site is still running the previous build." >&2
+  exit 1
+}
+# Browsers holding a page from the previous build still ask for its chunks, so
+# carry those over (never overwriting the new build's files). Content-hashed
+# names make this safe; files from builds over a week old are dropped.
+if [ -d "$WEB/.next/static" ]; then
+  cp -a -n "$WEB/.next/static/." "$WEB/.next-build/static/" 2>/dev/null || true
+  find "$WEB/.next-build/static" -type f -mtime +7 -delete 2>/dev/null || true
+fi
 
-echo "==> Restarting the web app"
+echo "==> Switching to the new build and restarting the web app"
+rm -rf "$WEB/.next-old"
+[ -d "$WEB/.next" ] && mv "$WEB/.next" "$WEB/.next-old"
+mv "$WEB/.next-build" "$WEB/.next"
 pm2c startOrReload deploy/ecosystem.config.cjs --only pv-web --update-env
 pm2c save
 
 echo "==> Health check"
-wait_for "http://127.0.0.1:$WEB_PORT/"
+if ! wait_for "http://127.0.0.1:$WEB_PORT/"; then
+  if [ -d "$WEB/.next-old" ]; then
+    echo "!! The new build did not start; putting the previous one back" >&2
+    rm -rf "$WEB/.next-failed"
+    mv "$WEB/.next" "$WEB/.next-failed"
+    mv "$WEB/.next-old" "$WEB/.next"
+    pm2c startOrReload deploy/ecosystem.config.cjs --only pv-web --update-env
+    wait_for "http://127.0.0.1:$WEB_PORT/" || true
+  fi
+  exit 1
+fi
+rm -rf "$WEB/.next-old"
 curl -fsS "http://127.0.0.1:$API_PORT/api/health" && echo
 echo "web ok on 127.0.0.1:$WEB_PORT"

@@ -1,9 +1,8 @@
-import Link from 'next/link';
 import {
   ArrowLeftRight,
-  ArrowUpRight,
   CalendarCheck,
   Check,
+  Lock,
   PhoneCall,
   Webhook,
   Workflow,
@@ -11,69 +10,11 @@ import {
 import { Reveal, Spotlight } from '@/components/site/motion';
 import { cn } from '@/lib/cn';
 
-const PILLARS = [
-  {
-    icon: PhoneCall,
-    title: 'Answers and dials for you',
-    body: 'Run outbound lists and pick up every inbound call on the same agent, inside your calling hours.',
-  },
-  {
-    icon: CalendarCheck,
-    title: 'Books into your calendar',
-    body: 'It checks Google Calendar mid-call, offers real open slots and sends the invite before hanging up.',
-  },
-  {
-    icon: ArrowLeftRight,
-    title: 'Hands hot leads to a human',
-    body: 'When a prospect is ready, the call transfers live to your team — with a summary already written.',
-  },
-];
-
-/** Three big claims in tall black glass columns, like the product in one breath. */
-export function Pillars() {
-  return (
-    <section id="features" className="scroll-mt-24 py-section" aria-labelledby="engine-title">
-      <div className="container">
-        <Reveal className="mx-auto max-w-3xl text-center">
-          <h2
-            id="engine-title"
-            className="text-[length:clamp(34px,5.4vw,68px)] font-medium leading-[1.02] tracking-[-0.04em] text-white"
-          >
-            Your all-in-one AI sales calling engine.
-          </h2>
-          <p className="mt-5 text-lead text-white/65">
-            Agents, campaigns, calendars, transcripts and billing in one place — nothing to stitch
-            together, nothing to host.
-          </p>
-        </Reveal>
-        <ul className="mt-14 grid gap-4 md:grid-cols-3">
-          {PILLARS.map(({ icon: Icon, title, body }, i) => (
-            <li key={title}>
-              <Reveal delay={i * 110} className="h-full">
-                <Spotlight className="glass-dark group h-full min-h-[300px] p-8">
-                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-ink transition duration-500 group-hover:scale-110 group-hover:rotate-[-10deg]">
-                    <Icon size={22} aria-hidden="true" />
-                  </span>
-                  <h3 className="mt-16 text-[26px] font-medium leading-tight tracking-[-0.03em] text-white">
-                    {title}
-                  </h3>
-                  <p className="mt-3 text-[15px] leading-relaxed text-white/60">{body}</p>
-                </Spotlight>
-              </Reveal>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  );
-}
-
-/** A mock window with a glowing edge, the way the reference shows its UI. */
+/** A small product window inside a bento tile; it lifts when the tile is hovered. */
 function Window({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('relative', className)} aria-hidden="true">
-      <div className="absolute -inset-6 animate-pulse rounded-[40px] bg-[radial-gradient(closest-side,rgb(var(--pv-violet-500)/0.35),transparent)] blur-xl" />
-      <div className="glass-dark relative overflow-hidden p-5 sm:p-6">
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition duration-500 group-hover:-translate-y-1 sm:p-5">
         <div className="mb-4 flex gap-1.5">
           <i className="h-2.5 w-2.5 rounded-full bg-white/20" />
           <i className="h-2.5 w-2.5 rounded-full bg-white/20" />
@@ -193,7 +134,7 @@ function CalendarMock() {
                     : 'border border-white/10 bg-white/[0.04] text-white/65 hover:border-violet-300/40',
               )}
             >
-              {i + 6}
+              {i + 4}
             </span>
           );
         })}
@@ -205,90 +146,139 @@ function CalendarMock() {
   );
 }
 
-const ROWS = [
-  {
-    title: 'Your AI sales agent, always ready',
-    body: 'Give each agent a persona, a goal and the knowledge it needs. Prompts adapt to every contact automatically, and you can test it on your own phone before it calls anyone.',
-    cta: 'Build an agent',
-    mock: <AgentMock />,
-  },
-  {
-    title: 'Campaigns that run themselves',
-    body: 'Upload a list and press start. Calls run inside your calling hours, retry no-answers and respect do-not-call requests, while you watch outcomes arrive.',
-    cta: 'Launch a campaign',
-    mock: <CampaignMock />,
-  },
-  {
-    title: 'Meetings land in your calendar',
-    body: 'Agents offer real open slots mid-call and send the invite before hanging up. Every call is transcribed, summarised and scored, so you only follow up where it counts.',
-    cta: 'See booking in action',
-    mock: <CalendarMock />,
-  },
-];
-
-const EXTRAS = [
+const SMALL = [
   {
     icon: PhoneCall,
     title: 'Inbound and outbound',
-    body: 'One agent answers your number and runs your lists.',
+    body: 'One agent answers your number and works your lists.',
   },
   {
     icon: ArrowLeftRight,
-    title: 'Live call transfer',
-    body: 'Warm hand-offs to your team the moment a human is needed.',
+    title: 'Live transfer',
+    body: 'Hot leads go straight to your team, summary already written.',
+  },
+  {
+    icon: Workflow,
+    title: 'Automations',
+    body: 'Notify Slack, send an email or re-queue a lead when a call ends.',
   },
   {
     icon: Webhook,
     title: 'Webhooks and API',
     body: 'Signed events and a REST API to wire calls into anything.',
   },
-  {
-    icon: Workflow,
-    title: 'Automations',
-    body: 'Notify Slack, send email or re-queue a lead when a call ends a certain way.',
-  },
 ];
 
-/** Alternating copy and glowing product mock-ups. */
-export function FeatureRows() {
-  return (
-    <section className="py-section" aria-label="What it does">
-      <div className="container space-y-24 sm:space-y-32">
-        {ROWS.map((row, i) => (
-          <div key={row.title} className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-            <Reveal variant={i % 2 ? 'right' : 'left'} className={cn(i % 2 === 1 && 'lg:order-2')}>
-              <h3 className="text-[length:clamp(30px,4.2vw,54px)] font-medium leading-[1.04] tracking-[-0.04em] text-white">
-                {row.title}
-              </h3>
-              <p className="mt-5 max-w-lg text-lead text-white/65">{row.body}</p>
-              <Link href="/signup?plan=BASIC" className="btn btn-white btn-lg mt-8 gap-2">
-                {row.cta}
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white">
-                  <ArrowUpRight size={14} />
-                </span>
-              </Link>
-            </Reveal>
-            <Reveal variant="zoom" delay={120}>
-              {row.mock}
-            </Reveal>
-          </div>
-        ))}
+const TRUST = [
+  'Encrypted keys and tokens',
+  'Signed webhooks and callbacks',
+  'Do-not-call lists respected',
+  'Card details never stored',
+];
 
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {EXTRAS.map(({ icon: Icon, title, body }, i) => (
-            <li key={title}>
-              <Reveal delay={i * 80} className="h-full">
-                <Spotlight className="glass-dark group h-full p-6">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition duration-300 group-hover:bg-white group-hover:text-ink">
-                    <Icon size={18} aria-hidden="true" />
-                  </span>
-                  <h4 className="mt-4 text-[16px] font-semibold text-white">{title}</h4>
-                  <p className="mt-1.5 text-sm leading-relaxed text-white/55">{body}</p>
-                </Spotlight>
-              </Reveal>
+function Tile({
+  title,
+  body,
+  children,
+  className,
+  delay = 0,
+}: {
+  title: string;
+  body: string;
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  return (
+    <Reveal delay={delay} className={cn('h-full', className)}>
+      <Spotlight className="glass-dark bento-tile group flex h-full flex-col p-6 sm:p-8">
+        <h3 className="text-[length:clamp(22px,2.4vw,28px)] font-medium leading-tight tracking-[-0.03em] text-white">
+          {title}
+        </h3>
+        <p className="mt-2 max-w-md text-[15px] leading-relaxed text-white/60">{body}</p>
+        <div className="mt-6 flex-1">{children}</div>
+      </Spotlight>
+    </Reveal>
+  );
+}
+
+/**
+ * Everything the product does in one bento grid: three live mock-ups, four
+ * smaller features and the safeguards, in place of long alternating rows.
+ */
+export function Features() {
+  return (
+    <section id="features" className="scroll-mt-24 py-section" aria-labelledby="features-title">
+      <div className="container">
+        <Reveal className="mx-auto max-w-2xl text-center">
+          <p className="eyebrow text-brand-300">Features</p>
+          <h2
+            id="features-title"
+            className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
+          >
+            Everything a calling team does. None of the hiring.
+          </h2>
+        </Reveal>
+
+        <div className="mt-12 grid gap-4 lg:grid-cols-6">
+          <Tile
+            className="lg:col-span-3"
+            title="Agents you build in minutes"
+            body="A persona, a goal and your knowledge. Pick a voice, then test it on your own phone."
+          >
+            <AgentMock />
+          </Tile>
+          <Tile
+            className="lg:col-span-3"
+            delay={100}
+            title="Campaigns that run themselves"
+            body="Upload a list and press start. It calls within your hours and retries no-answers."
+          >
+            <CampaignMock />
+          </Tile>
+          <Tile
+            className="lg:col-span-4"
+            title="Booked straight into your calendar"
+            body="It offers real open slots mid-call and sends the invite before hanging up."
+          >
+            <CalendarMock />
+          </Tile>
+          <Reveal delay={100} className="h-full lg:col-span-2">
+            <ul className="grid h-full gap-4">
+              {SMALL.map(({ icon: Icon, title, body }) => (
+                <li key={title}>
+                  <Spotlight className="glass-dark bento-tile group flex h-full items-start gap-4 p-5">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-ink transition duration-300 group-hover:-rotate-6 group-hover:scale-110">
+                      <Icon size={18} aria-hidden="true" />
+                    </span>
+                    <span>
+                      <span className="block text-[15px] font-semibold text-white">{title}</span>
+                      <span className="mt-1 block text-sm leading-relaxed text-white/55">
+                        {body}
+                      </span>
+                    </span>
+                  </Spotlight>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+        </div>
+
+        <Reveal className="mt-8">
+          <ul
+            className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[13px] text-white/55"
+            aria-label="Safeguards"
+          >
+            <li className="flex items-center gap-1.5 font-semibold text-white/80">
+              <Lock size={14} aria-hidden="true" /> Built to be trusted
             </li>
-          ))}
-        </ul>
+            {TRUST.map((t) => (
+              <li key={t} className="flex items-center gap-1.5">
+                <Check size={14} className="text-emerald-400" aria-hidden="true" /> {t}
+              </li>
+            ))}
+          </ul>
+        </Reveal>
       </div>
     </section>
   );

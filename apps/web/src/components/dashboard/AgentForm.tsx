@@ -14,6 +14,7 @@ import {
 import { Field } from '@/components/forms/Field';
 import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
+import { VoicePicker } from './VoicePicker';
 
 export type AgentDraft = AgentInput;
 
@@ -160,44 +161,36 @@ export function AgentForm({
             </span>
           </p>
         )}
-        <div className="max-w-sm">
-          <Field
-            id="voice-select"
-            label="Voice"
-            error={
-              ai.error && !ai.data ? 'Voices could not be loaded. Refresh to try again.' : null
-            }
-            help={
-              voiceReplaced
-                ? 'Our team switched your AI voice, so the voice this agent had isn’t available anymore. It now uses the one selected here; you can pick another.'
-                : 'How your agent sounds on the phone.'
-            }
-          >
-            <select
-              id="voice-select"
-              className="select"
-              required
-              disabled={!ai.data}
-              value={ai.data ? value.voice : ''}
-              onChange={(e) => {
+        <p className="-mt-2 text-sm text-muted">
+          {voiceReplaced
+            ? 'Our team switched your AI voice, so the voice this agent had isn’t available anymore. It now uses the one selected below; you can pick another.'
+            : 'How your agent sounds on the phone. Press play to hear a voice, and use the filters to narrow the list.'}
+        </p>
+        {ai.error && !ai.data ? (
+          <p className="field-error" role="alert">
+            Voices could not be loaded. Refresh to try again.
+          </p>
+        ) : !ai.data ? (
+          <p className="text-sm text-muted">Loading voices…</p>
+        ) : (
+          <>
+            {!voices.some((v) => v.id === value.voice) && value.voice && (
+              <p className="text-sm">
+                Using custom voice <code className="font-mono">{value.voice}</code>.
+              </p>
+            )}
+            <VoicePicker
+              voices={voices}
+              value={value.voice}
+              language={value.language}
+              onChange={(id) => {
                 setVoiceReplaced(false);
-                set('voice', e.target.value);
+                set('voice', id);
               }}
-            >
-              {!ai.data && (
-                <option value="">{ai.error ? 'Voices unavailable' : 'Loading voices…'}</option>
-              )}
-              {ai.data && !voices.some((v) => v.id === value.voice) && value.voice && (
-                <option value={value.voice}>Custom voice ({value.voice})</option>
-              )}
-              {voices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                  {v.hint ? ` — ${v.hint}` : ''}
-                </option>
-              ))}
-            </select>
-          </Field>
+            />
+          </>
+        )}
+        <div className="max-w-sm">
           {ai.data?.customVoice && (
             <Field
               id="voice-custom"

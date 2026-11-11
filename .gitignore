@@ -1,6 +1,9 @@
 node_modules/
 dist/
 .next/
+.next-build/
+.next-old/
+.next-failed/
 out/
 coverage/
 *.log

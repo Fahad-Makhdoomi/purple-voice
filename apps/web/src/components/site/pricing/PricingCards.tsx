@@ -17,10 +17,13 @@ export function PricingCards({
   plans,
   headingLevel = 'h3',
   tone = 'light',
+  maxHighlights,
 }: {
   plans: PublicPlan[];
   headingLevel?: 'h2' | 'h3';
   tone?: Tone;
+  /** Show only the first few highlights (the home page); /pricing lists them all. */
+  maxHighlights?: number;
 }) {
   const Heading = headingLevel;
   return (
@@ -124,7 +127,7 @@ export function PricingCards({
                     {tone === 'dark' && <ArrowUpRight size={16} aria-hidden="true" />}
                   </Link>
                   <ul className="mt-8 space-y-3">
-                    {plan.highlights.map((h) => (
+                    {plan.highlights.slice(0, maxHighlights).map((h) => (
                       <li
                         key={h}
                         className={cn(
@@ -144,6 +147,11 @@ export function PricingCards({
                       </li>
                     ))}
                   </ul>
+                  {maxHighlights !== undefined && plan.highlights.length > maxHighlights && (
+                    <p className={cn('mt-3 pl-7 text-sm', onDark ? 'text-white/45' : 'text-muted')}>
+                      + {plan.highlights.length - maxHighlights} more
+                    </p>
+                  )}
                 </div>
               </article>
             </Spotlight>

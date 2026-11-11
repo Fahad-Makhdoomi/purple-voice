@@ -28,12 +28,7 @@ const LATE_DAYS = 3;
 const BATCH = 100;
 
 export type StepKey =
-  | 'welcome'
-  | 'getting-started'
-  | 'pro-features'
-  | 'pro-offer'
-  | 'trial-ending'
-  | 'last-call';
+  'welcome' | 'getting-started' | 'pro-features' | 'pro-offer' | 'trial-ending' | 'last-call';
 
 interface StepDef {
   key: StepKey;
@@ -47,16 +42,21 @@ interface StepDef {
 export const STEPS: StepDef[] = [
   { key: 'welcome', name: 'Welcome', delayDays: 0, upgrade: false },
   { key: 'getting-started', name: 'Get your first agent live', delayDays: 1, upgrade: false },
-  { key: 'pro-features', name: 'What Pro unlocks', delayDays: 3, upgrade: true },
-  { key: 'pro-offer', name: 'Upgrade offer', delayDays: 7, upgrade: true },
-  { key: 'trial-ending', name: 'Free month ends soon', delayDays: 21, upgrade: true },
-  { key: 'last-call', name: 'Last call before the free month ends', delayDays: 28, upgrade: true },
+  { key: 'pro-features', name: 'What Pro unlocks', delayDays: 2, upgrade: true },
+  // The Free trial lasts FREE_TRIAL_DAYS (7) from sign-up.
+  { key: 'trial-ending', name: 'Free trial ends soon', delayDays: 4, upgrade: true },
+  { key: 'last-call', name: 'Last day of the free trial', delayDays: 6, upgrade: true },
+  { key: 'pro-offer', name: 'Upgrade offer', delayDays: 9, upgrade: true },
 ];
 
 export const lifecycleSettingsSchema = z.object({
   enabled: z.boolean(),
   /** A Stripe promotion code to show in upgrade emails (customers type it at checkout). */
-  offerCode: z.string().trim().max(40).regex(/^[A-Za-z0-9_-]*$/, 'Letters, numbers, - and _ only'),
+  offerCode: z
+    .string()
+    .trim()
+    .max(40)
+    .regex(/^[A-Za-z0-9_-]*$/, 'Letters, numbers, - and _ only'),
   /** What the code gives, e.g. "20% off your first 3 months of Pro". */
   offerText: z.string().trim().max(140),
   steps: z.record(z.string(), z.object({ enabled: z.boolean() })),
@@ -220,7 +220,7 @@ async function stepContent(
           eyebrow: 'Welcome aboard',
           heading: `Welcome to Purple Voice, ${name}!`,
           paragraphs: [
-            'Your account is confirmed and your first month is free. Purple Voice puts an AI voice agent on your phone line that answers calls, books appointments, qualifies leads and hands over to your team when it matters.',
+            'Your account is confirmed and your 7-day free trial has started. Purple Voice puts an AI voice agent on your phone line that answers calls, books appointments, qualifies leads and hands over to your team when it matters.',
             'Here’s how to get your first agent live:',
           ],
           bullets: [
@@ -230,9 +230,7 @@ async function stepContent(
             'Watch calls come in with summaries, recordings and booked appointments.',
           ],
           cta: { label: 'Open my dashboard', url: link('/dashboard', 'welcome') },
-          after: [
-            'Stuck on anything? Reply to this email. A real person reads every message.',
-          ],
+          after: ['Stuck on anything? Reply to this email. A real person reads every message.'],
           unsubscribeUrl: unsub,
         },
       };
@@ -300,13 +298,13 @@ async function stepContent(
     case 'trial-ending': {
       const pro = await proPlan();
       return {
-        subject: 'Your free month ends in about a week',
+        subject: 'Your free trial ends in 3 days',
         content: {
           preheader: 'Pick a plan so your agent keeps answering.',
-          eyebrow: 'Free month',
+          eyebrow: 'Free trial',
           heading: 'Keep your agent answering',
           paragraphs: [
-            `Hi ${name}, your free month of Purple Voice ends in about a week. Choose a plan before then so your agent keeps picking up without a break.`,
+            `Hi ${name}, your 7-day free trial of Purple Voice ends in 3 days. Choose a plan before then so your agent keeps picking up without a break.`,
             `Most growing teams choose ${pro.name}${pro.price ? ` (${pro.price} a month)` : ''} for more agents, numbers and minutes.`,
           ],
           callout: offer,
@@ -318,13 +316,13 @@ async function stepContent(
     case 'last-call': {
       const pro = await proPlan();
       return {
-        subject: 'Two days left on your free month',
+        subject: 'Your free trial ends tomorrow',
         content: {
           preheader: 'Upgrade now and nothing changes for your callers.',
           eyebrow: 'Last call',
-          heading: 'Two days left',
+          heading: 'One day left',
           paragraphs: [
-            `Hi ${name}, your free month ends in two days. Upgrade to ${pro.name} now and your agents, numbers and call history carry on exactly as they are.`,
+            `Hi ${name}, your free trial ends tomorrow. After that your agents stop taking calls until you choose a plan. Upgrade to ${pro.name} now and your agents, numbers and call history carry on exactly as they are.`,
           ],
           callout: offer,
           cta: { label: `Upgrade to ${pro.name}`, url: upgradeUrl },
@@ -423,7 +421,13 @@ export async function lifecycleTick(now = Date.now()): Promise<void> {
       try {
         if (step.upgrade) {
           const ent = await getEntitlements(u.workspaceId!);
-          if (ent.active && (ent.planCode === 'PRO' || ent.planCode === 'ENTERPRISE')) {
+          const paying = ent.active && !ent.free;
+          const trialStep = step.key === 'trial-ending' || step.key === 'last-call';
+          if (
+            (ent.active && (ent.planCode === 'PRO' || ent.planCode === 'ENTERPRISE')) ||
+            // Trial reminders are only for workspaces still on the trial.
+            (trialStep && paying)
+          ) {
             await claim(u.id, step.key, true);
             continue;
           }

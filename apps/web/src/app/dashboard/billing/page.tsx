@@ -353,7 +353,7 @@ function BillingInner() {
               <p className="mt-1 text-sm text-muted">
                 {entitlements.free && !subscription
                   ? `Free trial until ${formatDate(entitlements.trialEndsAt ?? null)}, then $5 a month. Choose a plan below to keep going.`
-                  : `${entitlements.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${formatDate(entitlements.currentPeriodEnd)}${entitlements.cancelAtPeriodEnd ? ', then you move to Free' : ''}`}
+                  : `${entitlements.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${formatDate(entitlements.currentPeriodEnd)}${entitlements.cancelAtPeriodEnd ? ', then you move to Starter' : ''}`}
               </p>
               <div className="mt-6 space-y-4">
                 <Meter
@@ -476,7 +476,7 @@ function BillingInner() {
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {data.plans.map((plan) => {
-          // On the trial, the Free card is for subscribing, not "your plan".
+          // On the trial, the Starter card is for subscribing, not "your plan".
           const trialing = entitlements.free && !subscription;
           const onPlan = entitlements.active && entitlements.planCode === plan.code && !trialing;
           // Same plan through another gateway is a move, not "your plan".

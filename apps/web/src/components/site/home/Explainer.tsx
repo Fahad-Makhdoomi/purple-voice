@@ -1,5 +1,5 @@
-import { CalendarCheck, FileText, PhoneForwarded, Users } from 'lucide-react';
-import { LiveCall, Reveal, Spotlight } from '@/components/site/motion';
+import { CalendarCheck, PhoneCall, Upload } from 'lucide-react';
+import { LiveCall, Reveal } from '@/components/site/motion';
 
 const SCRIPT = [
   {
@@ -19,72 +19,75 @@ const SCRIPT = [
   { who: 'lead' as const, text: 'Yes please.' },
 ];
 
-const POINTS = [
+const STEPS = [
   {
-    icon: Users,
-    title: 'You bring the leads',
-    body: 'Upload a contact list or answer inbound calls on the phone number you already have.',
+    icon: Upload,
+    title: 'Add your leads',
+    body: 'Upload a list or let it answer the number you already have.',
   },
   {
-    icon: PhoneForwarded,
-    title: 'The AI agent has the conversation',
-    body: 'It speaks naturally, answers from the knowledge you give it, handles interruptions and transfers to a human when needed.',
+    icon: PhoneCall,
+    title: 'Your agent calls',
+    body: 'It talks naturally, answers from your knowledge and hands hot leads to your team.',
   },
   {
     icon: CalendarCheck,
-    title: 'Meetings land in your calendar',
-    body: 'It checks your Google Calendar mid-call, offers real open slots and sends the invite before it hangs up.',
-  },
-  {
-    icon: FileText,
-    title: 'Every call is written up',
-    body: 'Transcript, summary, outcome and a lead score for every call, so your team only follows up where it counts.',
+    title: 'Meetings get booked',
+    body: 'Real open slots from Google Calendar, an invite sent, a summary for every call.',
   },
 ];
 
 /**
- * "What is this?" in one screen: a plain-language answer on the left and a
- * sample call playing on the right.
+ * How it works in one screen: three steps that light up in turn, next to a
+ * sample call that plays itself.
  */
 export function Explainer() {
   return (
     <section
       id="demo"
       className="relative scroll-mt-24 py-section text-white"
-      aria-labelledby="what-title"
+      aria-labelledby="how-title"
     >
-      <div className="container grid items-center gap-14 lg:grid-cols-[1fr_minmax(0,480px)]">
+      <div className="container grid items-center gap-14 lg:grid-cols-[1fr_minmax(0,480px)] lg:gap-20">
         <div>
           <Reveal>
-            <p className="eyebrow text-brand-300">What is Purple Voice?</p>
+            <p className="eyebrow text-brand-300">How it works</p>
             <h2
-              id="what-title"
+              id="how-title"
               className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
             >
-              A sales rep that never misses a call
+              Your best sales rep, on every call.
             </h2>
-            <p className="mt-4 max-w-xl text-lead text-white/70">
-              Purple Voice lets you create AI agents that make and take phone calls the way your
-              best rep would — qualifying the lead, answering questions and booking the meeting —
-              for a flat monthly price instead of a salary.
+            <p className="mt-4 max-w-xl text-lead text-white/65">
+              Set it up in an afternoon. From then on every lead gets a call within minutes, day or
+              night.
             </p>
           </Reveal>
 
-          <ul className="mt-9 grid gap-4 sm:grid-cols-2">
-            {POINTS.map(({ icon: Icon, title, body }, i) => (
+          <ol className="steps relative mt-10 space-y-3">
+            <span className="steps__rail" aria-hidden="true" />
+            {STEPS.map(({ icon: Icon, title, body }, i) => (
               <li key={title}>
-                <Reveal delay={i * 90}>
-                  <Spotlight className="glass-dark h-full p-5">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink">
-                      <Icon size={18} aria-hidden="true" />
+                <Reveal delay={i * 120}>
+                  <div
+                    className="step glass-dark flex items-start gap-4 p-4 sm:p-5"
+                    style={{ '--step': i } as React.CSSProperties}
+                  >
+                    <span className="step__icon relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-ink">
+                      <Icon size={19} aria-hidden="true" />
                     </span>
-                    <h3 className="mt-4 text-[15px] font-semibold text-white">{title}</h3>
-                    <p className="mt-1.5 text-sm leading-relaxed text-white/60">{body}</p>
-                  </Spotlight>
+                    <div>
+                      <h3 className="flex items-center gap-2 text-[17px] font-semibold text-white">
+                        <span className="text-xs font-semibold text-white/40">0{i + 1}</span>
+                        {title}
+                      </h3>
+                      <p className="mt-1 text-sm leading-relaxed text-white/60">{body}</p>
+                    </div>
+                  </div>
                 </Reveal>
               </li>
             ))}
-          </ul>
+          </ol>
         </div>
 
         <Reveal variant="right">

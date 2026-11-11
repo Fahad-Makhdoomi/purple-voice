@@ -225,10 +225,10 @@ export function SignupForm({ captcha, google }: { captcha: CaptchaProps; google:
       <h1 className="text-h2">Create your account</h1>
       <p className="mt-2 text-muted">
         {plan === 'PRO'
-          ? 'You picked Pro. Start on Free, then'
+          ? 'You picked Pro. Start with a 7-day free trial, then'
           : plan === 'BASIC'
-            ? 'You picked Basic. Start on Free, then'
-            : 'Start with a free month, then $5 a month, and'}{' '}
+            ? 'You picked Basic. Start with a 7-day free trial, then'
+            : 'Start with a 7-day free trial, then $5 a month, and'}{' '}
         upgrade whenever you need more.
       </p>
       {google && <GoogleSignIn intent="signup" next={planNext} />}

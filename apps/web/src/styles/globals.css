@@ -685,3 +685,122 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Home page: "How it works" steps and bento tiles ─────────────────────── */
+@layer components {
+  /* The three steps light up one after another, 3 s each, while a spark runs
+     down the rail that joins their icons. */
+  .steps__rail {
+    position: absolute;
+    top: 2rem;
+    bottom: 2rem;
+    left: calc(1rem + 21px);
+    z-index: -1;
+    width: 2px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgb(var(--pv-violet-400) / 0.18);
+  }
+  .steps__rail::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 34%;
+    background: linear-gradient(to bottom, transparent, rgb(var(--pv-violet-400)), transparent);
+    animation: steps-spark 9s linear infinite;
+  }
+  @media (min-width: 640px) {
+    .steps__rail {
+      left: calc(1.25rem + 21px);
+    }
+  }
+  .step {
+    animation: step-active 9s var(--pv-ease) infinite;
+    animation-delay: calc(var(--step, 0) * 3s);
+  }
+  .step__icon::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 2px solid rgb(var(--pv-violet-400) / 0.6);
+    opacity: 0;
+    animation: step-ring 9s var(--pv-ease) infinite;
+    animation-delay: inherit;
+  }
+  .step .step__icon {
+    animation-delay: calc(var(--step, 0) * 3s);
+  }
+
+  /* Bento tiles: a gradient edge fades in on hover (Spotlight already lifts them). */
+  .bento-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      rgb(var(--pv-violet-400) / 0.9),
+      rgb(var(--pv-cyan-300) / 0.5) 45%,
+      transparent 70%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 400ms var(--pv-ease);
+  }
+  .bento-tile:hover::after {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .steps__rail::after,
+    .step,
+    .step__icon::after {
+      animation: none;
+    }
+  }
+}
+
+@keyframes steps-spark {
+  0% {
+    top: -34%;
+  }
+  100% {
+    top: 100%;
+  }
+}
+@keyframes step-active {
+  0%,
+  28% {
+    border-color: rgb(var(--pv-violet-400) / 0.55);
+    box-shadow:
+      0 0 0 1px rgb(var(--pv-violet-400) / 0.2),
+      0 20px 44px -26px rgb(var(--pv-violet-500) / 0.7);
+    transform: translateX(6px);
+  }
+  36%,
+  100% {
+    transform: none;
+  }
+}
+@keyframes step-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  28% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+  100% {
+    opacity: 0;
+  }
+}

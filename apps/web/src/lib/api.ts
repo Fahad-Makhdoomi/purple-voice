@@ -165,6 +165,23 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   return json as T;
 }
 
+/** A binary response (audio, files), with the same session refresh as `api`. */
+export async function apiBlob(path: string, opts: RequestOptions = {}): Promise<Blob> {
+  let res = await send(path, opts);
+  if (res.status === 401 && (await refreshSession()) === 'ok') res = await send(path, opts);
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: { code?: string; message?: string };
+    };
+    throw new ApiError(
+      res.status,
+      json.error?.code ?? 'error',
+      json.error?.message ?? 'Something went wrong',
+    );
+  }
+  return res.blob();
+}
+
 /** Streams a Server-Sent Events response (AI assistant), calling onEvent per message. */
 export async function apiStream(
   path: string,
