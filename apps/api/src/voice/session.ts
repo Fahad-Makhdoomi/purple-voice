@@ -13,6 +13,7 @@ import { CREDENTIAL_PROVIDER_LABELS, voiceForEngine } from '@pv/shared';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { signedCallbackUrl } from '../lib/signed-url';
+import { legStreamUrl } from '../telephony/stream-urls';
 import { emitEvent } from '../events';
 import { findApiKey } from '../services/ai-keys';
 import { aiSettingsForAgent } from '../services/ai-settings';
@@ -67,7 +68,9 @@ const MAX_MESSAGES_PER_CALLER_DAY = 6;
 const LINK = /\b(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
 const hostOf = (raw: string) => {
   try {
-    return new URL(/^https?:/i.test(raw) ? raw : `https://${raw}`).hostname.replace(/^www\./, '').toLowerCase();
+    return new URL(/^https?:/i.test(raw) ? raw : `https://${raw}`).hostname
+      .replace(/^www\./, '')
+      .toLowerCase();
   } catch {
     return null;
   }
@@ -427,6 +430,7 @@ export class CallSession {
               to,
               answerUrl: signedCallbackUrl(provider, 'leg-voice', 'callId', this.callId),
               statusUrl: signedCallbackUrl(provider, 'leg-status', 'callId', this.callId),
+              streamUrl: legStreamUrl(provider, this.callId),
               ringTimeoutSec: TRANSFER_RING_SECONDS,
             })
           ).providerCallId,

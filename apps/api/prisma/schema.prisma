@@ -81,6 +81,11 @@ enum TelephonyProvider {
   TWILIO
   PLIVO
   SUPERPHONE
+  SIGNALWIRE
+  TELNYX
+  EXOTEL
+  VONAGE
+  BANDWIDTH
 }
 
 enum VoiceEngine {

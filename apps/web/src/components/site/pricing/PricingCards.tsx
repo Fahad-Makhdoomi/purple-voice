@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowUpRight, Check, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, Check, Landmark, Lock, ShieldCheck } from 'lucide-react';
 import { Reveal, Spotlight } from '@/components/site/motion';
 import { formatMoney, formatNumber } from '@/lib/format';
 import type { PublicPlan } from '@/lib/server-api';
@@ -62,7 +62,7 @@ export function PricingCards({
                 {featured && (
                   <span
                     className={cn(
-                      'absolute right-6 top-6 animate-tick rounded-pill px-3 py-1 text-xs font-semibold',
+                      'absolute right-6 top-6 rounded-pill px-3 py-1 text-xs font-semibold',
                       tone === 'dark' ? 'bg-ink text-white' : 'bg-brand-500/20 text-brand-200',
                     )}
                   >
@@ -164,54 +164,85 @@ export function PricingCards({
 
 export function PhoneBillingNote({ tone = 'light' }: { tone?: Tone }) {
   return (
-    <p className={cn('mt-8 text-center text-sm', tone === 'dark' ? 'text-white/45' : 'text-muted')}>
-      Phone number rental and AI usage are billed separately and are not included in any plan.
+    <p
+      className={cn(
+        'mx-auto mt-8 max-w-2xl text-center text-sm',
+        tone === 'dark' ? 'text-white/45' : 'text-muted',
+      )}
+    >
+      Plan minutes are the time your agents spend on calls each month. Phone numbers and call
+      charges are billed by your carrier (Twilio, Plivo, Telnyx and others), and AI usage is billed
+      separately.
     </p>
   );
 }
 
-const METHODS = ['UPI', 'RuPay', 'Visa', 'Mastercard', 'Net banking', 'Cards'];
+/** How a subscriber can pay at Razorpay checkout. Logos live in public/images/payments. */
+const METHODS: Array<{ src: string; alt: string; w: number; label?: boolean }> = [
+  { src: '/images/payments/upi.svg', alt: 'UPI', w: 52 },
+  { src: '/images/payments/google-pay.svg', alt: 'Google Pay', w: 50 },
+  { src: '/images/payments/phonepe.svg', alt: 'PhonePe', w: 20, label: true },
+  { src: '/images/payments/visa.svg', alt: 'Visa', w: 50 },
+  { src: '/images/payments/mastercard.svg', alt: 'Mastercard', w: 38 },
+  { src: '/images/payments/rupay.svg', alt: 'RuPay', w: 62 },
+];
 
 /** Tells the buyer how they pay and that it is safe, right under the plans. */
 export function PaymentTrust({ tone = 'light' }: { tone?: Tone }) {
   const dark = tone === 'dark';
   return (
-    <Reveal className="mx-auto mt-10 max-w-3xl">
+    <Reveal className="mx-auto mt-10 max-w-4xl">
       <div
         className={cn(
-          'p-6 text-center',
+          'grid items-center gap-6 p-6 sm:grid-cols-[auto_1fr] sm:gap-8 sm:p-7',
           dark ? 'glass-dark' : 'rounded-lg border border-line bg-surface shadow',
         )}
       >
-        <p
-          className={cn(
-            'flex items-center justify-center gap-2 text-sm font-semibold',
-            dark ? 'text-white' : 'text-ink',
-          )}
-        >
-          <Lock
-            size={15}
-            className={dark ? 'text-brand-300' : 'text-brand-600'}
-            aria-hidden="true"
-          />
-          Secure checkout by Razorpay
-        </p>
-        <ul className="mt-4 flex flex-wrap justify-center gap-2">
-          {METHODS.map((m) => (
-            <li
-              key={m}
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0C2451]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/images/payments/razorpay.svg" alt="" width={22} height={22} />
+          </span>
+          <span>
+            <span
               className={cn(
-                'rounded-pill px-3.5 py-1.5 text-xs font-semibold',
-                dark ? 'bg-white/10 text-white/80' : 'bg-brand-50 text-brand-800',
+                'flex items-center gap-1.5 text-sm font-semibold',
+                dark ? 'text-white' : 'text-ink',
               )}
             >
-              {m}
+              <Lock size={13} aria-hidden="true" /> Secure checkout
+            </span>
+            <span className={cn('block text-xs', dark ? 'text-white/50' : 'text-muted')}>
+              Payments by Razorpay
+            </span>
+          </span>
+        </div>
+
+        <ul className="flex flex-wrap items-center gap-2" aria-label="Accepted payment methods">
+          {METHODS.map((m) => (
+            <li
+              key={m.alt}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-3 shadow-[0_1px_2px_rgb(0_0_0/0.06)]"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={m.src}
+                alt={m.label ? '' : m.alt}
+                width={m.w}
+                height={20}
+                className="h-5 w-auto"
+              />
+              {m.label && <span className="text-xs font-semibold text-[#5F259F]">{m.alt}</span>}
             </li>
           ))}
+          <li className="flex h-10 items-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-semibold text-[#3C4043] shadow-[0_1px_2px_rgb(0_0_0/0.06)]">
+            <Landmark size={15} aria-hidden="true" /> Net banking
+          </li>
         </ul>
+
         <p
           className={cn(
-            'mt-4 flex items-start justify-center gap-2 text-sm leading-relaxed',
+            'flex items-start gap-2 text-sm leading-relaxed sm:col-span-2',
             dark ? 'text-white/55' : 'text-muted',
           )}
         >
@@ -221,9 +252,9 @@ export function PaymentTrust({ tone = 'light' }: { tone?: Tone }) {
             aria-hidden="true"
           />
           <span>
-            Billed monthly, cancel any time from your dashboard. Plans are priced in US dollars; in
-            India you are charged the rupee equivalent, and you can add your GSTIN at checkout for a
-            GST invoice. Your card or UPI details go to Razorpay, never to us.
+            Billed monthly; cancel any time from your dashboard. Prices are in US dollars. In India
+            you pay the rupee equivalent and can add your GSTIN for a GST invoice. Card and UPI
+            details go to Razorpay, never to us.
           </span>
         </p>
       </div>

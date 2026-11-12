@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { connectNumberSchema, telephonyAccountSchema, updateNumberSchema } from '@pv/shared';
+import {
+  connectNumberSchema,
+  TELEPHONY_PROVIDER_LABELS,
+  telephonyAccountSchema,
+  updateNumberSchema,
+} from '@pv/shared';
 import { prisma } from '../../lib/prisma';
 import { encryptJson } from '../../lib/crypto';
 import { audit } from '../../lib/audit';
@@ -9,10 +14,13 @@ import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireActiveSubscription } from '../../middleware/entitlements';
 import { assertWithinLimit } from '../../services/entitlements';
 import { adapterForAccount, createAdapter, TelephonyError } from '../../telephony';
+import { inboundStreamUrl } from '../../telephony/stream-urls';
+import type { TelephonyAccountInput } from '@pv/shared';
+import type { TelephonyProvider } from '@prisma/client';
 
 /**
- * Telephony accounts (the subscriber's own Twilio / Plivo / SuperPhone
- * credentials) and the phone numbers connected through them. Number rental
+ * Telephony accounts (the subscriber's own carrier credentials: Twilio,
+ * Plivo, SignalWire, Telnyx, Exotel, Vonage, Bandwidth, SuperPhone) and the phone numbers connected through them. Number rental
  * stays on the subscriber's carrier bill; we only point the number's voice
  * webhook at Purple Voice.
  */
@@ -68,6 +76,52 @@ function asHttp(err: unknown): never {
   throw err;
 }
 
+/** The non-secret id shown for an account, so the subscriber can tell accounts apart. */
+function publicIdFor(input: TelephonyAccountInput): string {
+  switch (input.provider) {
+    case 'TWILIO':
+      return input.accountSid;
+    case 'PLIVO':
+      return input.authId;
+    case 'SIGNALWIRE':
+      return input.spaceUrl;
+    case 'TELNYX':
+      return `TeXML app ${input.applicationId}`;
+    case 'EXOTEL':
+      return input.accountSid;
+    case 'VONAGE':
+      return input.apiKey;
+    case 'BANDWIDTH':
+      return input.accountId;
+    case 'SUPERPHONE':
+      return `••••${input.apiKey.slice(-4)}`;
+  }
+}
+
+/**
+ * URLs the subscriber pastes into the carrier console themselves, where the
+ * carrier's API can't set them: per account (Bandwidth's Voice Application)
+ * or per number (an Exotel flow's Voicebot applet).
+ */
+function accountInboundSetup(account: { id: string; provider: TelephonyProvider }) {
+  if (account.provider !== 'BANDWIDTH') return null;
+  return [
+    {
+      label: 'Call initiated callback URL (POST)',
+      url: signedCallbackUrl(account.provider, 'inbound', 'accountId', account.id),
+    },
+    {
+      label: 'Call status callback URL (POST)',
+      url: signedCallbackUrl(account.provider, 'status', 'accountId', account.id),
+    },
+  ];
+}
+
+function numberInboundSetup(number: { id: string }, provider: TelephonyProvider) {
+  if (provider !== 'EXOTEL') return null;
+  return [{ label: 'Voicebot applet URL', url: inboundStreamUrl(provider, number.id) }];
+}
+
 // ── Accounts ────────────────────────────────────────────────────────────────
 
 telephonyRouter.get('/accounts', async (req, res) => {
@@ -85,6 +139,7 @@ telephonyRouter.get('/accounts', async (req, res) => {
       verifiedAt: a.verifiedAt,
       numberCount: a._count.phoneNumbers,
       createdAt: a.createdAt,
+      inboundSetup: accountInboundSetup(a),
     })),
   });
 });
@@ -94,12 +149,7 @@ telephonyRouter.post('/accounts', requireActiveSubscription, async (req, res) =>
   const { provider, label, ...secret } = input;
   const adapter = createAdapter(provider, secret);
   const verified = await adapter.verify().catch(asHttp);
-  const publicId =
-    input.provider === 'TWILIO'
-      ? input.accountSid
-      : input.provider === 'PLIVO'
-        ? input.authId
-        : `••••${input.apiKey.slice(-4)}`;
+  const publicId = publicIdFor(input);
 
   const account = await prisma.telephonyAccount.create({
     data: {
@@ -157,7 +207,12 @@ telephonyRouter.get('/numbers', async (req, res) => {
       inboundAgent: { select: { id: true, name: true } },
     },
   });
-  res.json({ numbers });
+  res.json({
+    numbers: numbers.map((n) => ({
+      ...n,
+      inboundSetup: numberInboundSetup(n, n.telephonyAccount.provider),
+    })),
+  });
 });
 
 async function configureRouting(numberId: string) {
@@ -183,6 +238,19 @@ async function configureRouting(numberId: string) {
         'numberId',
         number.id,
       ),
+      accountInboundUrl: signedCallbackUrl(
+        number.telephonyAccount.provider,
+        'inbound',
+        'accountId',
+        number.telephonyAccount.id,
+      ),
+      accountStatusUrl: signedCallbackUrl(
+        number.telephonyAccount.provider,
+        'status',
+        'accountId',
+        number.telephonyAccount.id,
+      ),
+      inboundStreamUrl: inboundStreamUrl(number.telephonyAccount.provider, number.id),
       existingAppId: number.providerAppId,
     });
     await prisma.phoneNumber.update({
@@ -217,7 +285,9 @@ telephonyRouter.post('/numbers', requireActiveSubscription, async (req, res) => 
   // "connect" someone else's number and block its real owner from adding it.
   const owned = await adapterForAccount(account).listNumbers().catch(asHttp);
   if (owned.length && !owned.some((n) => n.e164 === input.e164))
-    throw badRequest(`${input.e164} isn't a number on this ${account.provider.toLowerCase()} account`);
+    throw badRequest(
+      `${input.e164} isn't a number on this ${TELEPHONY_PROVIDER_LABELS[account.provider]} account`,
+    );
   await assertNotConnectedElsewhere(workspaceId, input.e164);
   if (await prisma.phoneNumber.findFirst({ where: { workspaceId, e164: input.e164 } }))
     throw conflict(`${input.e164} is already connected in this workspace`);

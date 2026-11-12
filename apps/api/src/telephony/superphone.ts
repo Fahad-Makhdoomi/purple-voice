@@ -23,12 +23,14 @@ import {
 export class SuperPhoneAdapter implements TelephonyAdapter {
   readonly provider = 'SUPERPHONE' as const;
   readonly mediaProtocol = 'none' as const;
+  readonly inboundRouting = 'number' as const;
+  readonly manualInbound = false;
 
   constructor(private readonly creds: SuperPhoneCredentials) {}
 
   private unavailable(): never {
     throw new TelephonyError(
-      'SuperPhone call control is not available yet. Forward this number to a connected Twilio or Plivo number for now.',
+      'SuperPhone call control is not available yet. Forward this number to a number on another connected carrier for now.',
       501,
     );
   }

@@ -5,9 +5,19 @@ import { notFound } from '../lib/http-error';
 import { TwilioAdapter } from './twilio';
 import { PlivoAdapter } from './plivo';
 import { SuperPhoneAdapter } from './superphone';
+import { SignalWireAdapter } from './signalwire';
+import { TelnyxAdapter } from './telnyx';
+import { ExotelAdapter } from './exotel';
+import { VonageAdapter } from './vonage';
+import { BandwidthAdapter } from './bandwidth';
 import type {
+  BandwidthCredentials,
+  ExotelCredentials,
   PlivoCredentials,
+  SignalWireCredentials,
   SuperPhoneCredentials,
+  TelnyxCredentials,
+  VonageCredentials,
   TelephonyAdapter,
   TelephonyCredentials,
   TwilioCredentials,
@@ -22,6 +32,16 @@ export function createAdapter(
       return new TwilioAdapter(creds as TwilioCredentials);
     case 'PLIVO':
       return new PlivoAdapter(creds as PlivoCredentials);
+    case 'SIGNALWIRE':
+      return new SignalWireAdapter(creds as SignalWireCredentials);
+    case 'TELNYX':
+      return new TelnyxAdapter(creds as TelnyxCredentials);
+    case 'EXOTEL':
+      return new ExotelAdapter(creds as ExotelCredentials);
+    case 'VONAGE':
+      return new VonageAdapter(creds as VonageCredentials);
+    case 'BANDWIDTH':
+      return new BandwidthAdapter(creds as BandwidthCredentials);
     case 'SUPERPHONE':
       return new SuperPhoneAdapter(creds as SuperPhoneCredentials);
   }

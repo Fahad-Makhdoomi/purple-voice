@@ -29,7 +29,7 @@ export function verifySubject(purpose: SignedPurpose, subject: string, sig: unkn
 export function signedCallbackUrl(
   provider: string,
   purpose: SignedPurpose,
-  key: 'callId' | 'numberId',
+  key: 'callId' | 'numberId' | 'accountId',
   subject: string,
 ): string {
   const u = new URL(`${env.publicApiUrl}/api/telephony/${provider.toLowerCase()}/${purpose}`);

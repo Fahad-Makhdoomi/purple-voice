@@ -1,37 +1,30 @@
 import Image from '@/components/ui/Image';
-import { Building2, GraduationCap, Home, Megaphone, Stethoscope, Sun } from 'lucide-react';
-import { Reveal, Spotlight } from '@/components/site/motion';
+import { Reveal } from '@/components/site/motion';
 
 const CASES = [
   {
-    icon: Sun,
     title: 'Solar and home services',
-    body: 'Call every quote request in minutes and book the site visit.',
+    job: 'Calls every quote request within minutes and books the site survey.',
   },
   {
-    icon: Home,
     title: 'Real estate',
-    body: 'Follow up every portal enquiry and schedule the viewing.',
+    job: 'Follows up portal enquiries, checks budget and area, schedules the viewing.',
   },
   {
-    icon: Megaphone,
-    title: 'Agencies',
-    body: 'Run campaigns for every client from one workspace.',
-  },
-  {
-    icon: Stethoscope,
     title: 'Clinics and wellness',
-    body: 'Answer after hours, take bookings and cut no-shows.',
+    job: 'Answers after hours, books appointments and calls the day before to cut no-shows.',
   },
   {
-    icon: GraduationCap,
     title: 'Education and courses',
-    body: 'Call every enquiry and book a counsellor for the serious ones.',
+    job: 'Calls every enquiry and books a counsellor for the serious ones.',
   },
   {
-    icon: Building2,
     title: 'Finance and insurance',
-    body: 'Pre-qualify on the first call; pass ready buyers to advisers.',
+    job: 'Pre-qualifies on the first call and passes ready buyers to an adviser.',
+  },
+  {
+    title: 'Agencies',
+    job: 'Runs campaigns for each client from one workspace, on each client’s own number.',
   },
 ];
 
@@ -79,7 +72,7 @@ function FloatingPortraits() {
 }
 
 /**
- * Who it is for: six common situations, each a hoverable glass-on-light card.
+ * Who it is for: six industries and the job the agent does in each.
  * `portraits` floats people around the heading (the Minimal theme).
  */
 export function UseCases({ portraits = false }: { portraits?: boolean }) {
@@ -99,23 +92,19 @@ export function UseCases({ portraits = false }: { portraits?: boolean }) {
             If leads arrive faster than you can call them back, this is for you.
           </p>
         </Reveal>
-        <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {CASES.map(({ icon: Icon, title, body }, i) => (
-            <li key={title}>
-              <Reveal delay={(i % 3) * 80} className="h-full">
-                <Spotlight className="glass-dark bento-tile group flex h-full items-start gap-4 p-5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-ink transition duration-300 group-hover:-rotate-6 group-hover:scale-110">
-                    <Icon size={18} aria-hidden="true" />
-                  </span>
-                  <span>
-                    <h3 className="text-[16px] font-semibold text-white">{title}</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-white/55">{body}</p>
-                  </span>
-                </Spotlight>
-              </Reveal>
-            </li>
-          ))}
-        </ul>
+        <Reveal className="mt-10">
+          <ul className="glass-dark divide-y divide-white/10 px-6 sm:px-8">
+            {CASES.map(({ title, job }) => (
+              <li
+                key={title}
+                className="grid gap-1 py-5 sm:grid-cols-[minmax(0,260px)_1fr] sm:gap-8"
+              >
+                <h3 className="text-[16px] font-semibold text-white">{title}</h3>
+                <p className="text-[15px] leading-relaxed text-white/60">{job}</p>
+              </li>
+            ))}
+          </ul>
+        </Reveal>
       </div>
     </section>
   );

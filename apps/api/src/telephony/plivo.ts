@@ -17,6 +17,8 @@ const digits = (e164: string) => e164.replace(/^\+/, '');
 export class PlivoAdapter implements TelephonyAdapter {
   readonly provider = 'PLIVO' as const;
   readonly mediaProtocol = 'plivo' as const;
+  readonly inboundRouting = 'number' as const;
+  readonly manualInbound = false;
 
   constructor(private readonly creds: PlivoCredentials) {}
 

@@ -10,12 +10,21 @@ import {
 
 const BASE = 'https://api.twilio.com/2010-04-01';
 
-/** Twilio Programmable Voice + Media Streams. */
+/**
+ * Twilio Programmable Voice + Media Streams. SignalWire's Compatibility (LaML)
+ * API is the same REST API and markup on another host (signalwire.ts).
+ */
 export class TwilioAdapter implements TelephonyAdapter {
-  readonly provider = 'TWILIO' as const;
+  readonly provider: 'TWILIO' | 'SIGNALWIRE' = 'TWILIO';
   readonly mediaProtocol = 'twilio' as const;
+  readonly inboundRouting = 'number' as const;
+  readonly manualInbound = false;
+  protected readonly vendor: string = 'Twilio';
 
-  constructor(private readonly creds: TwilioCredentials) {}
+  constructor(
+    private readonly creds: TwilioCredentials,
+    private readonly base: string = BASE,
+  ) {}
 
   private async request<T>(
     method: 'GET' | 'POST',
@@ -26,7 +35,7 @@ export class TwilioAdapter implements TelephonyAdapter {
     for (const [k, v] of Object.entries(form ?? {})) {
       for (const item of Array.isArray(v) ? v : [v]) body.append(k, item);
     }
-    const res = await fetch(`${BASE}/Accounts/${this.creds.accountSid}${path}`, {
+    const res = await fetch(`${this.base}/Accounts/${this.creds.accountSid}${path}`, {
       method,
       headers: {
         Authorization: `Basic ${Buffer.from(`${this.creds.accountSid}:${this.creds.authToken}`).toString('base64')}`,
@@ -36,7 +45,8 @@ export class TwilioAdapter implements TelephonyAdapter {
       signal: AbortSignal.timeout(15000),
     });
     const json = (await res.json().catch(() => ({}))) as T & { message?: string };
-    if (!res.ok) throw new TelephonyError(json.message ?? `Twilio error ${res.status}`, res.status);
+    if (!res.ok)
+      throw new TelephonyError(json.message ?? `${this.vendor} error ${res.status}`, res.status);
     return json;
   }
 
@@ -70,7 +80,10 @@ export class TwilioAdapter implements TelephonyAdapter {
       );
       sid = found.incoming_phone_numbers[0]?.sid;
       if (!sid)
-        throw new TelephonyError(`${input.e164} is not a number on this Twilio account`, 404);
+        throw new TelephonyError(
+          `${input.e164} is not a number on this ${this.vendor} account`,
+          404,
+        );
     }
     await this.request('POST', `/IncomingPhoneNumbers/${sid}.json`, {
       VoiceUrl: input.inboundUrl,

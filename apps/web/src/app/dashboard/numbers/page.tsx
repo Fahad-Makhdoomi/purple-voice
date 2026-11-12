@@ -9,6 +9,7 @@ import { useApi } from '@/lib/use-api';
 import { useWorkspace } from '@/lib/workspace';
 import { EmptyState, Loading, Modal, PageHeader, Section, useAction } from '@/components/ui';
 import { Field } from '@/components/forms/Field';
+import { CARRIERS, CarrierBadge, carrierInfo, InboundSetup } from '@/components/dashboard/carriers';
 
 interface Account {
   id: string;
@@ -16,6 +17,7 @@ interface Account {
   label: string | null;
   publicId: string;
   numberCount: number;
+  inboundSetup: Array<{ label: string; url: string }> | null;
 }
 interface NumberRow {
   id: string;
@@ -25,6 +27,7 @@ interface NumberRow {
   routingError: string | null;
   inboundAgentId: string | null;
   telephonyAccount: { provider: TelephonyProvider; label: string | null };
+  inboundSetup: Array<{ label: string; url: string }> | null;
 }
 
 export default function NumbersPage() {
@@ -91,7 +94,7 @@ export default function NumbersPage() {
               body={
                 accounts.data.accounts.length
                   ? 'Add a number from your carrier account.'
-                  : 'Connect a Twilio or Plivo account first.'
+                  : 'Connect a carrier account first: Twilio, Plivo, Exotel, SignalWire, Telnyx, Vonage or Bandwidth.'
               }
             />
           ) : (
@@ -161,6 +164,14 @@ export default function NumbersPage() {
                         {n.routingError && (
                           <p className="mt-1 max-w-xs text-xs text-muted">{n.routingError}</p>
                         )}
+                        {n.inboundSetup && (
+                          <div className="max-w-xs">
+                            <InboundSetup
+                              items={n.inboundSetup}
+                              intro="For incoming calls, add a Voicebot applet to this number's flow in Exotel App Bazaar with this URL."
+                            />
+                          </div>
+                        )}
                       </td>
                       <td className="whitespace-nowrap text-right">
                         <button
@@ -218,9 +229,9 @@ export default function NumbersPage() {
               {accounts.data.accounts.map((a) => (
                 <li
                   key={a.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-line p-4"
+                  className="flex items-start justify-between gap-3 rounded-lg border border-line p-4"
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold">
                       {TELEPHONY_PROVIDER_LABELS[a.provider]}
                       {a.label ? ` · ${a.label}` : ''}
@@ -230,9 +241,12 @@ export default function NumbersPage() {
                     </p>
                     {a.provider === 'SUPERPHONE' && (
                       <p className="mt-1 text-xs text-warning">
-                        AI calling on SuperPhone is coming soon — forward to a Twilio or Plivo
-                        number meanwhile.
+                        AI calling on SuperPhone is coming soon — forward to a number on another
+                        connected carrier meanwhile.
                       </p>
+                    )}
+                    {a.inboundSetup && (
+                      <InboundSetup items={a.inboundSetup} intro={carrierInfo(a.provider).setup} />
                     )}
                   </div>
                   <button
@@ -286,31 +300,16 @@ function ConnectCarrierModal({
 }) {
   const [provider, setProvider] = useState<TelephonyProvider>('TWILIO');
   const { busy, run } = useAction();
+  const carrier = carrierInfo(provider);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    const body =
-      provider === 'TWILIO'
-        ? {
-            provider,
-            label: f.get('label') || undefined,
-            accountSid: f.get('a'),
-            authToken: f.get('b'),
-          }
-        : provider === 'PLIVO'
-          ? {
-              provider,
-              label: f.get('label') || undefined,
-              authId: f.get('a'),
-              authToken: f.get('b'),
-            }
-          : {
-              provider,
-              label: f.get('label') || undefined,
-              apiKey: f.get('a'),
-              sipDomain: f.get('b') || undefined,
-            };
+    const body: Record<string, unknown> = { provider, label: f.get('label') || undefined };
+    for (const field of carrier.fields) {
+      const value = String(f.get(field.name) ?? '').trim();
+      if (value || !field.optional) body[field.name] = value;
+    }
     const ok = await run(async () => {
       await api('/app/telephony/accounts', { body });
       return true;
@@ -321,50 +320,89 @@ function ConnectCarrierModal({
     }
   }
 
-  const labels = {
-    TWILIO: ['Account SID', 'Auth token', 'Find both on the Twilio Console home page.'],
-    PLIVO: ['Auth ID', 'Auth token', 'Find both on the Plivo console overview.'],
-    SUPERPHONE: [
-      'API key',
-      'SIP domain (optional)',
-      'Saved for when SuperPhone AI calling is available.',
-    ],
-  }[provider];
-
   return (
-    <Modal open={open} onClose={onClose} title="Connect a carrier">
+    <Modal open={open} onClose={onClose} title="Connect a carrier" size="lg">
       <form onSubmit={submit} className="space-y-5">
-        <div className="flex gap-2" role="group" aria-label="Carrier">
-          {(['TWILIO', 'PLIVO', 'SUPERPHONE'] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              className="chip"
-              aria-pressed={provider === p}
-              onClick={() => setProvider(p)}
+        <fieldset>
+          <legend className="label">Carrier</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CARRIERS.map((c) => {
+              const selected = provider === c.provider;
+              return (
+                <button
+                  key={c.provider}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setProvider(c.provider)}
+                  className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
+                    selected
+                      ? 'border-brand-400 bg-brand-50 shadow-glow'
+                      : 'border-line bg-surface hover:bg-canvas'
+                  }`}
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <span className="font-semibold">{TELEPHONY_PROVIDER_LABELS[c.provider]}</span>
+                    <CarrierBadge status={c.status} />
+                  </span>
+                  <span className="text-xs text-muted">{c.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <div key={provider} className="space-y-4">
+          <p className="rounded-sm bg-brand-50 px-3 py-2 text-xs text-ink-soft">{carrier.help}</p>
+          {carrier.fields.map((field) => (
+            <Field
+              key={field.name}
+              id={`carrier-${field.name}`}
+              label={field.label}
+              optional={field.optional}
             >
-              {TELEPHONY_PROVIDER_LABELS[p]}
-            </button>
+              {field.type === 'select' ? (
+                <select id={`carrier-${field.name}`} name={field.name} className="select">
+                  {field.options?.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : field.type === 'textarea' ? (
+                <textarea
+                  id={`carrier-${field.name}`}
+                  name={field.name}
+                  className="input min-h-[120px] font-mono text-xs"
+                  placeholder={field.placeholder}
+                  required={!field.optional}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              ) : (
+                <input
+                  id={`carrier-${field.name}`}
+                  name={field.name}
+                  type={field.type === 'password' ? 'password' : 'text'}
+                  className="input font-mono"
+                  placeholder={field.placeholder}
+                  required={!field.optional}
+                  autoComplete="off"
+                />
+              )}
+            </Field>
           ))}
+          {carrier.setup && (
+            <p className="flex gap-2 text-xs text-warning">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {carrier.setup}
+            </p>
+          )}
         </div>
-        <Field id="a" label={labels[0]} help={labels[2]}>
-          <input id="a" name="a" className="input font-mono" required autoComplete="off" />
-        </Field>
-        <Field id="b" label={labels[1]}>
-          <input
-            id="b"
-            name="b"
-            type={provider === 'SUPERPHONE' ? 'text' : 'password'}
-            className="input font-mono"
-            required={provider !== 'SUPERPHONE'}
-            autoComplete="off"
-          />
-        </Field>
         <Field id="label" label="Label" optional>
           <input id="label" name="label" className="input" placeholder="Main sales line" />
         </Field>
         <button className="btn btn-primary w-full" disabled={busy}>
-          {busy ? 'Checking credentials…' : 'Connect'}
+          {busy ? 'Checking credentials…' : `Connect ${TELEPHONY_PROVIDER_LABELS[provider]}`}
         </button>
       </form>
     </Modal>

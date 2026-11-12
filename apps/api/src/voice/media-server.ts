@@ -7,14 +7,21 @@ import { prisma } from '../lib/prisma';
 import { verifyAccessToken } from '../lib/jwt';
 import { verifySubject } from '../lib/signed-url';
 import { ACCESS_COOKIE } from '../middleware/auth';
-import { isTerminal } from '../services/calls';
-import { createTransport } from './transports';
+import { applyCallStatus, isTerminal } from '../services/calls';
+import { createTransport, STREAM_PROVIDERS, type MediaTransport } from './transports';
+import { openInboundCall } from '../telephony/routes';
+import { exotelE164 } from '../telephony/exotel';
 import { CallSession } from './session';
 import { dialerBridges, endReasonFor, type DialerBridge } from './dialer-bridge';
 import { transferLegs } from './transfer-bridge';
 
-const CARRIER_PATH = /^\/ws\/(twilio|plivo)\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
-const LEG_PATH = /^\/ws\/leg\/(twilio|plivo)\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
+const PROVIDERS = STREAM_PROVIDERS.join('|');
+const CARRIER_PATH = new RegExp(`^/ws/(${PROVIDERS})/([a-z0-9]+)/([a-f0-9]{40})/?$`);
+const LEG_PATH = new RegExp(`^/ws/leg/(${PROVIDERS})/([a-z0-9]+)/([a-f0-9]{40})/?$`);
+/** A carrier that opens our stream itself for an incoming call (Exotel's Voicebot applet), signed for the number. */
+const INBOUND_STREAM_PATH = /^\/ws\/(exotel)\/in\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
+/** Carriers that open the stream when the callee answers, without an answer webhook first. */
+const ANSWERED_BY_STREAM = new Set(['exotel']);
 const DIALER_PATH = /^\/ws\/dialer\/([a-z0-9]+)\/([a-f0-9]{40})\/?$/;
 /** A browser that misses a ping for this long is gone. */
 const HEARTBEAT_MS = 10_000;
@@ -49,6 +56,9 @@ function cookie(header: string | undefined, name: string): string | null {
  *     minted when we answered the call, so only the carrier we handed the URL
  *     to can open the stream. Calls placed from the browser dialer go to the
  *     dialer bridge; every other call gets an AI CallSession.
+ *   /ws/exotel/in/<numberId>/<sig>  an incoming Exotel call: the Voicebot
+ *     applet in the number's flow opens it, and the call is created from
+ *     the stream's start frame.
  *   /ws/leg/<provider>/<callId>/<sig>  the person an AI call is being
  *     transferred to, joined to that call (transfer-bridge.ts). The id and
  *     signature are the AI call's.
@@ -68,6 +78,15 @@ export function attachMediaServer(server: Server) {
     provider: string,
     callId: string,
   ) {
+    // Exotel opens the stream the moment the callee answers; there is no answer webhook.
+    if (ANSWERED_BY_STREAM.has(provider)) {
+      const current = await prisma.call.findUnique({
+        where: { id: callId },
+        select: { status: true },
+      });
+      if (current && !isTerminal(current.status) && current.status !== 'IN_PROGRESS')
+        await applyCallStatus(callId, 'IN_PROGRESS');
+    }
     // Decide before the upgrade, so the bridge or session is listening when the first frame arrives.
     const bridged = !!dialerBridges.get(callId);
     const call = bridged
@@ -96,6 +115,49 @@ export function attachMediaServer(server: Server) {
       session.start().catch((err) => {
         logger.error({ err, callId }, 'Call session failed to start');
         ws.close();
+      });
+    });
+  }
+
+  /**
+   * An incoming call whose carrier opened our stream directly (Exotel's
+   * Voicebot applet). The call is created from the stream's start frame,
+   * then handed to an AI session like any other.
+   */
+  async function acceptInboundStream(
+    req: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    provider: string,
+    numberId: string,
+  ) {
+    const number = await prisma.phoneNumber.findUnique({
+      where: { id: numberId },
+      include: { telephonyAccount: true, inboundAgent: true },
+    });
+    if (!number || number.telephonyAccount.provider.toLowerCase() !== provider) {
+      return reject(socket, 404);
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      const transport: MediaTransport | null = createTransport(provider, ws);
+      if (!transport) return ws.close();
+      let started = false;
+      transport.onStop(() => undefined);
+      transport.onStart(({ providerCallId, from }) => {
+        if (started) return;
+        started = true;
+        void (async () => {
+          const call = await openInboundCall(number, exotelE164(from), providerCallId ?? null);
+          // No agent can take it: closing the stream moves the flow to its next applet.
+          if (!call || ws.readyState !== ws.OPEN) return transport.close();
+          const session = new CallSession(call.id, transport);
+          liveSessions.add(session);
+          ws.on('close', () => liveSessions.delete(session));
+          await session.start();
+        })().catch((err) => {
+          logger.error({ err, numberId }, 'Inbound stream failed to start');
+          ws.close();
+        });
       });
     });
   }
@@ -161,6 +223,17 @@ export function attachMediaServer(server: Server) {
         const transport = createTransport(provider, ws);
         if (transport) transfer.attach(transport);
         else ws.close();
+      });
+      return;
+    }
+
+    const inbound = url.pathname.match(INBOUND_STREAM_PATH);
+    if (inbound) {
+      const [, provider, numberId, sig] = inbound;
+      if (!verifySubject('inbound', numberId, sig)) return reject(socket, 403);
+      acceptInboundStream(req, socket, head, provider, numberId).catch((err) => {
+        logger.error({ err, numberId }, 'Inbound stream failed to open');
+        reject(socket, 500);
       });
       return;
     }

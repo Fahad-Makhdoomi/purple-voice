@@ -74,10 +74,7 @@ export function plivoSignatureV3(
       .map(([k, v]) => `${k}${String(v)}`)
       .join('');
   }
-  return crypto
-    .createHmac('sha256', authToken)
-    .update(`${base}.${nonce}`, 'utf8')
-    .digest('base64');
+  return crypto.createHmac('sha256', authToken).update(`${base}.${nonce}`, 'utf8').digest('base64');
 }
 
 function signatureOk(
@@ -89,14 +86,18 @@ function signatureOk(
 ): { ok: boolean; hasHeader: boolean } {
   if (provider === 'TWILIO') {
     const given = req.header('x-twilio-signature') ?? '';
-    return { ok: !!given && safeEqual(given, twilioSignature(authToken, url, params)), hasHeader: !!given };
+    return {
+      ok: !!given && safeEqual(given, twilioSignature(authToken, url, params)),
+      hasHeader: !!given,
+    };
   }
   // PLIVO
   const v3 = req.header('x-plivo-signature-v3');
   const v3Nonce = req.header('x-plivo-signature-v3-nonce');
   if (v3 && v3Nonce) {
     const expected = plivoSignatureV3(authToken, url, v3Nonce, req.method, params);
-    if (v3.split(',').some((s) => safeEqual(s.trim(), expected))) return { ok: true, hasHeader: true };
+    if (v3.split(',').some((s) => safeEqual(s.trim(), expected)))
+      return { ok: true, hasHeader: true };
   }
   const v2 = req.header('x-plivo-signature-v2');
   const v2Nonce = req.header('x-plivo-signature-v2-nonce');
@@ -109,6 +110,13 @@ function signatureOk(
  * Checks the carrier's own request signature (Twilio and Plivo) on top of
  * our signed callback URLs. TELEPHONY_SIGNATURE_MODE: "log" reports
  * mismatches, "enforce" rejects them, "off" skips the check.
+ *
+ * The other carriers rely on our signed callback URLs alone: SignalWire signs
+ * with a separate Signing Key over the raw body, Telnyx with ed25519 over the
+ * raw body, Vonage with a JWT keyed by a separate signature secret, and
+ * Bandwidth and Exotel use optional basic auth. None can be checked with the
+ * credentials we store and the parsed body, and a wrong check would reject
+ * real calls.
  */
 export function assertCarrierSignature(
   req: Request,

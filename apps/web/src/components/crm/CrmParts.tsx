@@ -124,7 +124,7 @@ function AgentAndNumber({
         help={
           setup.ready && !setup.numbers.length ? (
             <>
-              Connect a Twilio or Plivo number first.{' '}
+              Connect a phone number first.{' '}
               <Link href="/dashboard/numbers" className="font-semibold text-brand-700">
                 Phone numbers
               </Link>

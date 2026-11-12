@@ -4,14 +4,33 @@
  * renders labels from them.
  */
 
-export const TELEPHONY_PROVIDERS = ['TWILIO', 'PLIVO', 'SUPERPHONE'] as const;
+export const TELEPHONY_PROVIDERS = [
+  'TWILIO',
+  'PLIVO',
+  'SIGNALWIRE',
+  'TELNYX',
+  'EXOTEL',
+  'VONAGE',
+  'BANDWIDTH',
+  'SUPERPHONE',
+] as const;
 export type TelephonyProvider = (typeof TELEPHONY_PROVIDERS)[number];
 
 export const TELEPHONY_PROVIDER_LABELS: Record<TelephonyProvider, string> = {
   TWILIO: 'Twilio',
   PLIVO: 'Plivo',
+  SIGNALWIRE: 'SignalWire',
+  TELNYX: 'Telnyx',
+  EXOTEL: 'Exotel',
+  VONAGE: 'Vonage',
+  BANDWIDTH: 'Bandwidth',
   SUPERPHONE: 'SuperPhone',
 };
+
+/** Carriers whose numbers can place and answer AI and browser calls (SuperPhone can't yet). */
+export const CALLING_PROVIDERS: readonly TelephonyProvider[] = TELEPHONY_PROVIDERS.filter(
+  (p) => p !== 'SUPERPHONE',
+);
 
 /** Language-model vendors a workspace can bring its own key for. */
 export const AI_PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI', 'SARVAM'] as const;

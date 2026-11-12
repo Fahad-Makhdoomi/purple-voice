@@ -22,16 +22,8 @@ export const revalidate = 3600;
 /** Title and description come from the root layout's site defaults; this pins the canonical address. */
 export const metadata: Metadata = { alternates: { canonical: '/' } };
 
-const CAPABILITIES = [
-  'Inbound & outbound calls',
-  'Appointment booking',
-  'Live transfer',
-  'Call summaries',
-  'Google Calendar',
-  'Campaigns',
-  '100+ natural voices',
-  'Webhooks & API',
-];
+/** Carriers a workspace can connect its numbers from (apps/api/src/telephony). */
+const CARRIERS = ['Twilio', 'Plivo', 'Telnyx', 'Vonage', 'SignalWire', 'Bandwidth', 'Exotel'];
 
 export default async function HomePage() {
   const [plans, faqs, { seo, appearance, content }] = await Promise.all([
@@ -67,19 +59,18 @@ export default async function HomePage() {
       <ScrollProgress />
       <Hero theme={theme} copy={content.hero} />
 
-      <section aria-label="What every agent can do" className="py-8 text-white">
-        <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
-          Everything your agent can do
-        </p>
-        <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
-          <ul className="flex w-max animate-marquee gap-14 pr-14 hover:[animation-play-state:paused]">
-            {[...CAPABILITIES, ...CAPABILITIES].map((p, i) => (
-              <li
-                key={i}
-                aria-hidden={i >= CAPABILITIES.length}
-                className="whitespace-nowrap text-xl font-semibold tracking-tight text-white/45 transition hover:text-white"
-              >
-                {p}
+      <section aria-labelledby="carriers-title" className="py-10 text-white">
+        <div className="container flex flex-col items-center gap-5 text-center">
+          <p
+            id="carriers-title"
+            className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45"
+          >
+            Works with the phone numbers you already have
+          </p>
+          <ul className="flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
+            {CARRIERS.map((c) => (
+              <li key={c} className="text-[19px] font-semibold tracking-tight text-white/55">
+                {c}
               </li>
             ))}
           </ul>
@@ -98,10 +89,11 @@ export default async function HomePage() {
               id="pricing-title"
               className="mt-3 text-[length:clamp(34px,5vw,60px)] font-medium leading-[1.03] tracking-[-0.04em] text-white"
             >
-              Start free. Pay when it works.
+              Plans that start at $5 a month.
             </h2>
             <p className="mt-4 text-lead text-white/65">
-              Try Starter free for 7 days. Change plans or cancel any time.
+              Try Starter free for 7 days. Every plan includes call minutes; upgrade, downgrade or
+              cancel from your dashboard.
             </p>
           </Reveal>
           <PricingCards plans={plans} tone="dark" maxHighlights={5} />
@@ -145,7 +137,8 @@ export default async function HomePage() {
             Never miss a lead again.
           </h2>
           <p className="mx-auto mt-6 max-w-xl text-lead text-white/65">
-            Your first agent can be calling today. Free for 7 days, then from $5 a month.
+            Set up your first agent this afternoon and it can be calling leads by tonight. Free for
+            7 days, then $5 a month.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link href="/signup?plan=FREE" className="btn btn-white btn-lg gap-2">

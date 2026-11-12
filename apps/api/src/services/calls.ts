@@ -15,6 +15,7 @@ import { logger } from '../lib/logger';
 import { badRequest, notFound, planLimit } from '../lib/http-error';
 import { signedCallbackUrl } from '../lib/signed-url';
 import { adapterForAccount, adapterForNumber } from '../telephony';
+import { mediaStreamUrl } from '../telephony/stream-urls';
 import { emitEvent } from '../events';
 import { canStartCall, getEntitlements, recordUsage } from './entitlements';
 import { summarizeCall, type TranscriptLine } from './ai/summarize';
@@ -72,7 +73,7 @@ export async function startOutboundCall(input: OutboundCallInput): Promise<Call>
     throw badRequest(
       input.agentId
         ? `${number.telephonyAccount.provider} numbers can't place AI calls yet`
-        : `${TELEPHONY_PROVIDER_LABELS[number.telephonyAccount.provider]} numbers can't place browser calls. Use a Twilio or Plivo number.`,
+        : `${TELEPHONY_PROVIDER_LABELS[number.telephonyAccount.provider]} numbers can't place browser calls yet. Use a number on another connected carrier.`,
     );
   }
 
@@ -101,6 +102,7 @@ export async function startOutboundCall(input: OutboundCallInput): Promise<Call>
       to: input.to,
       answerUrl: signedCallbackUrl(call.provider, 'voice', 'callId', call.id),
       statusUrl: signedCallbackUrl(call.provider, 'status', 'callId', call.id),
+      streamUrl: mediaStreamUrl(call.provider, call.id),
     });
     return await prisma.call.update({ where: { id: call.id }, data: { providerCallId } });
   } catch (err) {

@@ -1,10 +1,11 @@
 import Image from '@/components/ui/Image';
 import Link from 'next/link';
-import { ArrowUpRight, Check } from 'lucide-react';
+import { ArrowUpRight, Check, Play } from 'lucide-react';
 import { contentSettingsSchema, type ContentSettings, type SiteTheme } from '@pv/shared';
 import { DashboardMock } from '@/components/site/home/DashboardMock';
-import { Waveform } from '@/components/site/motion';
 import { MinimalStage } from '@/components/site/home/MinimalStage';
+import { PlaySampleButton } from '@/components/site/home/SampleCall';
+import { SAMPLE_CALL } from '@/components/site/home/sample-call';
 
 type HeroText = ContentSettings['hero'];
 /** Built-in copy, used until it is edited in Admin → Site settings. */
@@ -81,9 +82,17 @@ function HeroCopy({
             <ArrowUpRight size={14} />
           </span>
         </Link>
-        <Link href={copy.secondaryHref} className="btn btn-dark btn-lg min-w-[200px]">
-          {copy.secondaryLabel}
-        </Link>
+        {/* The sample call lives on this page: play it rather than just jump to it. */}
+        {/#(demo|listen)$/.test(copy.secondaryHref) ? (
+          <PlaySampleButton className="btn btn-dark btn-lg min-w-[200px] gap-2">
+            <Play size={15} fill="currentColor" aria-hidden="true" />
+            {copy.secondaryLabel}
+          </PlaySampleButton>
+        ) : (
+          <Link href={copy.secondaryHref} className="btn btn-dark btn-lg min-w-[200px]">
+            {copy.secondaryLabel}
+          </Link>
+        )}
       </div>
       <ul className="mt-7 flex animate-rise flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[13px] text-white/55 [animation-delay:240ms]">
         {ASSURANCES.map((a) => (
@@ -96,18 +105,35 @@ function HeroCopy({
   );
 }
 
+/** Every third slice of the sample call's loudness: a still picture of the real recording. */
+const MINI_PEAKS = SAMPLE_CALL.peaks.filter((_, i) => i % 3 === 0);
+
+/** A call-recording chip: press it to hear the sample call further down the page. */
 function VoiceBar() {
   return (
-    <div className="glass-dark flex h-14 w-full max-w-md items-center gap-4 rounded-pill px-6">
-      <span className="relative flex h-3 w-3">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-        <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-400" />
+    <PlaySampleButton className="glass-dark group flex h-14 w-full max-w-md items-center gap-3 rounded-pill pl-2 pr-6 text-left transition hover:-translate-y-0.5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition group-hover:bg-brand-700">
+        <Play size={16} fill="currentColor" className="translate-x-[1px]" aria-hidden="true" />
       </span>
-      <span className="text-xs font-semibold text-white/80">Ava is on a call</span>
-      <span className="ml-auto h-6 w-32 sm:w-40">
-        <Waveform bars={28} />
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-semibold text-white">
+          Hear Ava book a meeting
+        </span>
+        <span className="block text-[11px] text-white/50">Sample call · 0:50</span>
       </span>
-    </div>
+      <span
+        className="ml-auto flex h-6 w-28 items-center gap-[2px] text-white sm:w-36"
+        aria-hidden="true"
+      >
+        {MINI_PEAKS.map((p, i) => (
+          <span
+            key={i}
+            className="block flex-1 rounded-full bg-current opacity-35"
+            style={{ height: `${Math.max(10, p * 100)}%` }}
+          />
+        ))}
+      </span>
+    </PlaySampleButton>
   );
 }
 

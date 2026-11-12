@@ -165,6 +165,13 @@ export const aiSettingsSchema = z.object({
 });
 export type AiSettingsInput = z.infer<typeof aiSettingsSchema>;
 
+/** Any 8-4-4-4-12 hex id: carriers' ids aren't always RFC 4122 versioned UUIDs. */
+const anyUuid = (message: string) =>
+  z
+    .string()
+    .trim()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, message);
+
 export const telephonyAccountSchema = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('TWILIO'),
@@ -180,6 +187,68 @@ export const telephonyAccountSchema = z.discriminatedUnion('provider', [
     label: z.string().trim().max(80).optional(),
     authId: z.string().trim().min(10).max(64),
     authToken: z.string().trim().min(16).max(200),
+  }),
+  z.object({
+    provider: z.literal('SIGNALWIRE'),
+    label: z.string().trim().max(80).optional(),
+    /** The Space URL, e.g. example.signalwire.com (https:// and paths are dropped). */
+    spaceUrl: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .transform((v) => v.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+      .pipe(
+        z
+          .string()
+          .regex(/^[a-z0-9-]+\.signalwire\.com$/, 'Space URL looks like example.signalwire.com'),
+      ),
+    projectId: anyUuid('Project ID is a UUID from the API page of your Space'),
+    apiToken: z.string().trim().min(16).max(200),
+  }),
+  z.object({
+    provider: z.literal('TELNYX'),
+    label: z.string().trim().max(80).optional(),
+    apiKey: z.string().trim().min(20).max(300),
+    /** The TeXML Application's id (also its connection id). */
+    applicationId: z
+      .string()
+      .trim()
+      .regex(/^\d{6,30}$/, 'TeXML Application ID is the long number shown on the application'),
+  }),
+  z.object({
+    provider: z.literal('EXOTEL'),
+    label: z.string().trim().max(80).optional(),
+    accountSid: z.string().trim().min(3).max(64),
+    apiKey: z.string().trim().min(8).max(200),
+    apiToken: z.string().trim().min(8).max(200),
+    /** api.in.exotel.com for the Mumbai cluster, api.exotel.com for Singapore. */
+    subdomain: z.enum(['api.in.exotel.com', 'api.exotel.com']),
+  }),
+  z.object({
+    provider: z.literal('VONAGE'),
+    label: z.string().trim().max(80).optional(),
+    apiKey: z.string().trim().min(6).max(64),
+    apiSecret: z.string().trim().min(8).max(200),
+    applicationId: anyUuid('Application ID is a UUID'),
+    privateKey: z
+      .string()
+      .trim()
+      .max(10_000)
+      .refine(
+        (v) => /-----BEGIN (RSA )?PRIVATE KEY-----/.test(v),
+        'Paste the whole private.key file',
+      ),
+  }),
+  z.object({
+    provider: z.literal('BANDWIDTH'),
+    label: z.string().trim().max(80).optional(),
+    accountId: z
+      .string()
+      .trim()
+      .regex(/^\d{4,20}$/, 'Bandwidth account ID is a number'),
+    clientId: z.string().trim().min(8).max(200),
+    clientSecret: z.string().trim().min(8).max(300),
+    applicationId: anyUuid('Voice Application ID is a UUID'),
   }),
   z.object({
     provider: z.literal('SUPERPHONE'),
@@ -945,7 +1014,7 @@ export const contentSettingsSchema = z.object({
     .prefault({}),
   hero: z
     .object({
-      badge: z.string().trim().max(80).default('Now with natural, human-sounding voices'),
+      badge: z.string().trim().max(80).default('AI calling agents for sales teams'),
       title: z.string().trim().min(4).max(120).default('Turn every lead into a booked meeting.'),
       subtitle: z
         .string()
@@ -957,7 +1026,7 @@ export const contentSettingsSchema = z.object({
       primaryLabel: z.string().trim().max(40).default('Start free trial'),
       primaryHref: linkHref.default('/signup?plan=FREE'),
       secondaryLabel: z.string().trim().max(40).default('Hear a sample call'),
-      secondaryHref: linkHref.default('/#demo'),
+      secondaryHref: linkHref.default('/#listen'),
     })
     .prefault({}),
   footerTagline: z

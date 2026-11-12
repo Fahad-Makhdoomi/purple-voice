@@ -351,8 +351,8 @@ export default function DialerPage() {
           {eligible.length === 0 ? (
             <EmptyState
               icon={Phone}
-              title="Connect a Twilio or Plivo number"
-              body="Calls from the browser go out through a number on your Twilio or Plivo account."
+              title="Connect a phone number"
+              body="Calls from the browser go out through a number on your connected carrier account (Twilio, Plivo, SignalWire, Telnyx, Exotel, Vonage or Bandwidth)."
               action={
                 <Link href="/dashboard/numbers" className="btn btn-primary">
                   Phone numbers
