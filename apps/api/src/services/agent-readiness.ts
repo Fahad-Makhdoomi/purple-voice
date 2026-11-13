@@ -24,10 +24,10 @@ export async function agentReadiness(
     Agent,
     'appointmentBookingEnabled' | 'calendarIntegrationId' | 'transferEnabled' | 'transferNumber'
   > &
-    Partial<Pick<Agent, 'emailEnabled' | 'whatsappEnabled'>> & { id?: string },
+    Partial<Pick<Agent, 'emailEnabled' | 'whatsappEnabled' | 'voiceEngine'>> & { id?: string },
 ): Promise<ReadinessItem[]> {
   const [ai, numbers, messaging] = await Promise.all([
-    getAiStatus(workspaceId),
+    getAiStatus(workspaceId, agent.voiceEngine),
     agent.id ? prisma.phoneNumber.count({ where: { workspaceId } }) : 0,
     agent.emailEnabled || agent.whatsappEnabled
       ? messagingChannels(workspaceId)

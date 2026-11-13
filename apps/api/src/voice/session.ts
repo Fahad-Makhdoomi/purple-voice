@@ -271,9 +271,13 @@ export class CallSession {
       },
     };
 
-    // The AI layer is the workspace's, chosen by staff; the agent only picks
-    // its voice, and falls back to the engine's default if that engine lacks it.
-    const settings = await aiSettingsForAgent(this.call.workspaceId, agent.aiModel);
+    // The workspace's AI layer, or the engine and model the agent picked; the
+    // voice falls back to the engine's default if that engine lacks it.
+    const settings = await aiSettingsForAgent(
+      this.call.workspaceId,
+      agent.aiModel,
+      agent.voiceEngine,
+    );
     const engineConfig = {
       model: settings.model,
       voice: voiceForEngine(settings.voiceEngine, agent.voice, settings.speechModel),

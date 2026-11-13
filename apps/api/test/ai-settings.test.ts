@@ -24,10 +24,20 @@ const mocks = vi.hoisted(() => ({
   getAiStatus: vi.fn(),
   phoneNumbers: vi.fn(),
   agentModelOptions: vi.fn(),
+  agentEngines: vi.fn(),
 }));
 vi.mock('../src/services/ai-settings', () => ({
   getAiStatus: mocks.getAiStatus,
   agentModelOptions: mocks.agentModelOptions,
+  agentEngines: mocks.agentEngines,
+  usableKeys: async () => [],
+  engineSettings: async (_ws: string, engine: VoiceEngine) => ({
+    voiceEngine: engine,
+    llmProvider: 'ANTHROPIC',
+    model: 'claude-opus-5-5',
+    speechModel: speechModelFor(engine),
+    source: 'workspace',
+  }),
 }));
 // No ElevenLabs key in these tests: the premade voices are listed.
 vi.mock('../src/services/ai-keys', async (orig) => ({
@@ -103,7 +113,7 @@ describe('AI settings schema', () => {
     expect(bad.error?.issues[0]?.message).toBe('Unknown provider');
   });
 
-  it('drops AI-layer fields a subscriber sends with an agent', () => {
+  it('keeps the agent voice engine but drops the rest of the AI layer', () => {
     const agent = agentSchema.parse({
       name: 'Ava',
       voice: 'Puck',
@@ -112,7 +122,7 @@ describe('AI settings schema', () => {
       llmProvider: 'ANTHROPIC',
       llmModel: 'claude-opus-5-5',
     });
-    expect(agent).not.toHaveProperty('voiceEngine');
+    expect(agent.voiceEngine).toBe('REALTIME');
     expect(agent).not.toHaveProperty('llmProvider');
     expect(agent).not.toHaveProperty('llmModel');
   });
@@ -183,9 +193,11 @@ describe('GET /api/app/ai', () => {
   app.use('/ai', aiRouter);
 
   it.each(['REALTIME', 'GEMINI_LIVE', 'CASCADED', 'ELEVENLABS', 'SARVAM'] as const)(
-    'shows a %s workspace its voices and readiness, nothing about vendors or keys',
+    'shows a %s workspace its voices, engines and readiness, nothing about keys',
     async (engine) => {
       mocks.getAiStatus.mockResolvedValue(status(engine, engine !== 'CASCADED'));
+      const other: VoiceEngine = engine === 'SARVAM' ? 'GEMINI_LIVE' : 'SARVAM';
+      mocks.agentEngines.mockResolvedValue([engine, other]);
       mocks.agentModelOptions.mockResolvedValue({
         models: [{ id: 'm1', label: 'Model one' }],
         defaultLabel: 'Model one',
@@ -194,13 +206,19 @@ describe('GET /api/app/ai', () => {
       const res = await request(app).get('/ai').expect(200);
       expect(Object.keys(res.body).sort()).toEqual([
         'customVoice',
+        'defaultEngine',
         'defaultModelLabel',
         'defaultVoice',
+        'engines',
         'languages',
         'models',
         'ready',
         'voices',
       ]);
+      // The workspace engine comes first; every other engine brings its own voices.
+      expect(res.body.defaultEngine).toBe(engine);
+      expect(res.body.engines.map((e: { id: string }) => e.id)).toEqual([engine, other]);
+      expect(res.body.engines[1].voices).toEqual(voicesForEngine(other, speechModelFor(other)));
       // Subscribers may pick a model by name, but never see which vendor key pays for it.
       expect(res.body.models).toEqual([{ id: 'm1', label: 'Model one' }]);
       expect(res.body.customVoice).toBe(engine === 'ELEVENLABS');
@@ -208,9 +226,8 @@ describe('GET /api/app/ai', () => {
       expect(res.body.voices).toEqual(voicesForEngine(engine, speechModelFor(engine)));
       expect(res.body.defaultVoice).toBe(defaultVoiceFor(engine, speechModelFor(engine)));
       expect(res.body.ready).toBe(engine !== 'CASCADED');
-      const { models: _m, defaultModelLabel: _d, ...rest } = res.body;
-      const text = JSON.stringify(rest).toLowerCase();
-      for (const word of VENDOR_WORDS) expect(text).not.toContain(word);
+      const text = JSON.stringify(res.body).toLowerCase();
+      for (const word of ['apikey', 'api_key', 'last4', 'secret']) expect(text).not.toContain(word);
       expect(mocks.getAiStatus).toHaveBeenCalledWith('ws_1');
     },
   );

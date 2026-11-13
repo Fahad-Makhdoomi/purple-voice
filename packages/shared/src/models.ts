@@ -814,3 +814,73 @@ export function resolveAgentModel(
   const [provider, ...rest] = aiModel.split(':');
   return { llmProvider: provider as AiProvider, model: rest.join(':') };
 }
+
+// ── Per-agent voice engine ─────────────────────────────────────────────────
+
+export interface EngineSettings {
+  voiceEngine: VoiceEngine;
+  llmProvider: AiProvider;
+  model: string;
+  speechModel: string;
+}
+
+const SPEECH_TO_SPEECH: readonly VoiceEngine[] = ['REALTIME', 'GEMINI_LIVE'];
+
+/** The order engines are offered to subscribers in (best voices first). */
+const ENGINE_ORDER: readonly VoiceEngine[] = [
+  'ELEVENLABS',
+  'REALTIME',
+  'GEMINI_LIVE',
+  'SARVAM',
+  'CASCADED',
+];
+
+/**
+ * The AI layer one agent runs on. With no engine of its own (or the
+ * workspace's) it is the workspace's; another engine is used only when the
+ * keys it needs are available (null otherwise). Speech-to-text engines keep
+ * the workspace's LLM vendor when it has a key, else the first vendor that does.
+ */
+export function engineSettingsFor(
+  workspace: EngineSettings,
+  engine: VoiceEngine | null | undefined,
+  keys: readonly CredentialProvider[],
+): EngineSettings | null {
+  if (!engine || engine === workspace.voiceEngine) return workspace;
+  let llmProvider = workspace.llmProvider;
+  let model = defaultModelForEngine(engine, llmProvider);
+  if (!SPEECH_TO_SPEECH.includes(engine)) {
+    const vendors: AiProvider[] = [workspace.llmProvider, 'GEMINI', 'OPENAI', 'ANTHROPIC', 'SARVAM'];
+    const usable = vendors.find((p) => keys.includes(p));
+    if (!usable) return null;
+    llmProvider = usable;
+    model =
+      usable === workspace.llmProvider && !SPEECH_TO_SPEECH.includes(workspace.voiceEngine)
+        ? workspace.model
+        : DEFAULT_LLM_MODEL[usable];
+  }
+  if (!requiredProviders(engine, llmProvider).every((p) => keys.includes(p))) return null;
+  return { voiceEngine: engine, llmProvider, model, speechModel: speechModelFor(engine) };
+}
+
+/** The engines an agent in this workspace may pick: the workspace's first, then every one with keys. */
+export function agentEngineChoices(
+  workspace: EngineSettings,
+  keys: readonly CredentialProvider[],
+): VoiceEngine[] {
+  return [
+    workspace.voiceEngine,
+    ...ENGINE_ORDER.filter(
+      (e) => e !== workspace.voiceEngine && engineSettingsFor(workspace, e, keys) !== null,
+    ),
+  ];
+}
+
+/** How the engines are named to subscribers when they choose one for an agent. */
+export const AGENT_ENGINE_OPTIONS: Record<VoiceEngine, { label: string; hint: string }> = {
+  ELEVENLABS: { label: 'ElevenLabs', hint: 'Most lifelike voices, 30+ languages' },
+  REALTIME: { label: 'OpenAI Realtime', hint: 'Fastest, most natural back-and-forth' },
+  GEMINI_LIVE: { label: 'Google Gemini Live', hint: 'Fast, 30 voices, many languages' },
+  SARVAM: { label: 'Sarvam AI', hint: 'Indian languages and accents' },
+  CASCADED: { label: 'Deepgram Aura', hint: 'Clear English and Spanish voices' },
+};

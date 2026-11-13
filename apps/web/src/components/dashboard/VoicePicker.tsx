@@ -33,8 +33,11 @@ export function VoicePicker({
   value,
   onChange,
   language,
+  engine,
   disabled,
 }: {
+  /** The agent's own voice engine, when it picked one (else the workspace's). */
+  engine?: string;
   voices: VoiceOption[];
   value: string;
   onChange: (id: string) => void;
@@ -117,7 +120,7 @@ export function VoicePicker({
       setLoading(v.id);
       try {
         const blob = await apiBlob(
-          `/app/ai/voices/${encodeURIComponent(v.id)}/preview?lang=${encodeURIComponent(language)}`,
+          `/app/ai/voices/${encodeURIComponent(v.id)}/preview?lang=${encodeURIComponent(language)}${engine ? `&engine=${engine}` : ''}`,
         );
         url = URL.createObjectURL(blob);
         samples.current.set(key, url);

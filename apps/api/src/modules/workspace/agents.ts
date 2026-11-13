@@ -16,7 +16,8 @@ import { wsId } from '../../middleware/workspace';
 import { entitlementsFor, requireActiveSubscription } from '../../middleware/entitlements';
 import { assertWithinLimit } from '../../services/entitlements';
 import { agentReadiness } from '../../services/agent-readiness';
-import { agentModelOptions, getAiSettings } from '../../services/ai-settings';
+import type { VoiceEngine } from '@prisma/client';
+import { agentEngines, agentModelOptions, engineSettings } from '../../services/ai-settings';
 import { startOutboundCall } from '../../services/calls';
 
 export const agentsRouter = Router();
@@ -47,9 +48,13 @@ async function assertAgentConfig(
  * Staff choose the engine; if they change it later, agents with an old voice
  * keep working on the engine's default voice until the subscriber picks again.
  */
-async function assertVoice(workspaceId: string, voice: string | undefined) {
+async function assertVoice(
+  workspaceId: string,
+  voice: string | undefined,
+  engine: VoiceEngine | null | undefined,
+) {
   if (voice === undefined) return;
-  const { voiceEngine, speechModel } = await getAiSettings(workspaceId);
+  const { voiceEngine, speechModel } = await engineSettings(workspaceId, engine);
   // ElevenLabs: any voice id from the account (or the Voice Library) is fine.
   if (voiceEngine === 'ELEVENLABS' && isElevenLabsVoiceId(voice)) return;
   if (!voicesForEngine(voiceEngine, speechModel).some((v) => v.id === voice)) {
@@ -58,11 +63,22 @@ async function assertVoice(workspaceId: string, voice: string | undefined) {
 }
 
 /** A model the subscriber picks must be one the workspace is offered (so only our keys are ever used). */
-async function assertAiModel(workspaceId: string, aiModel: string | null | undefined) {
+async function assertAiModel(
+  workspaceId: string,
+  aiModel: string | null | undefined,
+  engine: VoiceEngine | null | undefined,
+) {
   if (!aiModel) return;
-  const { models } = await agentModelOptions(workspaceId);
+  const { models } = await agentModelOptions(workspaceId, engine);
   if (!models.some((m) => m.id === aiModel))
     throw badRequest('Choose one of the available AI models');
+}
+
+/** An engine the subscriber picks must be one the platform has keys for. */
+async function assertEngine(workspaceId: string, engine: VoiceEngine | null | undefined) {
+  if (!engine) return;
+  if (!(await agentEngines(workspaceId)).includes(engine))
+    throw badRequest('Choose one of the available voice engines');
 }
 
 agentsRouter.get('/', async (req, res) => {
@@ -82,8 +98,9 @@ agentsRouter.post('/', requireActiveSubscription, async (req, res) => {
   const workspaceId = wsId(req);
   const ent = await entitlementsFor(req);
   await assertWithinLimit(workspaceId, ent, 'agents');
-  await assertVoice(workspaceId, input.voice);
-  await assertAiModel(workspaceId, input.aiModel);
+  await assertEngine(workspaceId, input.voiceEngine);
+  await assertVoice(workspaceId, input.voice, input.voiceEngine);
+  await assertAiModel(workspaceId, input.aiModel, input.voiceEngine);
   await assertAgentConfig(workspaceId, ent, input);
 
   const agent = await prisma.agent.create({ data: { ...input, workspaceId } });
@@ -120,9 +137,15 @@ agentsRouter.patch('/:id', async (req, res) => {
   const existing = await prisma.agent.findFirst({ where: { id: req.params.id, workspaceId } });
   if (!existing) throw notFound('Agent');
   const ent = await entitlementsFor(req);
-  await assertVoice(workspaceId, input.voice);
+  const engine = input.voiceEngine !== undefined ? input.voiceEngine : existing.voiceEngine;
+  const engineChanged =
+    input.voiceEngine !== undefined && input.voiceEngine !== existing.voiceEngine;
+  if (engineChanged) await assertEngine(workspaceId, input.voiceEngine);
+  await assertVoice(workspaceId, input.voice, engine);
   // Only a changed pick is checked, so an older one that left the list never blocks other edits.
-  if (input.aiModel !== existing.aiModel) await assertAiModel(workspaceId, input.aiModel);
+  const aiModel = input.aiModel !== undefined ? input.aiModel : existing.aiModel;
+  if (input.aiModel !== existing.aiModel || engineChanged)
+    await assertAiModel(workspaceId, aiModel, engine);
   // Validate against the merged result, so a partial update can't leave the agent inconsistent.
   await assertAgentConfig(workspaceId, ent, { ...existing, ...input } as Partial<AgentInput>);
 

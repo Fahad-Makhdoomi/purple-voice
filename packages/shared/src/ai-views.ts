@@ -18,9 +18,27 @@ export interface AiSettingsView {
   speechModel?: string | null;
 }
 
-/** GET /api/app/ai — the subscriber's view. No vendor, model or key information. */
+/** One voice engine an agent can run on, with what it offers. */
+export interface AgentEngineView {
+  id: VoiceEngine;
+  label: string;
+  hint: string;
+  voices: VoiceOption[];
+  defaultVoice: string;
+  languages: { id: string; label: string }[];
+  customVoice: boolean;
+  /** AI models an agent on this engine can use; empty when there is no choice. */
+  models: ModelOption[];
+  defaultModelLabel: string;
+}
+
+/** GET /api/app/ai — the subscriber's view. No key information. */
 export interface WorkspaceAiView {
-  /** The voices of the engine staff chose for this workspace. */
+  /** The engine agents use when they pick none (the workspace's). */
+  defaultEngine: VoiceEngine;
+  /** Every engine an agent can pick, the default first. */
+  engines: AgentEngineView[];
+  /** The voices of the default engine. */
   voices: VoiceOption[];
   defaultVoice: string;
   /** The languages an agent can speak with this AI. */

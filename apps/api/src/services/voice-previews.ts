@@ -13,7 +13,7 @@ import { env } from '../config/env';
 import { HttpError } from '../lib/http-error';
 import { logger } from '../lib/logger';
 import { findApiKey } from './ai-keys';
-import { getAiSettings } from './ai-settings';
+import { engineSettings } from './ai-settings';
 import { elevenLabsPreviewUrl, tryListElevenLabsVoices } from './elevenlabs-voices';
 import { sarvamModelForVoice } from '../voice/engines/sarvam-speech';
 
@@ -277,8 +277,9 @@ export async function voicePreview(
   workspaceId: string,
   voice: string,
   agentLanguage?: string,
+  agentEngine?: VoiceEngine,
 ): Promise<VoicePreview> {
-  const settings = await getAiSettings(workspaceId);
+  const settings = await engineSettings(workspaceId, agentEngine);
   const engine = settings.voiceEngine;
   const key = await findApiKey(workspaceId, ENGINE_KEY[engine]);
 

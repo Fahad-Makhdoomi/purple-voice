@@ -8,7 +8,9 @@ import {
   isElevenLabsVoiceId,
   NOISE_FILTERS,
   NOISE_FILTER_LABELS,
+  type AgentEngineView,
   type AgentInput,
+  type VoiceEngine,
   type WorkspaceAiView,
 } from '@pv/shared';
 import { Field } from '@/components/forms/Field';
@@ -24,6 +26,7 @@ export const EMPTY_AGENT: AgentDraft = {
   status: 'DRAFT',
   voice: '',
   aiModel: null,
+  voiceEngine: null,
   language: 'en-US',
   systemPrompt: '',
   greeting: '',
@@ -50,8 +53,9 @@ export const EMPTY_AGENT: AgentDraft = {
 /**
  * The agent builder. Controlled; the parent page owns saving.
  *
- * Our team chooses the AI behind every agent (Admin → Subscribers → AI), so
- * subscribers only pick a voice from the ones it offers.
+ * Our team sets each workspace's default AI (Admin → Subscribers → AI); an
+ * agent can switch to any other voice engine the platform has keys for, and
+ * then picks a voice and AI model from what that engine offers.
  */
 export function AgentForm({
   value,
@@ -74,15 +78,51 @@ export function AgentForm({
   const [voiceReplaced, setVoiceReplaced] = useState(false);
   const [customVoice, setCustomVoice] = useState('');
 
-  const voices = ai.data?.voices ?? [];
+  // The engine this agent runs on: its own pick, else the workspace's.
+  const engines = ai.data?.engines ?? [];
+  const engine: AgentEngineView | null = ai.data
+    ? (engines.find((e) => e.id === (value.voiceEngine ?? ai.data!.defaultEngine)) ??
+      engines[0] ?? {
+        id: ai.data.defaultEngine,
+        label: '',
+        hint: '',
+        voices: ai.data.voices,
+        defaultVoice: ai.data.defaultVoice,
+        languages: ai.data.languages,
+        customVoice: ai.data.customVoice,
+        models: ai.data.models,
+        defaultModelLabel: ai.data.defaultModelLabel,
+      })
+    : null;
+  const voices = engine?.voices ?? [];
   // Use the default voice for a new agent, or when the saved one is no longer
   // offered. Only a new voice list or a changed voice needs this check.
   useEffect(() => {
-    if (!ai.data || ai.data.voices.some((v) => v.id === value.voice)) return;
-    if (ai.data.customVoice && isElevenLabsVoiceId(value.voice)) return;
+    if (!engine || engine.voices.some((v) => v.id === value.voice)) return;
+    if (engine.customVoice && isElevenLabsVoiceId(value.voice)) return;
     if (value.voice) setVoiceReplaced(true);
-    onChange({ ...value, voice: ai.data.defaultVoice });
-  }, [ai.data, value.voice]);
+    onChange({ ...value, voice: engine.defaultVoice });
+  }, [ai.data, engine?.id, value.voice]);
+
+  /** Switch engine: its default voice, the recommended model, and a language it speaks. */
+  const pickEngine = (id: VoiceEngine) => {
+    const next = engines.find((e) => e.id === id);
+    if (!next || !ai.data) return;
+    const base = value.language.split('-')[0];
+    const language = next.languages.some((l) => l.id === value.language)
+      ? value.language
+      : (next.languages.find((l) => l.id.split('-')[0] === base) ?? next.languages[0])?.id ??
+        value.language;
+    setVoiceReplaced(false);
+    setCustomVoice('');
+    onChange({
+      ...value,
+      voiceEngine: id === ai.data.defaultEngine ? null : id,
+      voice: next.defaultVoice,
+      aiModel: null,
+      language,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -109,7 +149,7 @@ export function AgentForm({
               value={value.language}
               onChange={(e) => set('language', e.target.value)}
             >
-              {(ai.data?.languages ?? LANGUAGES).map((l) => (
+              {(engine?.languages ?? LANGUAGES).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.label}
                 </option>
@@ -164,8 +204,61 @@ export function AgentForm({
         <p className="-mt-2 text-sm text-muted">
           {voiceReplaced
             ? 'Our team switched your AI voice, so the voice this agent had isn’t available anymore. It now uses the one selected below; you can pick another.'
-            : 'How your agent sounds on the phone. Press play to hear a voice, and use the filters to narrow the list.'}
+            : 'How your agent sounds on the phone. Pick a voice engine and AI model, then press play to hear a voice and use the filters to narrow the list.'}
         </p>
+        {ai.data && engine && (
+          <div className="grid gap-5 sm:grid-cols-2">
+            {engines.length > 1 && (
+              <Field
+                id="voice-engine"
+                label="Voice engine"
+                help="Each engine has its own voices and languages. All of them run on our platform."
+              >
+                <select
+                  id="voice-engine"
+                  className="select"
+                  value={engine.id}
+                  onChange={(e) => pickEngine(e.target.value as VoiceEngine)}
+                >
+                  {engines.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.label}
+                      {e.id === ai.data!.defaultEngine ? ' (recommended)' : ''} — {e.hint} ·{' '}
+                      {e.voices.length} voices
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {engine.models.length > 0 && (
+              <Field
+                id="ai-model"
+                label="AI model"
+                help="The AI that thinks and replies on the call. Nothing to set up or pay for separately."
+              >
+                <select
+                  id="ai-model"
+                  className="select"
+                  value={value.aiModel ?? ''}
+                  onChange={(e) => set('aiModel', e.target.value || null)}
+                >
+                  <option value="">Recommended ({engine.defaultModelLabel})</option>
+                  {value.aiModel && !engine.models.some((m) => m.id === value.aiModel) && (
+                    <option value={value.aiModel}>
+                      Previously selected model (no longer offered)
+                    </option>
+                  )}
+                  {engine.models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                      {m.hint ? ` — ${m.hint}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+        )}
         {ai.error && !ai.data ? (
           <p className="field-error" role="alert">
             Voices could not be loaded. Refresh to try again.
@@ -180,6 +273,8 @@ export function AgentForm({
               </p>
             )}
             <VoicePicker
+              key={engine?.id}
+              engine={value.voiceEngine ?? undefined}
               voices={voices}
               value={value.voice}
               language={value.language}
@@ -191,7 +286,7 @@ export function AgentForm({
           </>
         )}
         <div className="max-w-sm">
-          {ai.data?.customVoice && (
+          {engine?.customVoice && (
             <Field
               id="voice-custom"
               label="Or use any voice by its ID"
@@ -221,35 +316,6 @@ export function AgentForm({
             </Field>
           )}
         </div>
-        {ai.data && ai.data.models.length > 0 && (
-          <div className="max-w-md">
-            <Field
-              id="ai-model"
-              label="AI model"
-              help="The AI that thinks and replies on the call. It runs on our platform, so there is nothing to set up or pay for separately."
-            >
-              <select
-                id="ai-model"
-                className="select"
-                value={value.aiModel ?? ''}
-                onChange={(e) => set('aiModel', e.target.value || null)}
-              >
-                <option value="">Recommended ({ai.data.defaultModelLabel})</option>
-                {value.aiModel && !ai.data.models.some((m) => m.id === value.aiModel) && (
-                  <option value={value.aiModel}>
-                    Previously selected model (no longer offered)
-                  </option>
-                )}
-                {ai.data.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                    {m.hint ? ` — ${m.hint}` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        )}
         <div className="max-w-md">
           <Field
             id="noiseFilter"

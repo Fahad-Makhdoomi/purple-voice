@@ -1,7 +1,10 @@
 import type { AiProvider, CredentialProvider, VoiceEngine } from '@prisma/client';
 import {
   AI_PROVIDERS,
+  CREDENTIAL_PROVIDERS,
+  agentEngineChoices,
   agentModelChoices,
+  engineSettingsFor,
   defaultModelForEngine,
   modelsForEngine,
   requiredProviders,
@@ -60,9 +63,47 @@ export interface AiStatus {
   ready: boolean;
 }
 
-/** The workspace's AI settings plus, for each key its engine needs, where that key comes from. */
-export async function getAiStatus(workspaceId: string): Promise<AiStatus> {
+/** Every vendor whose key the workspace's calls can use right now. */
+export async function usableKeys(workspaceId: string): Promise<CredentialProvider[]> {
+  const checks = await Promise.all(
+    CREDENTIAL_PROVIDERS.map(async (p) => ((await keySource(workspaceId, p)) ? p : null)),
+  );
+  return checks.filter((p): p is CredentialProvider => p !== null);
+}
+
+const isAiProvider = (p: CredentialProvider): p is AiProvider =>
+  (AI_PROVIDERS as readonly string[]).includes(p);
+
+/**
+ * The AI settings for an agent's own engine pick: the workspace's when it
+ * picks none, or picks one whose keys aren't available.
+ */
+export async function engineSettings(
+  workspaceId: string,
+  engine: VoiceEngine | null | undefined,
+  keys?: CredentialProvider[],
+): Promise<AiSettings> {
   const settings = await getAiSettings(workspaceId);
+  if (!engine || engine === settings.voiceEngine) return settings;
+  const picked = engineSettingsFor(settings, engine, keys ?? (await usableKeys(workspaceId)));
+  return picked ? { ...picked, source: settings.source } : settings;
+}
+
+/** The engines an agent in this workspace may run on, the workspace's first. */
+export async function agentEngines(
+  workspaceId: string,
+  keys?: CredentialProvider[],
+): Promise<VoiceEngine[]> {
+  const settings = await getAiSettings(workspaceId);
+  return agentEngineChoices(settings, keys ?? (await usableKeys(workspaceId)));
+}
+
+/** The AI settings (for the agent's engine, if given) plus, for each key that engine needs, where it comes from. */
+export async function getAiStatus(
+  workspaceId: string,
+  engine?: VoiceEngine | null,
+): Promise<AiStatus> {
+  const settings = await engineSettings(workspaceId, engine);
   const keys = await Promise.all(
     requiredProviders(settings.voiceEngine, settings.llmProvider).map(async (provider) => ({
       provider,
@@ -72,22 +113,15 @@ export async function getAiStatus(workspaceId: string): Promise<AiStatus> {
   return { settings, keys, ready: keys.every((k) => k.source !== null) };
 }
 
-/** Vendors whose key the workspace's calls can use right now. */
-async function usableProviders(workspaceId: string) {
-  const checks = await Promise.all(
-    AI_PROVIDERS.map(async (p) => ((await keySource(workspaceId, p)) ? p : null)),
-  );
-  return checks.filter((p): p is (typeof AI_PROVIDERS)[number] => p !== null);
-}
-
-/** The models an agent in this workspace may pick, and what it uses when it picks none. */
+/** The models an agent on `engine` (default: the workspace's) may pick, and what it uses when it picks none. */
 export async function agentModelOptions(
   workspaceId: string,
+  engine?: VoiceEngine | null,
+  keys?: CredentialProvider[],
 ): Promise<{ models: ModelOption[]; defaultLabel: string; providers: AiProvider[] }> {
-  const [settings, providers] = await Promise.all([
-    getAiSettings(workspaceId),
-    usableProviders(workspaceId),
-  ]);
+  const usable = keys ?? (await usableKeys(workspaceId));
+  const settings = await engineSettings(workspaceId, engine, usable);
+  const providers = usable.filter(isAiProvider);
   const models = agentModelChoices(settings.voiceEngine, providers);
   const speechToSpeech =
     settings.voiceEngine === 'REALTIME' || settings.voiceEngine === 'GEMINI_LIVE';
@@ -100,13 +134,15 @@ export async function agentModelOptions(
   return { models, defaultLabel: known, providers };
 }
 
-/** The AI settings one agent runs with: the workspace's, with the agent's own model pick applied. */
+/** The AI settings one agent runs with: its engine (or the workspace's), with its own model pick applied. */
 export async function aiSettingsForAgent(
   workspaceId: string,
   aiModel: string | null | undefined,
+  voiceEngine?: VoiceEngine | null,
 ): Promise<AiSettings> {
-  const settings = await getAiSettings(workspaceId);
+  const keys = await usableKeys(workspaceId);
+  const settings = await engineSettings(workspaceId, voiceEngine, keys);
   if (!aiModel) return settings;
-  const providers = await usableProviders(workspaceId);
+  const providers = keys.filter(isAiProvider);
   return { ...settings, ...resolveAgentModel(settings.voiceEngine, settings, aiModel, providers) };
 }

@@ -283,6 +283,8 @@ export const agentSchema = z.object({
   language: z.string().trim().min(2).max(16).default('en-US'),
   /** The AI model, from the list the workspace is offered; null follows the workspace default. */
   aiModel: z.string().trim().max(100).nullable().optional(),
+  /** The voice engine picked for this agent; null follows the workspace's. */
+  voiceEngine: z.enum(VOICE_ENGINES).nullable().optional(),
   /** Who the agent is and how it should talk. */
   systemPrompt: z.string().trim().min(20).max(20000),
   /** First sentence spoken when the call connects. */

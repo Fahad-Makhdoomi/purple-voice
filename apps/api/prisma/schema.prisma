@@ -599,6 +599,8 @@ model Agent {
   language                  String      @default("en-US")
   /// The AI model picked for this agent (an id from agentModelChoices); null follows the workspace.
   aiModel                   String?
+  /// The voice engine picked for this agent; null follows the workspace's.
+  voiceEngine               VoiceEngine?
   systemPrompt              String
   greeting                  String      @default("")
   goal                      String      @default("")
