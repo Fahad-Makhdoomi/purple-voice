@@ -775,6 +775,24 @@ export const RESOURCE_CATEGORIES = [
   'Frameworks',
 ] as const;
 
+/** Posts in these categories are the News post type, listed under /news. */
+export const NEWS_CATEGORIES = ['News', 'Funding', 'Launches', 'Deals', 'Regulation'] as const;
+
+export const POST_SECTIONS = ['blog', 'resources', 'news'] as const;
+export type PostSection = (typeof POST_SECTIONS)[number];
+
+/** The section a post is listed in (and its URL prefix), decided by its category. */
+export function postSection(category: string | null | undefined): PostSection {
+  if (category && (RESOURCE_CATEGORIES as readonly string[]).includes(category))
+    return 'resources';
+  if (category && (NEWS_CATEGORIES as readonly string[]).includes(category)) return 'news';
+  return 'blog';
+}
+
+/** A post's public address, e.g. /news/some-slug. */
+export const postPath = (p: { slug: string; category: string | null }) =>
+  `/${postSection(p.category)}/${p.slug}`;
+
 export const POST_SCHEMA_TYPES = [
   'BlogPosting',
   'Article',

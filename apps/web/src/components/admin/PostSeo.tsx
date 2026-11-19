@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { ArrowDown, ArrowUp, CheckCircle2, CircleAlert, CircleX, Plus, Trash2 } from 'lucide-react';
 import {
+  NEWS_CATEGORIES,
   POST_SCHEMA_TYPES,
   RESOURCE_CATEGORIES,
   analyzeSeo,
@@ -251,7 +252,7 @@ export function AdvancedSeo({
           onChange={(e) => onChange({ category: e.target.value || null })}
         />
         <datalist id="post-categories">
-          {[...BLOG_CATEGORIES, ...RESOURCE_CATEGORIES].map((c) => (
+          {[...BLOG_CATEGORIES, ...RESOURCE_CATEGORIES, ...NEWS_CATEGORIES].map((c) => (
             <option key={c} value={c} />
           ))}
         </datalist>

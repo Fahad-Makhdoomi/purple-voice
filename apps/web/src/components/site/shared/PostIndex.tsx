@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/format';
 
 const PAGE_SIZE = 12;
 
-/** The card grid + pagination shared by /blog and /resources. */
+/** The card grid + pagination shared by /blog, /resources and /news. */
 export async function PostIndex({
   base,
   section,
@@ -17,8 +17,8 @@ export async function PostIndex({
   lead,
   empty,
 }: {
-  base: '/blog' | '/resources';
-  section: 'blog' | 'resources';
+  base: '/blog' | '/resources' | '/news';
+  section: 'blog' | 'resources' | 'news';
   page: number;
   eyebrow: string;
   title: string;

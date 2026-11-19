@@ -2,6 +2,8 @@ import { Router } from 'express';
 import {
   PRIVACY_REGION_LABELS,
   PRIVACY_REQUEST_LABELS,
+  NEWS_CATEGORIES,
+  POST_SECTIONS,
   RESOURCE_CATEGORIES,
   consentSchema,
   contactRequestSchema,
@@ -77,15 +79,22 @@ publicRouter.get('/posts', async (req, res) => {
     .optional()
     .parse(req.query.tag || undefined);
   const section = z
-    .enum(['blog', 'resources'])
+    .enum(POST_SECTIONS)
     .optional()
     .parse(req.query.section || undefined);
   const sectionWhere =
     section === 'resources'
       ? { category: { in: [...RESOURCE_CATEGORIES] } }
-      : section === 'blog'
-        ? { OR: [{ category: null }, { category: { notIn: [...RESOURCE_CATEGORIES] } }] }
-        : {};
+      : section === 'news'
+        ? { category: { in: [...NEWS_CATEGORIES] } }
+        : section === 'blog'
+          ? {
+              OR: [
+                { category: null },
+                { category: { notIn: [...RESOURCE_CATEGORIES, ...NEWS_CATEGORIES] } },
+              ],
+            }
+          : {};
   const where = { ...published(), ...sectionWhere, ...(tag ? { tags: { has: tag } } : {}) };
   const [posts, total] = await Promise.all([
     prisma.post.findMany({

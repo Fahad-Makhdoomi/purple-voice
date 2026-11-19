@@ -78,7 +78,7 @@ export interface PostSummary {
 export async function getPosts(
   page = 1,
   tag?: string,
-  section?: 'blog' | 'resources' | 'solutions',
+  section?: 'blog' | 'resources' | 'news' | 'solutions',
   pageSize = 12,
 ) {
   const q = new URLSearchParams({

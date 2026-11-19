@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { RESOURCE_CATEGORIES } from '@pv/shared';
+import { postPath } from '@pv/shared';
 import { siteUrl } from '@/lib/config';
 import { getSitemapEntries } from '@/lib/server-api';
 
@@ -15,12 +15,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${siteUrl}/blog`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
     { url: `${siteUrl}/resources`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
     { url: `${siteUrl}/contact`, lastModified: now, changeFrequency: 'yearly', priority: 0.5 },
+    { url: `${siteUrl}/news`, lastModified: now, changeFrequency: 'daily', priority: 0.7 },
     ...posts.map((p) => ({
-      url: `${siteUrl}${
-        p.category && (RESOURCE_CATEGORIES as readonly string[]).includes(p.category)
-          ? '/resources'
-          : '/blog'
-      }/${p.slug}`,
+      url: `${siteUrl}${postPath(p)}`,
       lastModified: new Date(p.updatedAt),
       priority: 0.6,
     })),

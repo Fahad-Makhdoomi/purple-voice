@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Image from '@/components/ui/Image';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { RESOURCE_CATEGORIES, readingTime, tableOfContents } from '@pv/shared';
+import { postPath, postSection, readingTime, tableOfContents } from '@pv/shared';
 import { notFoundOrMoved } from '@/lib/moved';
 import { Markdown } from '@/components/site/Markdown';
 import { JsonLd } from '@/components/site/JsonLd';
@@ -12,14 +12,17 @@ import { formatDate } from '@/lib/format';
 import { siteUrl } from '@/lib/config';
 import { fitTitle } from '@/lib/seo-title';
 
-type Base = '/blog' | '/resources';
+type Base = '/blog' | '/resources' | '/news';
 
-const isResource = (category: string | null) =>
-  !!category && (RESOURCE_CATEGORIES as readonly string[]).includes(category);
-
-/** A post belongs to exactly one section; the other section's URL is a 404. */
+/** A post belongs to exactly one section; the other sections' URLs are a 404. */
 const inSection = (base: Base, category: string | null) =>
-  base === '/resources' ? isResource(category) : !isResource(category);
+  base === `/${postSection(category)}`;
+
+const ALL_LABEL: Record<Base, string> = {
+  '/blog': 'All posts',
+  '/resources': 'All resources',
+  '/news': 'All news',
+};
 
 export async function postMetadata(base: Base, slug: string): Promise<Metadata> {
   const data = await getPost(slug);
@@ -68,7 +71,7 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
   // Show an updated date when the post changed meaningfully after it went out.
   const updated =
     new Date(post.updatedAt).getTime() - new Date(post.publishedAt).getTime() > 2 * 864e5;
-  const label = base === '/blog' ? 'All posts' : 'All resources';
+  const label = ALL_LABEL[base];
   const url = `${siteUrl}${base}/${post.slug}`;
   const faq = post.faq ?? [];
   const steps = post.howToSteps ?? [];
@@ -258,7 +261,7 @@ export async function PostArticle({ base, slug }: { base: Base; slug: string }) 
               {related.map((r) => (
                 <li key={r.slug}>
                   <Link
-                    href={`${isResource(r.category) ? '/resources' : '/blog'}/${r.slug}`}
+                    href={postPath(r)}
                     className="card card-pad block h-full transition hover:shadow-lg"
                   >
                     <p className="font-semibold leading-snug">{r.title}</p>

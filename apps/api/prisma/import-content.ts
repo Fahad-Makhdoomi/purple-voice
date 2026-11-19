@@ -1,5 +1,5 @@
 /**
- * Imports the Markdown articles in /content (blog + resources) into the Post table.
+ * Imports the Markdown articles in /content (blog, resources and news) into the Post table.
  *
  *   npm run db:import-content -w @pv/api            import / update everything
  *   npm run db:import-content -w @pv/api -- --check validate only, write nothing
@@ -13,7 +13,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
-import { POST_SCHEMA_TYPES, RESOURCE_CATEGORIES, postSchema } from '@pv/shared';
+import { NEWS_CATEGORIES, POST_SCHEMA_TYPES, RESOURCE_CATEGORIES, postSchema } from '@pv/shared';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -29,13 +29,21 @@ const BLOG_CATEGORIES = [
   'Product',
 ] as const;
 
+type Section = 'blog' | 'resources' | 'news';
+const SECTIONS: readonly Section[] = ['blog', 'resources', 'news'];
+const ALLOWED: Record<Section, readonly string[]> = {
+  blog: BLOG_CATEGORIES,
+  resources: RESOURCE_CATEGORIES,
+  news: NEWS_CATEGORIES,
+};
+
 interface Article {
   file: string;
-  section: 'blog' | 'resources';
+  section: Section;
   data: ReturnType<typeof postSchema.parse> & { cover?: string };
 }
 
-function parse(file: string, section: 'blog' | 'resources'): Article {
+function parse(file: string, section: Section): Article {
   const raw = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(raw);
   if (!m) throw new Error('missing --- frontmatter ---');
@@ -43,7 +51,7 @@ function parse(file: string, section: 'blog' | 'resources'): Article {
   const body = m[2]!.trim();
   const slug = path.basename(file, '.md');
   if (meta.slug !== slug) throw new Error(`slug "${String(meta.slug)}" must equal filename`);
-  const allowed: readonly string[] = section === 'blog' ? BLOG_CATEGORIES : RESOURCE_CATEGORIES;
+  const allowed = ALLOWED[section];
   if (!allowed.includes(String(meta.category)))
     throw new Error(`category "${String(meta.category)}" not valid for ${section}`);
   if (meta.schemaType && !(POST_SCHEMA_TYPES as readonly string[]).includes(String(meta.schemaType)))
@@ -71,7 +79,7 @@ function parse(file: string, section: 'blog' | 'resources'): Article {
 async function main() {
   const articles: Article[] = [];
   const errors: string[] = [];
-  for (const section of ['blog', 'resources'] as const) {
+  for (const section of SECTIONS) {
     const dir = path.join(root, 'content', section);
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir).filter((n) => n.endsWith('.md'))) {
@@ -86,13 +94,15 @@ async function main() {
   // Internal links must point at articles that exist.
   const slugs = new Set(articles.map((a) => a.data.slug));
   for (const a of articles) {
-    for (const [, target] of a.data.body.matchAll(/\]\(\/(?:blog|resources)\/([a-z0-9-]+)\)/g)) {
+    for (const [, target] of a.data.body.matchAll(/\]\(\/(?:blog|resources|news)\/([a-z0-9-]+)\)/g)) {
       if (!slugs.has(target!)) errors.push(`${a.data.slug}: broken internal link /…/${target}`);
     }
   }
 
-  const blog = articles.filter((a) => a.section === 'blog').length;
-  console.log(`Parsed ${blog} blog posts and ${articles.length - blog} resources.`);
+  const count = (s: Section) => articles.filter((a) => a.section === s).length;
+  console.log(
+    `Parsed ${count('blog')} blog posts, ${count('resources')} resources and ${count('news')} news stories.`,
+  );
   if (errors.length) {
     console.error(`\n${errors.length} problem(s):\n- ${errors.join('\n- ')}`);
     process.exit(1);
@@ -102,7 +112,7 @@ async function main() {
   const prisma = new PrismaClient();
   try {
     let withCover = 0;
-    for (const { data } of articles) {
+    for (const { data, section } of articles) {
       const cover =
         data.cover && existsSync(path.join(publicDir, data.cover.replace(/^\//, '')))
           ? data.cover
@@ -124,7 +134,7 @@ async function main() {
         schemaType: data.schemaType,
         faq: data.faq,
         howToSteps: data.howToSteps,
-        authorName: 'Purple Voice team',
+        authorName: section === 'news' ? 'Purple Voice newsroom' : 'Purple Voice team',
       };
       await prisma.post.upsert({
         where: { slug: data.slug },
